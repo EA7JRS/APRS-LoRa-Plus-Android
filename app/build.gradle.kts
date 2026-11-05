@@ -43,5 +43,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("com.github.mik3y:usb-serial-for-android:3.11.0")       // serial key adapters (FTDI, CP210x, CH34x, PL2303, CDC)
+    // 3.10.0, not 3.11.0: 3.11.0 brings androidx.annotation 1.10.0 and kotlin-stdlib 2.2, which Kotlin 2.0.21 cannot read
+    implementation("com.github.mik3y:usb-serial-for-android:3.10.0")       // serial key adapters (FTDI, CP210x, CH34x, PL2303, CDC)
 }
