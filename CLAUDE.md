@@ -31,26 +31,26 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 
 ## Estado (2026-11-05)
 - `core/` (Kotlin puro): KISS, AX.25, TNC2, APRS (posición sin comprimir y comprimida, mensajes, ack, rej), motor de mensajes (3 envíos a 30 s / 60 s / 120 s, duplicados), reglas de iGate, geodesia, tabla de estaciones, JSON mínimo, protocolo de control, DAPNET (petición), NMEA (checksum, RMC/GGA), validación de indicativo (RadioID), telegrafía (manipulador iámbico A/B, decodificador, adaptadores de teclado y MIDI). **Comprobado**: 190 comprobaciones en `core/src/test/.../SelfTest.kt`.
-- `app/` (Android, Compose): servicio en primer plano, cliente BLE, cliente APRS-IS, notificaciones, UI con tres pestañas (Stations, Messages, Connect). **Escrito pero sin compilar ni probar**. Revisado a mano el 2026-11-05 (sin errores de sintaxis; no se pudo compilar contra Android).
+- `app/` (Android, Compose): servicio en primer plano, cliente BLE, cliente APRS-IS, notificaciones; pestañas Stations, Messages, Tracker, Sensors, DAPNET, Firmware y Connect. **Sin probar en el móvil**.
 - Revisión 2026-11-05, cambios:
   - BLE: un trozo cuya escritura rechaza la pila (ocupada) vuelve a la cola en vez de perderse; las escrituras empiezan tras `onDescriptorWrite`; tipo de escritura según las propiedades de la característica.
-  - Ritmo de envío: `Controller.TX_GAP_MS` = 3 s entre tramas. El firmware guarda **una sola** trama del móvil (`BLEToLoRaPacket` en `ble_utils.cpp`) y muestra "BLE Tx" 1 s antes de enviarla; una segunda trama antes de eso pisa la primera.
+  - Ritmo de envío: 3 s entre tramas con firmware sin servicio de control (guarda **una sola** trama del móvil y muestra "BLE Tx" 1 s antes de enviarla; una segunda trama antes de eso pisa la primera) y 1,5 s con firmware que lo tiene (cola de 4).
   - Servicio: `startForeground` protegido (Android 14 exige el permiso de Bluetooth concedido); la notificación del servicio muestra el estado del enlace.
   - Notificaciones: historial sincronizado entre hilos; responder con el enlace parado avisa en vez de dar el mensaje por enviado.
   - `msgs.asReversed()` en lugar de `reversed()` (con compileSdk 35, `reversed()` puede enlazar con el método de Java 21, solo Android 15+).
   - Gradle: plugin foojay (JDK 17 para `core/` aunque la máquina tenga otro JDK), `compose.foundation` explícita, wrapper de Gradle 8.10.2.
 - CI: `.github/workflows/build.yml` ejecuta `gradle :core:selfTest` y `gradle :app:assembleDebug` y sube el APK de depuración.
-- Falta el repositorio en GitHub: la sesión anterior no podía crearlo. Crear `EA7JRS/APRS-LoRa-Plus-Android` (privado) y subir este proyecto.
+- Repositorio: `EA7JRS/APRS-LoRa-Plus-Android` (privado, creado por Manuel el 2026-11-05); primera subida el mismo día.
 
 - Control, DAPNET, NMEA y validación (2026-11-05): `TrackerBle` con cola GATT general (KISS, órdenes, suscripciones), `Controller` (eventos de control, páginas DAPNET, NMEA), `NmeaServer`, `MockLocation`, `DapnetSender`, `Licence`; pestañas Tracker, Sensors y DAPNET. Lo que no es Compose se comprobó contra `android.jar` de la API 35 (repositorio Reginer/aosp-android-jar, clonado parcial) con simulaciones de AndroidX y corrutinas; las pantallas Compose no se han podido compilar.
 - Firmware (repositorio `EA7JRS/APRS-LoRa-Plus`, rama `ble-control` subida el 2026-11-05, rebasada sobre los commits de CAT/Hamlib): `src/ble_control.cpp`, `include/ble_control.h`, cola de 4 tramas del móvil en `ble_utils.cpp`, `LoRa_Utils::selectLoraIndex`, `PAGES_Utils::cwSendText`, modo pedido por BLE en `selectMode`, NMEA a BLE en `nmea_link.cpp`. `ble_control.cpp` y `ble_utils.cpp` pasan `g++ -Wall -Werror` en el PC con cabeceras simuladas (NimBLE 2.5.2, ArduinoJson 7.4.3 reales). La CI del firmware compila T-Beam v1.2 y Supreme en cada push a cualquier rama.
 
 ## Pendiente
-- Ver la CI de la rama `ble-control` del firmware y corregir; probar el servicio de control en la Supreme; fusionar en `main` cuando Manuel lo diga.
+- Firmware, rama `ble-control`: la CI compila T-Beam v1.2 y Supreme (2026-11-05). Falta probar el servicio de control en la Supreme y fusionar en `main` cuando Manuel lo diga.
 - Firmware por BLE: medir el tiempo de una actualización completa en la Supreme y probar la cancelación y la pérdida de enlace a mitad.
 - Manipulador en el móvil: probar retardo y fidelidad con VBand, Vail (teclado y MIDI) y un adaptador serie; las pantallas Compose (`CwKeySection.kt`) no se han compilado.
 - Android Auto: las notificaciones DAPNET no tienen acción de responder (POCSAG no lleva remitente); comprobar si el coche las muestra.
-1. Subir el proyecto, ver el resultado de la CI y corregir los errores de compilación de `app/`.
+1. Ver el resultado de la CI y corregir los errores de compilación de `app/`.
 2. Probar en el móvil con el T-Beam Supreme (BLE KISS activado en el WebUI del tracker): conexión, recepción, envío y ACK de mensajes.
 3. Posiciones Mic-E (muy usadas por otros equipos), objetos, meteorología, telemetría.
 4. Guardar mensajes y estaciones entre sesiones.
