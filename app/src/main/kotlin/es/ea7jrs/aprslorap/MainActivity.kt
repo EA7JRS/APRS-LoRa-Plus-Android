@@ -1,0 +1,391 @@
+/* Copyright (C) 2026 Manuel - EA7JRS
+ *
+ * This file is part of APRS LoRa+ for Android.
+ * Licensed under the GNU General Public License, version 3 or later.
+ */
+package es.ea7jrs.aprslorap
+
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import es.ea7jrs.aprslorap.core.ChatMessage
+import es.ea7jrs.aprslorap.core.MessageEngine
+import es.ea7jrs.aprslorap.core.MessageStatus
+import es.ea7jrs.aprslorap.core.Nav
+import es.ea7jrs.aprslorap.core.Station
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { MaterialTheme { App() } }
+    }
+
+    /**
+     * Keyboard-type key adapters (VBand, Vail in keyboard mode, Bluetooth paddles): while keying is on, their keys go to the
+     * keyer instead of the screen. Only while this screen is in front (Android sends key events to the focused window).
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (CwEngine.active && CwEngine.source == "keyboard") {
+            val line = es.ea7jrs.aprslorap.core.KeyboardAdapter.line(event.keyCode)
+            if (line != null) {
+                when (event.action) {
+                    android.view.KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) CwEngine.setLine(line, true)
+                    android.view.KeyEvent.ACTION_UP -> CwEngine.setLine(line, false)
+                }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+}
+
+@Composable
+fun App() {
+    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "DAPNET", "Firmware", "Connect")
+    var tab by rememberSaveable { mutableStateOf(titles.size - 1) }
+    val error by AppState.error.collectAsState()
+    val notice by AppState.notice.collectAsState()
+    Scaffold { padding ->
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
+                titles.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+            }
+            error?.let {
+                Text(
+                    it, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().clickable { AppState.error.value = null }.padding(8.dp),
+                )
+            }
+            notice?.let {
+                Text(it, modifier = Modifier.fillMaxWidth().clickable { AppState.notice.value = null }.padding(8.dp))
+            }
+            when (tab) {
+                0 -> StationsTab()
+                1 -> MessagesTab()
+                2 -> TrackerTab()
+                3 -> SensorsTab()
+                4 -> DapnetTab()
+                5 -> FirmwareTab()
+                else -> ConnectTab()
+            }
+        }
+    }
+}
+
+/** "Go to": opens the route to the station in Google Maps (or any maps app if it is not installed). */
+fun goTo(ctx: Context, s: Station) {
+    val lat = s.lat ?: return
+    val lon = s.lon ?: return
+    val maps = Intent(Intent.ACTION_VIEW, Uri.parse(Nav.googleNavigationUri(lat, lon))).setPackage(Notifier.GOOGLE_MAPS)
+    try {
+        ctx.startActivity(maps)
+    } catch (e: ActivityNotFoundException) {
+        try {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Nav.geoUri(lat, lon, s.call))))
+        } catch (e2: ActivityNotFoundException) {
+            AppState.error.value = "No maps app found"
+        }
+    }
+}
+
+private fun ageText(s: Station): String {
+    val pos = s.lastPositionMs ?: return "no position yet"
+    val min = (System.currentTimeMillis() - pos) / 60_000
+    return if (min < 1) "position just now" else "position ${min} min ago"
+}
+
+@Composable
+fun StationsTab() {
+    val stations by AppState.stations.collectAsState()
+    val ctx = LocalContext.current
+    if (stations.isEmpty()) {
+        Text("No stations heard yet. Connect to the tracker in the Connect tab.", Modifier.padding(16.dp))
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(stations, key = { it.call }) { s ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(s.call, fontWeight = FontWeight.Bold)
+                    Text(ageText(s), fontSize = 12.sp)
+                    if (s.lat != null && s.lon != null) {
+                        Text(String.format(java.util.Locale.US, "%.5f, %.5f", s.lat, s.lon), fontSize = 12.sp)
+                    }
+                    if (s.comment.isNotBlank()) Text(s.comment, fontSize = 12.sp)
+                }
+                if (s.lat != null && s.lon != null) {
+                    Button(onClick = { goTo(ctx, s) }) { Text("Go to") }
+                }
+            }
+            HorizontalDivider()
+        }
+    }
+}
+
+private fun statusMark(m: ChatMessage): String = when (m.status) {
+    MessageStatus.PENDING -> "…"
+    MessageStatus.ACKED -> "✓"
+    MessageStatus.FAILED -> "✗ not delivered"
+    MessageStatus.REJECTED -> "✗ rejected"
+    MessageStatus.RECEIVED -> ""
+}
+
+@Composable
+fun MessagesTab() {
+    val msgs by AppState.messages.collectAsState()
+    var to by rememberSaveable { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+    Column(Modifier.fillMaxSize()) {
+        if (msgs.isEmpty()) Text("No messages yet.", Modifier.padding(16.dp))
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true) {
+            // asReversed(), not reversed(): with compileSdk 35 List.reversed() may bind to the Java 21 method (Android 15+ only)
+            items(msgs.asReversed(), key = { it.id }) { m ->
+                val line = if (m.outgoing) "→ ${m.peer}: ${m.text}  ${statusMark(m)}" else "← ${m.peer}: ${m.text}"
+                Text(
+                    line,
+                    Modifier.fillMaxWidth().clickable { if (!m.outgoing) to = m.peer }.padding(horizontal = 12.dp, vertical = 6.dp),
+                    fontWeight = if (m.outgoing) FontWeight.Normal else FontWeight.Bold,
+                )
+            }
+        }
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = to, onValueChange = { to = it.uppercase() },
+                label = { Text("To") }, singleLine = true, modifier = Modifier.width(120.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(
+                value = text, onValueChange = { text = it },
+                label = { Text("Message (${text.length}/67)") }, modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(
+                enabled = to.isNotBlank() && text.isNotBlank(),
+                onClick = {
+                    val c = AppState.controller
+                    if (c == null) AppState.error.value = "Start the link first (Connect tab)"
+                    else { c.sendMessage(to, text); text = "" }
+                },
+            ) { Text("Send") }
+        }
+    }
+}
+
+private fun requiredPermissions(): Array<String> {
+    val l = ArrayList<String>()
+    if (Build.VERSION.SDK_INT >= 31) {
+        l.add(Manifest.permission.BLUETOOTH_SCAN)
+        l.add(Manifest.permission.BLUETOOTH_CONNECT)
+    } else {
+        l.add(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+    if (Build.VERSION.SDK_INT >= 33) l.add(Manifest.permission.POST_NOTIFICATIONS)
+    return l.toTypedArray()
+}
+
+/** Only the Bluetooth permissions are essential; without notification permission the app works but shows no alerts. */
+private fun bluetoothGranted(ctx: Context): Boolean = requiredPermissions()
+    .filter { it != Manifest.permission.POST_NOTIFICATIONS }
+    .all { ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED }
+
+@Composable
+fun ConnectTab() {
+    val ctx = LocalContext.current
+    val settings = remember { Settings(ctx) }
+    var call by rememberSaveable { mutableStateOf(settings.callsign) }
+    var trackerCall by rememberSaveable { mutableStateOf(settings.trackerCallsign) }
+    var path by rememberSaveable { mutableStateOf(settings.path) }
+    var device by rememberSaveable { mutableStateOf(settings.deviceAddress) }
+    var igate by rememberSaveable { mutableStateOf(settings.igateEnabled) }
+    var host by rememberSaveable { mutableStateOf(settings.isHost) }
+    var port by rememberSaveable { mutableStateOf(settings.isPort.toString()) }
+    var dapUser by rememberSaveable { mutableStateOf(settings.dapnetUser) }
+    var dapPass by rememberSaveable { mutableStateOf(settings.dapnetPassword) }
+    var dapGroup by rememberSaveable { mutableStateOf(settings.dapnetGroup) }
+    var nmeaOn by rememberSaveable { mutableStateOf(settings.nmeaServer) }
+    var nmeaPort by rememberSaveable { mutableStateOf(settings.nmeaPort.toString()) }
+    var mockOn by rememberSaveable { mutableStateOf(settings.mockLocation) }
+    var licence by remember { mutableStateOf(Licence.summary(settings)) }
+    var checking by remember { mutableStateOf(false) }
+    val found = remember { mutableStateListOf<Pair<String, String>>() }
+    val scanner = remember { BleScanner(ctx) }
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val ble by AppState.bleStatus.collectAsState()
+    val isStatus by AppState.igateStatus.collectAsState()
+    val running by AppState.running.collectAsState()
+    val log by AppState.log.collectAsState()
+
+    DisposableEffect(Unit) { onDispose { scanner.stop() } }
+
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (bluetoothGranted(ctx)) pending?.invoke() else AppState.error.value = "Bluetooth permission is needed"
+        pending = null
+    }
+    fun withPermissions(action: () -> Unit) {
+        if (bluetoothGranted(ctx) && (Build.VERSION.SDK_INT < 33 ||
+                ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)) {
+            action()
+        } else {
+            pending = action
+            launcher.launch(requiredPermissions())
+        }
+    }
+    fun save() {
+        settings.callsign = call
+        settings.trackerCallsign = trackerCall
+        settings.path = path
+        settings.deviceAddress = device
+        settings.igateEnabled = igate
+        settings.isHost = host
+        settings.isPort = port.toIntOrNull() ?: 14580
+        settings.dapnetUser = dapUser
+        settings.dapnetPassword = dapPass
+        settings.dapnetGroup = dapGroup
+        settings.nmeaServer = nmeaOn
+        settings.nmeaPort = nmeaPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 10110
+        settings.mockLocation = mockOn
+        licence = Licence.summary(settings)
+    }
+    fun validate() {
+        save()
+        checking = true
+        Licence.validate(settings) { err ->
+            checking = false
+            licence = Licence.summary(settings)
+            if (err != null) AppState.error.value = err else AppState.notice.value = licence
+        }
+    }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(call, { call = it.uppercase() }, label = { Text("Your callsign with SSID (EA7JRS-7)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(licence, Modifier.weight(1f), fontSize = 12.sp)
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(enabled = !checking, onClick = { validate() }) { Text(if (checking) "Checking..." else "Validate") }
+        }
+        Text("The callsign needs a DMR ID / CCS7 in RadioID.net. Until it is validated the app only listens.", fontSize = 11.sp)
+        OutlinedTextField(trackerCall, { trackerCall = it.uppercase() }, label = { Text("Tracker callsign (as in its WebUI)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text(
+            if (MessageEngine.trackerSendsAcks(call, trackerCall)) "Same as yours: the tracker sends the ACKs, the app does not"
+            else "Different or not set: the app sends the ACKs",
+            fontSize = 12.sp,
+        )
+        OutlinedTextField(path, { path = it.uppercase() }, label = { Text("Path (WIDE1-1,WIDE2-1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+        Text("Tracker (Bluetooth LE, KISS)", fontWeight = FontWeight.Bold)
+        Text(if (device.isEmpty()) "No tracker chosen" else "Chosen: $device")
+        OutlinedButton(onClick = {
+            withPermissions {
+                found.clear()
+                if (!scanner.start { n, a -> if (found.none { it.second == a }) found.add(n to a) }) AppState.error.value = "Bluetooth is off"
+            }
+        }) { Text("Scan for trackers") }
+        for ((n, a) in found) {
+            Text("$n  ($a)", Modifier.fillMaxWidth().clickable { device = a; scanner.stop() }.padding(vertical = 6.dp))
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = igate, onCheckedChange = { igate = it })
+            Spacer(Modifier.width(8.dp))
+            Text("iGate: send what the tracker hears to APRS-IS")
+        }
+        if (igate) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(host, { host = it }, label = { Text("Server") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    port, { port = it.filter(Char::isDigit) }, label = { Text("Port") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(100.dp),
+                )
+            }
+        }
+
+        Text("DAPNET account (to send pages)", fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(dapUser, { dapUser = it.lowercase() }, label = { Text("User") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(
+                dapPass, { dapPass = it }, label = { Text("Password") }, singleLine = true, modifier = Modifier.weight(1f),
+                visualTransformation = PasswordVisualTransformation(),
+            )
+        }
+        OutlinedTextField(dapGroup, { dapGroup = it.lowercase() }, label = { Text("Transmitter groups (e.g. ea-all)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text("The DAPNET API uses plain HTTP: user and password are sent without encryption.", fontSize = 11.sp)
+
+        Text("NMEA and location for other apps", fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = nmeaOn, onCheckedChange = { nmeaOn = it })
+            Spacer(Modifier.width(8.dp))
+            Text("NMEA TCP server (OpenCPN, Navionics...)", Modifier.weight(1f))
+            OutlinedTextField(
+                nmeaPort, { nmeaPort = it.filter(Char::isDigit) }, label = { Text("Port") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(100.dp),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = mockOn, onCheckedChange = { mockOn = it })
+            Spacer(Modifier.width(8.dp))
+            Text("Tracker GNSS as the phone location (choose this app in Developer options > Select mock location app)")
+        }
+        Text("These settings apply when the link starts.", fontSize = 11.sp)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(enabled = !running, onClick = { save(); withPermissions { TrackerService.start(ctx) } }) { Text("Start") }
+            OutlinedButton(enabled = running, onClick = { TrackerService.stop(ctx) }) { Text("Stop") }
+        }
+        Text("Tracker: $ble")
+        Text("APRS-IS: $isStatus")
+        HorizontalDivider()
+        for (l in log.takeLast(25)) Text(l, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+    }
+}
