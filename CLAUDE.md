@@ -31,7 +31,7 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 
 ## Estado (2026-11-05)
 - `core/` (Kotlin puro): KISS, AX.25, TNC2, APRS (posición sin comprimir y comprimida, mensajes, ack, rej), motor de mensajes (3 envíos a 30 s / 60 s / 120 s, duplicados), reglas de iGate, geodesia, tabla de estaciones, JSON mínimo, protocolo de control, DAPNET (petición), NMEA (checksum, RMC/GGA), validación de indicativo (RadioID), telegrafía (manipulador iámbico A/B, decodificador, adaptadores de teclado y MIDI). **Comprobado**: 190 comprobaciones en `core/src/test/.../SelfTest.kt`.
-- `app/` (Android, Compose): servicio en primer plano, cliente BLE, cliente APRS-IS, notificaciones; pestañas Stations, Messages, Tracker, Sensors, DAPNET, Firmware y Connect. **Sin probar en el móvil**.
+- `app/` (Android, Compose): servicio en primer plano, cliente BLE, cliente APRS-IS, notificaciones; pestañas Stations, Messages, Tracker, Sensors, DAPNET, Firmware y Connect. **Compila en la CI** (2026-11-05, run 42039855408, APK de depuración como artefacto); **sin probar en el móvil**.
 - Revisión 2026-11-05, cambios:
   - BLE: un trozo cuya escritura rechaza la pila (ocupada) vuelve a la cola en vez de perderse; las escrituras empiezan tras `onDescriptorWrite`; tipo de escritura según las propiedades de la característica.
   - Ritmo de envío: 3 s entre tramas con firmware sin servicio de control (guarda **una sola** trama del móvil y muestra "BLE Tx" 1 s antes de enviarla; una segunda trama antes de eso pisa la primera) y 1,5 s con firmware que lo tiene (cola de 4).
@@ -48,9 +48,8 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 ## Pendiente
 - Firmware, rama `ble-control`: la CI compila T-Beam v1.2 y Supreme (2026-11-05). Falta probar el servicio de control en la Supreme y fusionar en `main` cuando Manuel lo diga.
 - Firmware por BLE: medir el tiempo de una actualización completa en la Supreme y probar la cancelación y la pérdida de enlace a mitad.
-- Manipulador en el móvil: probar retardo y fidelidad con VBand, Vail (teclado y MIDI) y un adaptador serie; las pantallas Compose (`CwKeySection.kt`) no se han compilado.
+- Manipulador en el móvil: probar retardo y fidelidad con VBand, Vail (teclado y MIDI) y un adaptador serie.
 - Android Auto: las notificaciones DAPNET no tienen acción de responder (POCSAG no lleva remitente); comprobar si el coche las muestra.
-1. Ver el resultado de la CI y corregir los errores de compilación de `app/`.
 2. Probar en el móvil con el T-Beam Supreme (BLE KISS activado en el WebUI del tracker): conexión, recepción, envío y ACK de mensajes.
 3. Posiciones Mic-E (muy usadas por otros equipos), objetos, meteorología, telemetría.
 4. Guardar mensajes y estaciones entre sesiones.
