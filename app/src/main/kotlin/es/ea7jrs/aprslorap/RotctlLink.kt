@@ -127,10 +127,9 @@ object RotctlLink {
             }
             override fun getPos(): Pair<Double, Double> {
                 val p = AppState.rotor.value
-                return when {
-                    p?.actualAzDeg != null && p.actualElDeg != null -> p.actualAzDeg to p.actualElDeg
-                    else -> lastAz to lastEl
-                }
+                val a = p?.actualAzDeg
+                val e = p?.actualElDeg
+                return if (a != null && e != null) a to e else lastAz to lastEl
             }
             override fun park(): Boolean {
                 val c = AppState.controller ?: return false
