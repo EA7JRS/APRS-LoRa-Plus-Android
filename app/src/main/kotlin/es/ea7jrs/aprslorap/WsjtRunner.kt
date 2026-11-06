@@ -17,12 +17,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * FT8 / FT4 from the app receiver (USB audio, 12 kHz) or the microphone: UTC slots, each one decoded by ft8_lib
- * (lib/<abi>/libft8dec.so) in a separate process. The phone's clock must be right (Android sets it from the network).
+ * FT8 / FT4, WSPR and FST4W from the app receiver (USB audio, 12 kHz) or the microphone: UTC slots, each one decoded by a
+ * separate program in lib/<abi>/ (ft8_lib, wsprd, the FST4W port of WSJT-X). The phone's clock must be right (Android sets
+ * it from the network).
  */
 object WsjtRunner {
     data class State(val running: Boolean = false, val mode: Wsjt.Mode = Wsjt.Mode.FT8, val source: ModemRunner.Source = ModemRunner.Source.RECEIVER,
-                     val status: String = "Off", val dialHz: Long? = null)
+                     val status: String = "Off", val dialHz: Long? = null, val rxHz: Int = Wsjt.FST4W_RX_HZ, val tolHz: Int = Wsjt.FST4W_TOL_HZ)
 
     @Volatile var active = false
         private set
@@ -38,14 +39,14 @@ object WsjtRunner {
     private fun set(f: (State) -> State) { synchronized(this) { AppState.wsjt.value = f(AppState.wsjt.value) } }
 
     @Synchronized
-    fun start(ctx: Context, mode: Wsjt.Mode, src: ModemRunner.Source) {
+    fun start(ctx: Context, mode: Wsjt.Mode, src: ModemRunner.Source, rxHz: Int = Wsjt.FST4W_RX_HZ, tolHz: Int = Wsjt.FST4W_TOL_HZ) {
         stop()
         app = ctx.applicationContext
         if (!available(ctx, mode)) { set { it.copy(status = "This build has no ${mode.label} decoder for this phone") }; return }
         source = src
         recorder = Wsjt.SlotRecorder(mode) { start, samples -> decoders.execute { decode(mode, start, samples) } }
         active = true
-        set { it.copy(running = true, mode = mode, source = src, status = "Waiting for the next ${mode.label} slot...") }
+        set { it.copy(running = true, mode = mode, source = src, rxHz = rxHz, tolHz = tolHz, status = "Waiting for the next ${mode.label} slot...") }
         if (src == ModemRunner.Source.MICROPHONE) mic = Thread({ micLoop() }, "wsjt-mic").also { it.isDaemon = true; it.start() }
     }
 
@@ -101,11 +102,14 @@ object WsjtRunner {
         try {
             f.writeBytes(Wsjt.wav(samples))
             val dial = if (source == ModemRunner.Source.RECEIVER) AppState.sdr.value.freqHz else null
-            val args = Wsjt.arguments(mode, binary(ctx, mode).absolutePath, f.absolutePath, dial)
+            val st = AppState.wsjt.value
+            val args = Wsjt.arguments(mode, binary(ctx, mode).absolutePath, f.absolutePath, dial, st.rxHz, st.tolHz, File(ctx.filesDir, "fst4w_state.txt").absolutePath)
             val p = ProcessBuilder(args).directory(ctx.filesDir).redirectErrorStream(false).start()     // WSPR keeps its hash table there
             Thread { try { p.errorStream.readBytes() } catch (_: Exception) {} }.start()
+            val killer = Thread { try { if (!p.waitFor(if (mode.periodMs > 120_000) 600L else 90L, TimeUnit.SECONDS)) p.destroy() } catch (_: InterruptedException) {} }
+            killer.isDaemon = true; killer.start()
             val out = p.inputStream.bufferedReader().readLines()
-            p.waitFor(60, TimeUnit.SECONDS)
+            p.waitFor(5, TimeUnit.SECONDS)
             val found = out.mapNotNull { Wsjt.parse(mode, it, slotMs, dial) }
             if (found.isNotEmpty()) {
                 val l = AppState.wsjtDecodes.value

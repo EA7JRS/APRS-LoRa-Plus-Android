@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import es.ea7jrs.aprslorap.core.Wsjt.Mode as WsjtMode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -60,6 +63,9 @@ fun DigimodesTab() {
     val text by AppState.modemText.collectAsState()
     val row by AppState.waterfallRow.collectAsState()
     var mode by remember { mutableStateOf(st.mode) }
+    var rxHz by remember { mutableStateOf(st.rxHz.toString()) }
+    var tolHz by remember { mutableStateOf(st.tolHz) }
+    val startIt = { WsjtRunner.start(ctx, mode, source, rxHz.toIntOrNull()?.coerceIn(200, 4600) ?: es.ea7jrs.aprslorap.core.Wsjt.FST4W_RX_HZ, tolHz) }
     var source by remember { mutableStateOf(st.source) }
     val bmp = remember { Bitmap.createBitmap(WF_W, WF_H, Bitmap.Config.ARGB_8888) }
     var frame by remember { mutableStateOf(0) }
@@ -139,7 +145,7 @@ fun DigimodesTab() {
     }
 }
 
-/** FT8 / FT4 (ft8_lib): decodes per UTC slot, newest first; own and tracker callsigns highlighted. */
+/** FT8 / FT4 (ft8_lib), WSPR (wsprd), FST4W (port of WSJT-X): decodes per UTC slot, newest first; own and tracker callsigns highlighted. */
 @Composable
 private fun WsjtSection(source: ModemRunner.Source) {
     val ctx = LocalContext.current
@@ -147,26 +153,48 @@ private fun WsjtSection(source: ModemRunner.Source) {
     val st by AppState.wsjt.collectAsState()
     val decodes by AppState.wsjtDecodes.collectAsState()
     var mode by remember { mutableStateOf(st.mode) }
+    var rxHz by remember { mutableStateOf(st.rxHz.toString()) }
+    var tolHz by remember { mutableStateOf(st.tolHz) }
+    val startIt = { WsjtRunner.start(ctx, mode, source, rxHz.toIntOrNull()?.coerceIn(200, 4600) ?: es.ea7jrs.aprslorap.core.Wsjt.FST4W_RX_HZ, tolHz) }
     val mine = remember { setOf(settings.callsign.substringBefore('-'), settings.trackerCallsign.substringBefore('-')).filter { it.isNotEmpty() }.toSet() }
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) WsjtRunner.start(ctx, mode, ModemRunner.Source.MICROPHONE) else AppState.error.value = "Microphone permission is needed"
+        if (ok) WsjtRunner.start(ctx, mode, ModemRunner.Source.MICROPHONE, rxHz.toIntOrNull()?.coerceIn(200, 4600) ?: es.ea7jrs.aprslorap.core.Wsjt.FST4W_RX_HZ, tolHz)
+        else AppState.error.value = "Microphone permission is needed"
     }
-    Section("FT8 / FT4 / WSPR (WSJT-X modes)")
+    Section("FT8 / FT4 / WSPR / FST4W (WSJT-X modes)")
     if (!WsjtRunner.available(ctx)) { Text("This build of the app has no FT8 / FT4 / WSPR decoder for this phone.", fontSize = 12.sp); return }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        for (m in es.ea7jrs.aprslorap.core.Wsjt.Mode.entries) {
-            val go = { mode = m }
-            if (m == mode) Button(onClick = go) { Text(m.label, fontSize = 11.sp) } else OutlinedButton(onClick = go) { Text(m.label, fontSize = 11.sp) }
+        for ((label, m) in listOf("FT8" to WsjtMode.FT8, "FT4" to WsjtMode.FT4, "WSPR" to WsjtMode.WSPR, "FST4W" to WsjtMode.FST4W_120)) {
+            val sel = if (m.isFst4w) mode.isFst4w else m == mode
+            val go = { if (!(m.isFst4w && mode.isFst4w)) mode = m }
+            if (sel) Button(onClick = go) { Text(label, fontSize = 11.sp) } else OutlinedButton(onClick = go) { Text(label, fontSize = 11.sp) }
         }
+    }
+    if (mode.isFst4w) {
+        if (!WsjtRunner.available(ctx, mode)) Text("This build of the app has no FST4W decoder for this phone.", fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            for (m in WsjtMode.entries.filter { it.isFst4w }) {
+                val go = { mode = m }
+                val l = m.label.removePrefix("FST4W-") + " s"
+                if (m == mode) Button(onClick = go) { Text(l, fontSize = 11.sp) } else OutlinedButton(onClick = go) { Text(l, fontSize = 11.sp) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(rxHz, { rxHz = it.filter(Char::isDigit).take(4) }, label = { Text("Rx Hz") }, singleLine = true, modifier = Modifier.width(110.dp))
+            val tols = listOf(50, 100, 200, 500)
+            OutlinedButton(onClick = { tolHz = tols[(tols.indexOf(tolHz) + 1) % tols.size] }) { Text("± $tolHz Hz", fontSize = 11.sp) }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Button(onClick = {
             if (source == ModemRunner.Source.MICROPHONE && ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
                 micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            else WsjtRunner.start(ctx, mode, source)
+            else startIt()
         }) { Text(if (st.running) "Restart" else "Decode") }
         OutlinedButton(onClick = { WsjtRunner.stop() }, enabled = st.running) { Text("Stop") }
     }
     Text(st.status + (st.dialHz?.let { "  ·  dial " + es.ea7jrs.aprslorap.core.Sdr.mhz(it) + " MHz (USB)" } ?: ""), fontSize = 12.sp)
-    Text("Same source as above. Receiver in USB with a 3 kHz filter; the phone's clock must be on time (network time). WSPR: 2-minute slots from even minutes, around 1500 Hz audio.", fontSize = 11.sp)
+    Text("Same source as above. Receiver in USB with a 3 kHz filter; the phone's clock must be on time (network time). WSPR: 2-minute slots from even minutes, around 1500 Hz audio. FST4W: slots of 2, 5, 15 or 30 minutes from the hour; the frequency shown is the lowest of its 4 tones.", fontSize = 11.sp)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Decoded (${decodes.size})", fontSize = 13.sp, modifier = Modifier.weight(1f))
         TextButton(onClick = { AppState.wsjtDecodes.value = emptyList() }) { Text("Clear") }

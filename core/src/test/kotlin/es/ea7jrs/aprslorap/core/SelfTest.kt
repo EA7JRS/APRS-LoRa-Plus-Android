@@ -853,6 +853,12 @@ private fun testWsjt() {
     eq(Wsjt.parse(Wsjt.Mode.WSPR, "Max", 0, 0), null, "WSPR other output ignored")
     eq(Wsjt.arguments(Wsjt.Mode.WSPR, "/x/libwsprdec.so", "/c/s.wav", 432_300_000), listOf("/x/libwsprdec.so", "/c/s.wav", "432300000"), "WSPR command")
     eq(Wsjt.arguments(Wsjt.Mode.FT4, "/x/libft8dec.so", "/c/s.wav", null), listOf("/x/libft8dec.so", "-ft4", "/c/s.wav"), "FT4 command")
+    eq(Wsjt.arguments(Wsjt.Mode.FST4W_300, "/x/libfst4wdec.so", "/c/s.wav", 14_095_600, 1500, 150, "/f/fst4w.txt"),
+        listOf("/x/libfst4wdec.so", "/c/s.wav", "14095600", "300", "1500", "150", "/f/fst4w.txt"), "FST4W command")
+    eq(Wsjt.parse(Wsjt.Mode.FST4W_120, "FST4W -26 +0.8 14.097078 +0 <EA7JRS> IM76AB", 0, 14_095_600),
+        Wsjt.Decode(0, -26.0, 0.8, 1478, "<EA7JRS> IM76AB", 14_097_078, 0), "FST4W line")
+    eq(Wsjt.parse(Wsjt.Mode.FST4W_120, "FST4W -33 +0.0 0.001499 +0 EA7JRS IM76 30", 0, null)?.calls, listOf("EA7JRS"), "FST4W calls")
+    eq(Wsjt.Mode.entries.count { it.isFst4w }, 4, "FST4W periods"); eq(Wsjt.slotStart(1_799_999, Wsjt.Mode.FST4W_1800.periodMs), 0L, "FST4W-1800 slot")
 }
 
 fun main() {

@@ -7,17 +7,35 @@ package es.ea7jrs.aprslorap.core
 
 /**
  * WSJT-X style modes received by the app: audio (12 kHz, USB) is cut into UTC time slots, each slot is written as a WAV and
- * handed to a decoder program (FT8 / FT4: ft8_lib, native/ft8). Here: slots, the decoder's output lines, messages.
+ * handed to a decoder program (FT8 / FT4: ft8_lib, native/ft8; WSPR: wsprd, native/wspr; FST4W: port of WSJT-X,
+ * native/fst4w). Here: slots, the decoder's output lines, messages.
  */
 object Wsjt {
-    /** [program]: the decoder in lib/<abi>/ (native/ft8, native/wspr). */
+    /** [program]: the decoder in lib/<abi>/ (native/ft8, native/wspr, native/fst4w). */
     enum class Mode(val label: String, val periodMs: Long, val flag: String?, val program: String) {
         FT8("FT8", 15_000, null, "libft8dec.so"), FT4("FT4", 7_500, "-ft4", "libft8dec.so"), WSPR("WSPR", 120_000, null, "libwsprdec.so"),
+        FST4W_120("FST4W-120", 120_000, null, "libfst4wdec.so"), FST4W_300("FST4W-300", 300_000, null, "libfst4wdec.so"),
+        FST4W_900("FST4W-900", 900_000, null, "libfst4wdec.so"), FST4W_1800("FST4W-1800", 1_800_000, null, "libfst4wdec.so");
+
+        val isFst4w get() = program == "libfst4wdec.so"
+        /** Output lines like wsprd's ("WSPR|FST4W snr dt freqMHz drift message"). */
+        val wsprLike get() = this == WSPR || isFst4w
     }
 
-    /** Command line of the decoder for one slot file. */
-    fun arguments(mode: Mode, programPath: String, wavPath: String, dialHz: Long?): List<String> = when (mode) {
-        Mode.WSPR -> listOf(programPath, wavPath, (dialHz ?: 0L).toString())
+    /** FST4W search window: [rxHz] ± [tolHz] (lowest tone), as Rx frequency and F Tol in WSJT-X. */
+    const val FST4W_RX_HZ = 1500
+    const val FST4W_TOL_HZ = 100
+
+    /**
+     * Command line of the decoder for one slot file. FST4W also gets the search window and [stateFile], where it keeps the
+     * hashes of the calls heard (type 3 messages: "<CALL> LOCATOR6") and the call + locator pairs that allow its deepest
+     * decoding.
+     */
+    fun arguments(mode: Mode, programPath: String, wavPath: String, dialHz: Long?, rxHz: Int = FST4W_RX_HZ, tolHz: Int = FST4W_TOL_HZ,
+                  stateFile: String? = null): List<String> = when {
+        mode == Mode.WSPR -> listOf(programPath, wavPath, (dialHz ?: 0L).toString())
+        mode.isFst4w -> listOf(programPath, wavPath, (dialHz ?: 0L).toString(), (mode.periodMs / 1000).toString(), rxHz.toString(), tolHz.toString()) +
+            listOfNotNull(stateFile)
         else -> listOf(programPath) + listOfNotNull(mode.flag) + wavPath
     }
 
@@ -35,9 +53,9 @@ object Wsjt {
     private val GRID = Regex("^[A-R]{2}[0-9]{2}([A-X]{2})?$")
     private val LINE = Regex("^\\s*(\\d{6})\\s+([+-]?\\d+(?:\\.\\d+)?)\\s+([+-]?\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+~\\s+(.*)$")
 
-    private val WSPR_LINE = Regex("^WSPR\\s+([+-]?\\d+)\\s+([+-]?\\d+(?:\\.\\d+)?)\\s+(\\d+\\.\\d+)\\s+([+-]?\\d+)\\s+(.+)$")
+    private val WSPR_LINE = Regex("^(?:WSPR|FST4W)\\s+([+-]?\\d+)\\s+([+-]?\\d+(?:\\.\\d+)?)\\s+(\\d+\\.\\d+)\\s+([+-]?\\d+)\\s+(.+)$")
 
-    /** One line of libwsprdec.so ("WSPR snr dt freqMHz drift CALL LOC DBM"); [dialHz] 0 or null = audio only. */
+    /** One line of libwsprdec.so or libfst4wdec.so ("WSPR|FST4W snr dt freqMHz drift message"); [dialHz] 0 or null = audio only. */
     fun parseWspr(line: String, slotMs: Long, dialHz: Long?): Decode? {
         val m = WSPR_LINE.find(line.trim()) ?: return null
         val hz = Math.round(m.groupValues[3].toDouble() * 1e6)
@@ -46,7 +64,7 @@ object Wsjt {
             if (dial > 0) hz else null, m.groupValues[4].toInt())
     }
 
-    fun parse(mode: Mode, line: String, slotMs: Long, dialHz: Long?): Decode? = if (mode == Mode.WSPR) parseWspr(line, slotMs, dialHz) else parse(line, slotMs)
+    fun parse(mode: Mode, line: String, slotMs: Long, dialHz: Long?): Decode? = if (mode.wsprLike) parseWspr(line, slotMs, dialHz) else parse(line, slotMs)
 
     /** One line of ft8_lib's decode_ft8 ("HHMMSS SNR DT FREQ ~  MESSAGE"); null for its other output. */
     fun parse(line: String, slotMs: Long): Decode? {

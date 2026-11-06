@@ -38,6 +38,11 @@ jobs:
           export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
           native/wspr/build.sh arm64-v8a native/wspr/out/arm64-v8a
           native/wspr/build.sh armeabi-v7a native/wspr/out/armeabi-v7a
+      - name: FST4W decoder (port of WSJT-X) for arm64-v8a and armeabi-v7a
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          native/fst4w/build.sh arm64-v8a native/fst4w/out/arm64-v8a
+          native/fst4w/build.sh armeabi-v7a native/fst4w/out/armeabi-v7a
       - name: Core checks (KISS, AX.25, APRS, messaging, iGate)
         run: gradle :core:selfTest --no-daemon
       - name: Debug APK
