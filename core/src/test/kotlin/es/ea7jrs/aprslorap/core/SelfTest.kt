@@ -830,6 +830,8 @@ private fun testReceivers() {
     val list = listOf(b, Receivers.entry("10.0.0.5:8001", "Roof")!!.copy(enabled = false))
     eq(Receivers.decode(Receivers.encode(list)), list, "receivers saved and read back")
     eq(b.key, "ble:AA:BB:CC:DD:EE:01", "receiver key")
+    eq(Control.parse("{\"e\":\"cwrx\",\"on\":true,\"t\":\"E\",\"dbm\":-104,\"snr\":15,\"wpm\":18}"), ControlEvent.CwRx(true, "E", -104.0, 15.0, 18), "cwrx event")
+    eq(Control.parse("{\"e\":\"cwrx\",\"on\":false,\"dbm\":-150,\"snr\":0,\"wpm\":0}"), ControlEvent.CwRx(false, null, -150.0, 0.0, 0), "cwrx end")
 }
 
 fun main() {

@@ -75,6 +75,9 @@ internal fun NoControl() {
 /** Tracker: mode, beacon profile, LoRa profile, beacon now, digipeater, CW. */
 @Composable
 fun TrackerTab() {
+    val cwRxOn by AppState.cwRxOn.collectAsState()
+    val cwRxText by AppState.cwRxText.collectAsState()
+    val cwRxLevel by AppState.cwRxLevel.collectAsState()
     val ready by AppState.controlReady.collectAsState()
     val info by AppState.trackerInfo.collectAsState()
     val status by AppState.trackerStatus.collectAsState()
@@ -150,6 +153,16 @@ fun TrackerTab() {
                 Button(enabled = cwText.isNotBlank(), onClick = { c?.control("cw", "t" to cwText.trim()); cwText = "" }) { Text("Send") }
             }
             PhoneKeySection(i.hasRemoteKey)
+
+            Section("Listen to CW on RF (the tracker decodes)")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { c?.control("cwrx", "s" to "start") }, enabled = !cwRxOn) { Text("Listen") }
+                OutlinedButton(onClick = { c?.control("cwrx", "s" to "stop") }, enabled = cwRxOn) { Text("Stop") }
+                TextButton(onClick = { AppState.cwRxText.value = "" }) { Text("Clear") }
+            }
+            if (cwRxLevel.isNotEmpty()) Text(cwRxLevel, fontSize = 12.sp)
+            Text(cwRxText.ifEmpty { "—" }, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+            Text("The tracker's radio listens on its CW profile frequency and decodes; while it listens it does nothing else (no beacons). It stops by itself after 10 minutes.", fontSize = 11.sp)
         }
 
         Section("")

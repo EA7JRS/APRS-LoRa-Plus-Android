@@ -57,6 +57,8 @@ class Controller(
             "ota", "ota_abort",
             // SAT mode: reading, listening and telling the tracker where the phone is do not transmit (sattx, satdata and tgt are not here)
             "sat", "satlist", "sattxlist", "tgtlist", "satsel", "satrx", "pos",
+            // CW listening on RF: receive only
+            "cwrx",
             // A-GPS data for the tracker's GNSS receiver: nothing is transmitted
             "gpsaid")
         const val SAT_LIST_PAGE = 40
@@ -276,6 +278,11 @@ class Controller(
                 AppState.satTxSent.value = ev.count
                 AppState.notice.value = if (ev.ok) "Transmitted to the satellite on ${"%.4f".format(java.util.Locale.US, ev.freqHz / 1e6)} MHz (${ev.count} so far)"
                                         else "The tracker did not transmit"
+            }
+            is ControlEvent.CwRx -> {
+                AppState.cwRxOn.value = ev.on
+                ev.letter?.let { AppState.cwRxText.value = (AppState.cwRxText.value + it).takeLast(2000) }
+                AppState.cwRxLevel.value = if (ev.on) String.format(java.util.Locale.US, "%.0f dBm, SNR %.0f dB, %d wpm", ev.dbm ?: -150.0, ev.snr ?: 0.0, ev.wpm ?: 0) else "Stopped"
             }
             is ControlEvent.Rotor -> { AppState.rotor.value = ev.pointing; RotctlLink.onPointing(ev.pointing) }
             is ControlEvent.Targets -> {

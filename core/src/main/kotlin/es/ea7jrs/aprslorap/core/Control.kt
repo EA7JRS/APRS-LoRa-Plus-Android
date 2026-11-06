@@ -152,6 +152,8 @@ sealed class ControlEvent {
     data class SatRx(val receiver: SatReceiver) : ControlEvent()
     data class SatTxDone(val ok: Boolean, val freqHz: Long, val count: Int) : ControlEvent()
     data class Rotor(val pointing: RotorPointing) : ControlEvent()
+    /** CW listening on RF (`cwrx`): [letter] is null for a level-only update; [on] false = the session ended. */
+    data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?) : ControlEvent()
     data class Targets(val selected: Int, val source: Int, val items: List<RotorTarget>) : ControlEvent()
     data class Ok(val command: String, val id: Int?) : ControlEvent()
     data class Error(val command: String, val id: Int?, val message: String) : ControlEvent()
@@ -243,6 +245,7 @@ object Control {
                     o.num("pit"), o.num("rol"), o.bool("mob") ?: false, o.num("abs"), o.num("hdg"), o.num("aaz"), o.num("ael"),
                 ),
             )
+            "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"))
             "targets" -> ControlEvent.Targets(
                 o.int("sel") ?: 0, o.int("src") ?: 0,
                 o.objList("items").mapNotNull { t ->
