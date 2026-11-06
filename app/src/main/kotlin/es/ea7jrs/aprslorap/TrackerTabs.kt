@@ -204,7 +204,7 @@ fun SensorsTab() {
         }
 
         Section("A-GPS (u-blox receiver)")
-        if (info?.hasGpsAid != true) Text("Not available: the tracker firmware is too old (no "gpsaid") or its GNSS receiver is not a u-blox.", fontSize = 12.sp)
+        if (info?.hasGpsAid != true) Text("Not available: the tracker firmware is too old (no gpsaid command) or its GNSS receiver is not a u-blox.", fontSize = 12.sp)
         else {
             Button(onClick = { GpsAid.sendTimeAndPosition(ctx) }, enabled = !aidBusy) { Text("Send time and position") }
             Text("The phone's time and last real position (MGA-INI): the first fix comes sooner. No account needed.", fontSize = 11.sp)
