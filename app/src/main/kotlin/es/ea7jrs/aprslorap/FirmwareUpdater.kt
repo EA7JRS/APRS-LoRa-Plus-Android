@@ -10,7 +10,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import es.ea7jrs.aprslorap.core.FirmwareSite
-import es.ea7jrs.aprslorap.core.FwStatus
 import es.ea7jrs.aprslorap.core.OtaWindow
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
@@ -31,7 +30,6 @@ object FirmwareUpdater {
     @Volatile private var finished = false
     @Volatile private var failure: String? = null
     @Volatile private var cancelled = false
-    @Volatile private var wifiPolling = false
 
     private fun status(msg: String) { AppState.fwMessage.value = msg }
 
@@ -179,32 +177,4 @@ object FirmwareUpdater {
     }
 
     fun onError(msg: String) = synchronized(lock) { failure = msg; lock.notifyAll() }
-
-    // ------------------------------------------------------------------ over the tracker's WiFi
-
-    fun wifi(install: Boolean) {
-        AppState.controller?.control(if (install) "fwinstall" else "fwcheck")
-    }
-
-    /** The tracker started its own check / install: ask for its status every 2 s until it ends. */
-    fun onWifiStarted() {
-        if (wifiPolling) return
-        wifiPolling = true
-        Thread({
-            try {
-                val end = System.currentTimeMillis() + 10 * 60_000
-                Thread.sleep(1000)
-                while (wifiPolling && System.currentTimeMillis() < end) {
-                    AppState.controller?.control("fwstatus") ?: break
-                    Thread.sleep(2000)
-                }
-            } catch (_: InterruptedException) {
-            } finally { wifiPolling = false }
-        }, "fw-wifi").start()
-    }
-
-    fun onWifiStatus(s: FwStatus) {
-        AppState.fwWifi.value = s
-        if (s.state != "working") wifiPolling = false
-    }
 }

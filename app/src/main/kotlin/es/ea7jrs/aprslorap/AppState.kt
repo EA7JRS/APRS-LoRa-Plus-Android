@@ -83,7 +83,6 @@ object AppState {
     val fwBusy = MutableStateFlow(false)
     val fwProgress = MutableStateFlow(0)
     val fwMessage = MutableStateFlow("")
-    val fwWifi = MutableStateFlow<es.ea7jrs.aprslorap.core.FwStatus?>(null)
 
     @Volatile var controller: Controller? = null
     @Volatile var notifier: Notifier? = null

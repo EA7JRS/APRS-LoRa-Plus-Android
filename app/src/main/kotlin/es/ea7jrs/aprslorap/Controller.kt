@@ -54,7 +54,7 @@ class Controller(
         /** Commands that only read: allowed without a validated callsign. */
         val QUERIES = setOf("info", "status", "sensors", "gnss", "dapnet", "sub", "msgs", "heard", "actlist", "screen", "cfgget",
             // the firmware update does not transmit: allowed too
-            "ota", "ota_abort", "fwcheck", "fwinstall", "fwstatus",
+            "ota", "ota_abort",
             // SAT mode: reading, listening and telling the tracker where the phone is do not transmit (sattx, satdata and tgt are not here)
             "sat", "satlist", "sattxlist", "tgtlist", "satsel", "satrx", "pos")
         const val SAT_LIST_PAGE = 40
@@ -269,7 +269,6 @@ class Controller(
                 AppState.rotorTargets.value = ev.items; AppState.rotorTargetSel.value = ev.selected; AppState.rotorSource.value = ev.source
             }
             is ControlEvent.OtaProgress -> FirmwareUpdater.onProgress(ev.offset, ev.done)
-            is ControlEvent.Firmware -> FirmwareUpdater.onWifiStatus(ev.status)
             is ControlEvent.Ok -> when (ev.command) {
                 "mode", "reboot" -> AppState.notice.value = "The tracker is restarting; the link comes back by itself"
                 "profile", "lora", "digi" -> { sendControlLine(Control.command("status")); sendControlLine(Control.command("info")) }
@@ -281,7 +280,6 @@ class Controller(
                 "act" -> sendControlLine(Control.command("screen"))
                 "msg" -> { AppState.notice.value = "Message queued in the tracker"; sendControlLine(Control.command("msgs", "cnt" to 20)) }
                 "ota" -> FirmwareUpdater.onStarted()
-                "fwcheck", "fwinstall" -> FirmwareUpdater.onWifiStarted()
             }
             is ControlEvent.Error -> {
                 if (ev.command == "ota") FirmwareUpdater.onError(ev.message)

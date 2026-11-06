@@ -45,7 +45,6 @@ fun FirmwareTab() {
     val busy by AppState.fwBusy.collectAsState()
     val progress by AppState.fwProgress.collectAsState()
     val message by AppState.fwMessage.collectAsState()
-    val wifi by AppState.fwWifi.collectAsState()
     var confirm by remember { mutableStateOf(false) }
     val i = info
 
@@ -84,7 +83,8 @@ fun FirmwareTab() {
 
         if (i != null && i.hasSecondSlot) {
             Text("Update over Bluetooth", fontWeight = FontWeight.Bold)
-            Text("The phone downloads the published firmware for this board, checks it and sends it to the tracker (1-3 minutes). " +
+            Text("The phone downloads the published firmware for this board with its own internet, checks it and sends it to the tracker " +
+                "over Bluetooth (1-3 minutes). The tracker has no internet client of its own for this. " +
                 "The tracker checks it again and only then switches to it; if anything fails it keeps the current one.", fontSize = 13.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = ready && !busy && latest != null, onClick = { confirm = true }) { Text("Install ${latest?.version ?: ""}") }
@@ -93,18 +93,6 @@ fun FirmwareTab() {
         }
         if (busy) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
         if (message.isNotEmpty()) Text(message, fontSize = 13.sp)
-
-        if (i != null && i.hasWifiUpdate) {
-            Text("Update with the tracker's WiFi", fontWeight = FontWeight.Bold)
-            Text("The tracker joins its own WiFi network (WebUI > Firmware update) and downloads the new version by itself.", fontSize = 13.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = ready && !busy, onClick = { FirmwareUpdater.wifi(false) }) { Text("Check") }
-                OutlinedButton(enabled = ready && !busy, onClick = { FirmwareUpdater.wifi(true) }) { Text("Install") }
-            }
-            wifi?.let { w ->
-                Text("${w.message}" + if (w.state == "working" && w.progress > 0) " (${w.progress} %)" else "", fontSize = 13.sp)
-            }
-        }
 
         Text("Web installer (USB cable)", fontWeight = FontWeight.Bold)
         Text("For every board, for the first installation or to recover a tracker. Connect the tracker to the phone with a USB OTG " +

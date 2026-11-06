@@ -416,8 +416,7 @@ private fun testFirmware() {
 
     val pr = Control.parse("""{"e":"ota","off":8192}"""); eq(pr, ControlEvent.OtaProgress(8192, false), "OTA progress")
     eq(Control.parse("""{"e":"ota","off":10000,"done":true}"""), ControlEvent.OtaProgress(10000, true), "OTA done")
-    val fw = Control.parse("""{"e":"fw","state":"available","progress":0,"message":"New version available","latest":"5.3.3","current":"5.3.2","size":1}""")
-    eq((fw as ControlEvent.Firmware).status.latest, "5.3.3", "tracker WiFi update status")
+    check(Control.parse("""{"e":"fw","state":"available"}""") is ControlEvent.Unknown, "the tracker no longer sends its own WiFi update status")
 }
 
 private fun testSat() {

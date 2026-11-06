@@ -54,11 +54,7 @@ data class TrackerInfo(
     val cwMessages: List<String>,
     val hasRemoteKey: Boolean = false,          // the firmware takes the key connected to the phone ("k" events)
     val hasSecondSlot: Boolean = false,         // firmware update over BLE ("ota")
-    val hasWifiUpdate: Boolean = false,         // the tracker can update itself over its WiFi ("fwinstall")
 )
-
-/** State of the tracker's own on-line update (over its WiFi). */
-data class FwStatus(val state: String, val progress: Int, val message: String, val latest: String, val current: String)
 
 data class TrackerStatus(
     val mode: Int, val profile: Int, val lora: Int, val digi: Boolean, val smartBeacon: Boolean, val sos: Boolean,
@@ -139,7 +135,6 @@ sealed class ControlEvent {
     data class DapnetHistory(val pages: List<Page>) : ControlEvent()
     data class NewPage(val page: Page) : ControlEvent()
     data class OtaProgress(val offset: Long, val done: Boolean) : ControlEvent()
-    data class Firmware(val status: FwStatus) : ControlEvent()
     data class Messages(val total: Int, val unread: Int, val from: Int, val items: List<TrackerMessage>) : ControlEvent()
     data class MessageChanged(val total: Int, val unread: Int, val newest: TrackerMessage?) : ControlEvent()
     data class Heard(val total: Int, val packets: Long, val from: Int, val items: List<HeardStation>) : ControlEvent()
@@ -198,9 +193,6 @@ object Control {
             "dapnet" -> ControlEvent.DapnetHistory(o.objList("items").map { page(it) })
             "page" -> ControlEvent.NewPage(page(o))
             "ota" -> ControlEvent.OtaProgress(o.long("off") ?: 0, o.bool("done") ?: false)
-            "fw" -> ControlEvent.Firmware(
-                FwStatus(o.str("state") ?: "?", o.int("progress") ?: 0, o.str("message") ?: "", o.str("latest") ?: "", o.str("current") ?: ""),
-            )
             "msgs" -> ControlEvent.Messages(o.int("tot") ?: 0, o.int("unread") ?: 0, o.int("from") ?: 0, o.objList("items").map { message(it) })
             "msg" -> ControlEvent.MessageChanged(o.int("tot") ?: 0, o.int("unread") ?: 0, if (o.containsKey("c")) message(o) else null)
             "heard" -> ControlEvent.Heard(o.int("tot") ?: 0, o.long("pkts") ?: 0, o.int("from") ?: 0, o.objList("items").mapNotNull { heard(it) })
@@ -323,7 +315,6 @@ object Control {
             o.strList("cwMsgs"),
             caps.bool("rkey") ?: false,
             caps.bool("ota") ?: false,
-            caps.bool("wifiUpd") ?: false,
         )
     }
 }
