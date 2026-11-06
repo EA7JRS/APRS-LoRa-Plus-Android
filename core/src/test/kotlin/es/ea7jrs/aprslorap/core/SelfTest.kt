@@ -237,6 +237,34 @@ private fun testControl() {
     eq(Control.parse("""{"e":"err","c":"lora","msg":"only in APRS modes"}"""), ControlEvent.Error("lora", null, "only in APRS modes"), "error reply")
     check(Control.parse("garbage") is ControlEvent.Unknown, "garbage is unknown")
 
+    // full sensors event
+    val fs = (Control.parse("""{"e":"sensors","batt":4.1,"battPct":87,"gas":120.3,"iaq":42,"iaqLabel":"Good","wxSensor":"BME680","accel":[0.01,0.02,1.0],"gyro":[0,0,0],"flat":true,"charging":true,"vbus":5.1,"pmuTemp":31.5,"battMa":-120,"heap":150000}""") as ControlEvent.SensorData).sensors
+    eq(fs.batteryPct, 87, "battPct"); eq(fs.accelG?.size, 3, "accel"); eq(fs.charging, true, "charging"); eq(fs.iaqLabel, "Good", "iaq label"); eq(fs.humidityPct, null, "absent is null"); eq(fs.freeHeap, 150000L, "heap")
+
+    // tracker messages, heard stations, screen, actions, config pieces
+    val tm = Control.parse("""{"e":"msgs","tot":2,"unread":1,"from":0,"items":[{"i":0,"d":"R","ep":1700000000,"st":0,"c":"EA1AAA","t":"hola"},{"i":1,"d":"T","ep":1,"st":4,"ack":12,"c":"EA1BBB","t":"adiós"}]}""") as ControlEvent.Messages
+    eq(tm.items.size, 2, "msgs items"); check(tm.items[0].incoming && !tm.items[1].incoming, "msg direction"); eq(tm.items[1].state, 4, "msg state"); eq(tm.items[1].ackId, 12, "msg ack")
+    val mc = Control.parse("""{"e":"msg","tot":3,"unread":2,"i":0,"d":"R","ep":5,"st":0,"c":"EA1CCC","t":"nuevo"}""") as ControlEvent.MessageChanged
+    eq(mc.newest?.call, "EA1CCC", "msg change newest"); eq(mc.unread, 2, "msg change unread")
+    eq((Control.parse("""{"e":"msg","tot":0,"unread":0}""") as ControlEvent.MessageChanged).newest, null, "msg change without messages")
+    val hd = Control.parse("""{"e":"heard","tot":1,"pkts":9,"from":0,"items":[{"c":"EA1WX","sym":"/_","k":"WX","lat":40.1,"lon":-3.2,"alt":600,"age":30,"n":4,"dev":"X","wx":{"t":21,"h":50}}]}""") as ControlEvent.Heard
+    eq(hd.items.single().call, "EA1WX", "heard call"); eq(hd.items.single().wx?.int("t"), 21, "heard wx"); eq(hd.items.single().path, null, "heard path absent")
+    val sc = (Control.parse("""{"e":"screen","p":1,"cur":1,"t":"MESSAGES","r":"","age":120,"on":true,"rows":["a","","c"]}""") as ControlEvent.Screen).screen
+    eq(sc.rows, listOf("a", "", "c"), "screen rows"); eq(sc.title, "MESSAGES", "screen title")
+    val ap = (Control.parse("""{"e":"actlist","p":2,"pt":"MORSE","items":[{"n":"CW0","l":"CW 1"},{"n":"CW_LISTEN","l":"Listen","ok":false}]}""") as ControlEvent.Actions).page
+    eq(ap.actions.map { it.allowed }, listOf(true, false), "actions allowed"); eq(ap.title, "MORSE", "actions page")
+    eq(Control.parse("""{"e":"actlist","end":true,"pages":7}"""), ControlEvent.ActionsEnd(7), "actions end")
+    eq(Control.parse("""{"e":"cfg","o":320,"n":900,"b":300,"d":"{\"x\":1}"}"""), ControlEvent.ConfigPiece(320, 900, 300, "{\"x\":1}"), "config piece")
+
+    // chunked upload: every line fits, the text comes back whole (accents, emoji, quotes)
+    val big = Json.encode(mapOf("beacons" to (1..40).map { mapOf("callsign" to "EA7JRS-$it", "comment" to "ñandú \uD83D\uDE00 \"q\"") }))
+    val lines = Control.configSet(big, reboot = false)
+    check(lines.size > 10, "long config is split (${lines.size} lines)")
+    check(lines.all { it.toByteArray(Charsets.UTF_8).size <= Control.MAX_LINE_SAFE + 1 }, "every line within the limit")
+    eq(lines.first(), Control.command("cfgset", "s" to "begin", "n" to big.toByteArray(Charsets.UTF_8).size, "reboot" to false), "begin line")
+    eq(lines.last(), Control.command("cfgset", "s" to "end"), "end line")
+    eq(lines.drop(1).dropLast(1).joinToString("") { Json.parseObject(it)!!.str("d")!! }, big, "chunks rebuild the config")
+
     // lines split across notifications, two in one, UTF-8 split in the middle of a character
     val la = LineAssembler()
     val whole = "{\"e\":\"page\",\"t\":\"señal\"}\n{\"e\":\"ok\",\"c\":\"x\"}\r\n".toByteArray(Charsets.UTF_8)
@@ -244,6 +272,16 @@ private fun testControl() {
     for (k in whole.indices step 5) out += la.feed(whole.copyOfRange(k, minOf(whole.size, k + 5)))
     eq(out, listOf("{\"e\":\"page\",\"t\":\"señal\"}", "{\"e\":\"ok\",\"c\":\"x\"}"), "line assembler")
     eq((Control.parse(out[0]) as ControlEvent.NewPage).page.text, "señal", "UTF-8 across chunks")
+}
+
+private fun testJsonEdit() {
+    val root = Json.parse("""{"a":{"x":1,"y":[10,20]},"b":"t","c":true,"d":1.5}""")
+    eq(Json.encode(JsonEdit.set(root, listOf("a", "y", 1), 99)), """{"a":{"x":1,"y":[10,99]},"b":"t","c":true,"d":1.5}""", "set in a list")
+    eq(Json.encode(JsonEdit.set(root, listOf("a", "z"), "n")), """{"a":{"x":1,"y":[10,20],"z":"n"},"b":"t","c":true,"d":1.5}""", "new key")
+    eq(Json.encode(root), """{"a":{"x":1,"y":[10,20]},"b":"t","c":true,"d":1.5}""", "original untouched")
+    eq(JsonEdit.typed(5.0, "7"), 7L, "integer field"); eq(JsonEdit.typed(1.5, "2"), 2.0, "decimal field accepts an integer"); eq(JsonEdit.typed(1.5, "2.25"), 2.25, "decimal field")
+    eq(JsonEdit.typed(7.0, "abc"), null, "not a number"); eq(JsonEdit.typed(true, "FALSE"), false, "boolean field"); eq(JsonEdit.typed("a", " b"), " b", "text keeps spaces")
+    check(JsonEdit.isSecret("wifiPassword") && JsonEdit.isSecret("passcode") && !JsonEdit.isSecret("callsign"), "secret keys")
 }
 
 private fun testDapnet() {
@@ -383,7 +421,7 @@ private fun testFirmware() {
 }
 
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

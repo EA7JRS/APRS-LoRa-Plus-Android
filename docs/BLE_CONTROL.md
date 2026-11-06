@@ -7,15 +7,25 @@ Las apps KISS de terceros (aprs.fi, APRSdroid...) no lo ven: siguen usando solo 
 
 El servicio existe siempre que el Bluetooth esté activo en modo BLE (con KISS o con TNC2).
 
+## Seguridad: emparejamiento con PIN
+
+El servicio de control **exige un enlace cifrado y autenticado**: sin emparejar, el tracker rechaza las escrituras en *Órdenes* y *Firmware* (error ATT «insufficient authentication») y no emite eventos ni NMEA. Con ello nadie en alcance puede cambiar el modo, reiniciar ni instalar un firmware.
+
+- Emparejamiento LE Secure Connections con clave fija: el tracker es «mostrar solo» y su clave es el **PIN de 6 cifras** de la WebUI (*Bluetooth > Control PIN*, por defecto `123456`: **cámbialo**). El móvil pide el PIN al emparejar. Con MITM + bonding: se pide una sola vez por móvil.
+- La app debe emparejar (`BluetoothDevice.createBond()`) antes de usar el servicio, o provocarlo leyendo la característica *Eventos* (lectura cifrada). Hasta que el enlace esté autenticado no llega ningún evento aunque se active la suscripción.
+- Si se cambia el PIN, el tracker olvida los móviles emparejados (hay que olvidar el dispositivo en el móvil y volver a emparejar).
+- El servicio KISS no se toca: aprs.fi, APRSdroid y demás siguen sin PIN.
+- Es una clave fija de 6 cifras: protege de curiosos y de órdenes accidentales, no de un atacante que pueda escuchar el emparejamiento.
+
 ## UUID
 
 | | UUID | Propiedades | Sentido |
 |---|---|---|---|
 | Servicio | `4c6f5261-2b00-4ea7-a000-000000000001` | | |
-| Órdenes | `4c6f5261-2b00-4ea7-a000-000000000002` | WRITE, WRITE_NR | móvil → tracker |
-| Eventos | `4c6f5261-2b00-4ea7-a000-000000000003` | NOTIFY | tracker → móvil |
+| Órdenes | `4c6f5261-2b00-4ea7-a000-000000000002` | WRITE, WRITE_NR (cifrado + PIN) | móvil → tracker |
+| Eventos | `4c6f5261-2b00-4ea7-a000-000000000003` | NOTIFY, READ (cifrada, solo para provocar el emparejamiento) | tracker → móvil |
 | NMEA | `4c6f5261-2b00-4ea7-a000-000000000004` | NOTIFY | tracker → móvil |
-| Firmware | `4c6f5261-2b00-4ea7-a000-000000000005` | WRITE, WRITE_NR | móvil → tracker (imagen en binario) |
+| Firmware | `4c6f5261-2b00-4ea7-a000-000000000005` | WRITE, WRITE_NR (cifrado + PIN) | móvil → tracker (imagen en binario) |
 
 (`4c6f5261` = "LoRa", `2b` = "+".)
 
@@ -49,6 +59,17 @@ Respuesta: `{"e":"ok","c":"...","id":n}` o `{"e":"err","c":"...","id":n,"msg":".
 | `ota_abort` | | cancela la actualización en curso |
 | `fwcheck` / `fwinstall` | | busca (e instala) la última versión con la WiFi del tracker, como los botones de la WebUI |
 | `fwstatus` | | evento `fw` con el estado de `fwcheck` / `fwinstall` |
+| `tgt` | alta: `n` (nombre, 20), `lat`, `lon`, `alt` (m), `f` (Hz), `i` (hueco 0-7; sin él, el primero libre), `sel` (true = elegirlo y seguirlo); `del` (hueco); `sel` (número de hueco, sin `n`); `src` (0-2) | objetivos fijos del rotor (repetidores, balizas...): se guardan en el tracker; responde `ok` y el evento `targets` |
+| `att` | `p` (cabeceo, + morro arriba), `r` (alabeo, + lado derecho abajo), grados | medida del inclinómetro del soporte del rotor (modo SAT / rotor); caduca a los 2 s, repetir. Solo se usa con *Tilt compensation* activada en la WebUI; sin respuesta |
+| `satrx` | `on` (true/false), `tx` (índice del transmisor del satélite elegido, 0 por defecto), `fine` (Hz, se suma al ajuste fino) | receptor de satélites (solo modo SAT): empieza / para la escucha con Doppler; responde `ok` (o un `err` con el motivo) y el evento `satrx` |
+| `sattx` | `tx` (índice del transmisor), `txt` (mensaje, 64; si falta, el de la WebUI) | emite hacia el satélite (modo SAT; solo con *Allow transmitting* y las seguridades de `SAT_MODE.md`); bloquea mientras emite; responde `ok` o un `err` con el motivo, y el evento `sattx` |
+| `sat` | | evento `sat` con el estado del modo SAT (también cada 2 s solo en ese modo) |
+| `satlist` | `from` (0), `cnt` (20, máx. 40) | evento `satlist`: `{"e":"satlist","tot":239,"sel":3,"from":0,"items":[{"i":0,"id":25544,"n":"ISS (ZARYA)","c":"U","t":4}]}` (`c`: U 70 cm, L LoRa, G geoestacionario; `t`: transmisores) |
+| `satsel` | `i` (posición en la lista) o `id` (NORAD) | elige el satélite (para la escucha en curso); responde `ok` y el evento `sat` |
+| `sattxlist` | | evento `sattxlist` con los transmisores del satélite elegido: `i`, `m` modo, `b` baudios, `d` descripción, `up` / `dn` Hz nominales, `rx` / `tx` clase (CW, FSK, LoRa, n/a), `rxd` / `txd` Hz con Doppler |
+| `satdata` | `s`:`begin` (+ `n` bytes) · `s`:`c` (+ `d` texto, **máx. 180 caracteres por orden**) · `s`:`end` · `s`:`abort` | sube el archivo `sats.txt` (formato en `SAT_MODE.md`, máx. 64 000 bytes) sin WiFi: espera el `ok` de cada orden antes de mandar la siguiente; con `end` valida, sustituye al archivo y recarga la lista |
+| `tgtlist` | | evento `targets` |
+| `pos` | `lat`, `lon` (grados), `alt` (m), `acc` (precisión en m) | posición GPS del móvil para el modo SAT (ver `SAT_MODE.md`); caduca a los 2 min, así que la app debe repetirla (p. ej. cada 5–10 s) |
 | `reboot` | | reinicia |
 
 ## Eventos
@@ -85,9 +106,41 @@ Respuesta: `{"e":"ok","c":"...","id":n}` o `{"e":"err","c":"...","id":n,"msg":".
 {"e":"page","ric":12345,"f":3,"own":true,"bad":false,"age":0,"rssi":-97,"t":"Texto del aviso"}
 ```
 
+Solo en modo SAT, con *Send the rot event* activo (WebUI), cada vez que cambia el objetivo del rotor (y cada 10 s):
+```json
+{"e":"rot","az":123.4,"el":45.0,"trk":true,"src":0,"name":"ISS (ZARYA)","km":0}
+```
+`az` / `el` en grados (ya con los desfases de la WebUI), `trk` = sigue un objetivo visible, `src` = fuente (0 satélite, 1 estación APRS de la brújula, 2 objetivo fijo), `name` = nombre del objetivo, `km` = distancia a un objetivo terrestre. La app los retransmite a su rotor (p. ej. un `rotctld`). Con el montaje móvil el `az` ya es relativo al rumbo del vehículo y el evento añade `mob:true`, `abs` (azimut absoluto) y `hdg` (rumbo usado). Fuera del modo SAT el evento solo sale si la fuente es 1 o 2. Evento `targets`: `{"e":"targets","sel":0,"src":2,"items":[{"i":0,"n":"Repetidor X","lat":37.1,"lon":-5.9,"alt":850,"f":145600000}]}`.
+
+Mientras se escucha un satélite (modo SAT), cada línea recibida (texto CW, trama AX.25 en TNC2, paquete LoRa) y cada 5 s:
+```json
+{"e":"satrx","on":true,"k":"FSK","f":437425310,"dop":-3120,"fine":0,"rssi":-104,"n":7,"tx":2,"txt":"EA4XYZ-1>APRS:>telemetry ok"}
+```
+`k` = CW / FSK / LoRa, `f` = frecuencia sintonizada en Hz (con Doppler), `dop` = Doppler aplicado, `n` = tramas recibidas, `tx` = transmisor; `txt` solo cuando hay una línea nueva (el binario va en hexadecimal tras `x:`). Con `on:false` solo llega `on`.
+
+Evento `sat` (solo modo SAT, cada 2 s y tras `satsel`): `{"e":"sat","ok":true,"n":"ISS (ZARYA)","id":25544,"i":3,"geo":false,"tx":4,"tle":1.2,"pos":"GPS","az":123.4,"el":45.0,"rng":850,"rr":-1.234,"aos":1790000000,"los":1790000600,"max":62}` — `rr` velocidad radial (km/s, + se aleja), `aos`/`los` Unix UTC del paso actual o siguiente.
+
+## Control y datos completos para la app (`act`, `screen`, `msgs`, `heard`, `cfg`)
+
+Regla del proyecto: **todas las funciones del tracker se controlan desde la app APRS LoRa+ de Android, y la app muestra todos sus datos** (sensores, mensajes APRS, DAPNET...). Matriz de cobertura en `docs/APP_COVERAGE.md`.
+
+| Orden | Parámetros | Respuesta / evento |
+|---|---|---|
+| `actlist` | — | Un evento `actlist` por página: `{"e":"actlist","p":2,"pt":"MORSE","items":[{"n":"CW0","l":"Send CW 1","ok":false?}]}`; al final `{"e":"actlist","end":true,"pages":N}`. Solo salen las páginas visibles en el modo actual. `ok:false` = la opción existe pero no se ejecuta por BLE. |
+| `act` | `a` = nombre (`n` de `actlist`, sin distinguir mayúsculas) | `ok` o `err` (`accion desconocida`, `no disponible por BLE`, `no disponible en este modo`). Ejecuta **cualquier** opción de los menús del equipo (baliza, perfil, mensajes, brújula, SOS, rotor, SAT, DAPNET, CW, reloj...). Si la opción es de otra página, el equipo cambia a esa página. No se ejecutan por `act`: abrir submenús, `MENU`, `MODE_CHANGE` (usa `mode`), escucha / entrenador CW interactivos y las sintonías WSPR / CW-baliza (tienen su orden propia) |
+| `screen` | `p` página (opc.), `every` segundos (opc., 0 = no) | `ok` si cambia algo y evento `screen`: `{"e":"screen","p","cur","t":título,"r":derecha,"age":ms,"on":pantalla encendida,"rows":["...", ...]}`: el texto de la última pantalla dibujada (las filas de texto; gráficos como brújula o mapas no salen). También `sub` con `"screen":s` |
+| `msgs` | `from`, `cnt` (1–20, 10) | `{"e":"msgs","tot","unread","from","items":[{"i","d":"R"\|"T","ep","st","ack","c","t"}]}`; `st`: 0 sin leer, 1 leído, 2 enviado, 3 esperando ack, 4 con ack, 5 fallido. 0 = el más reciente |
+| `msg` | `to`, `t` (≤ 67), `ack` (true) | `{"e":"ok","c":"msg","ack":n}` y el mensaje sale por el aire con la siguiente ventana. Solo en modos APRS |
+| evento `msg` | — | Se emite solo ante cualquier cambio del registro (llega uno, se envía, ack, leído): `{"e":"msg","tot","unread", + el más reciente}` |
+| `heard` | `from`, `cnt` (1–12, 6) | `{"e":"heard","tot","pkts","items":[{"c","sym","k","lat","lon","alt","spd","crs","rssi","snr","age","n","dev","path","cmt","sts","wx":{...}}]}`; 0 = la más reciente |
+| `cfgget` | `o` = desplazamiento en bytes (0) | `{"e":"cfg","o","n":tamaño total,"b":bytes de este trozo,"d":texto}`: un trozo (hasta 320 bytes, sin cortar caracteres UTF-8) del fichero `/tracker_conf.json`, el mismo que edita la WebUI. La app lo pide con `o` creciente (`o += b`) hasta `o >= n`, lo junta y lo interpreta ella (el tracker no analiza el JSON aquí) |
+| `cfgset` | `s`:`begin` (`n` = bytes totales, `reboot` true) → `s`:`c` (`d` = texto, ≤ 180 caracteres por orden) → `s`:`end` (o `abort`) | **Sustituye el fichero entero**: la app lee la configuración con `cfgget`, cambia lo que toque y la sube completa. Un trozo por orden y espera de `ok`. Al `end` el tracker comprueba el tamaño y que llaves y corchetes cuadren, guarda y reinicia (salvo `reboot:false`); al arrancar, `Configuration::readFile()` pone el valor por defecto a lo que falte o esté fuera de rango. Las claves (WiFi, PIN...) viajan tal cual: el enlace va cifrado y emparejado con PIN |
+
+`sensors` incluye ahora todos los sensores: además de los anteriores, `wxSensor`, `gas` (kΩ), `iaq`/`iaqLabel`, `accel` y `gyro` ([x,y,z]), `flat`, `magCal`/`magAlign`/`magOff`, `charging`, `vbus`, `pmuTemp`, `battMa`, `battPct` y `heap`.
+
 ## Modos
 
-`m`: 0 APRS LoRa, 1 APRS FSK, 2 MORSE, 3 WSPR, 4 LR-FHSS, 5 DAPNET, 6 FT8, 7 FT4, 8 FST4W. `info.modes` dice cuáles admite la placa.
+`m`: 0 APRS LoRa, 1 APRS FSK, 2 MORSE, 3 WSPR, 4 LR-FHSS, 5 DAPNET, 6 FT8, 7 FT4, 8 FST4W, 9 SAT (satélites 70 cm). `info.modes` dice cuáles admite la placa.
 
 - APRS LoRa y APRS FSK se guardan en la configuración (modo de arranque por defecto) y el tracker reinicia en ese modo.
 - Los demás se piden para **el siguiente arranque** (memoria RTC, sin escribir la flash): el tracker reinicia directamente en ese modo sin mostrar el menú de selección. El arranque siguiente vuelve al modo APRS guardado, como al elegirlos con el botón.

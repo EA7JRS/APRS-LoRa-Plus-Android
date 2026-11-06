@@ -10,12 +10,14 @@ import es.ea7jrs.aprslorap.core.AprsPacket
 import es.ea7jrs.aprslorap.core.Ax25Frame
 import es.ea7jrs.aprslorap.core.Control
 import es.ea7jrs.aprslorap.core.ControlEvent
+import es.ea7jrs.aprslorap.core.Json
 import es.ea7jrs.aprslorap.core.Gnss
 import es.ea7jrs.aprslorap.core.IGate
 import es.ea7jrs.aprslorap.core.Kiss
 import es.ea7jrs.aprslorap.core.LineAssembler
 import es.ea7jrs.aprslorap.core.MessageEngine
 import es.ea7jrs.aprslorap.core.Nmea
+import es.ea7jrs.aprslorap.core.ActionPage
 import es.ea7jrs.aprslorap.core.Page
 import es.ea7jrs.aprslorap.core.StationTable
 import java.util.concurrent.Executors
@@ -49,7 +51,7 @@ class Controller(
         const val STATUS_EVERY_MS = 15_000L
         const val MAX_PAGES = 100
         /** Commands that only read: allowed without a validated callsign. */
-        val QUERIES = setOf("info", "status", "sensors", "gnss", "dapnet", "sub",
+        val QUERIES = setOf("info", "status", "sensors", "gnss", "dapnet", "sub", "msgs", "heard", "actlist", "screen", "cfgget",
             // the firmware update does not transmit: allowed too
             "ota", "ota_abort", "fwcheck", "fwinstall", "fwstatus")
     }
@@ -63,6 +65,15 @@ class Controller(
     private val iGate = IGate(myCall, { System.currentTimeMillis() })
     private val txQueue = ArrayDeque<ByteArray>()
     private var lastTxMs = 0L
+
+    private val actionsBuilding = ArrayList<ActionPage>()
+    private var actionsFresh = true
+    private val configBytes = java.io.ByteArrayOutputStream()
+    private var configNext = 0
+    private val configLines = ArrayDeque<String>()
+    private var configSteps = 0
+    private var configWriting = false
+    private var configDeadlineMs = 0L
 
     private val controlLines = LineAssembler()
     private val nmeaLines = LineAssembler(512)
@@ -168,6 +179,9 @@ class Controller(
                     sendControlLine(Control.command("info"))
                     sendControlLine(Control.command("status"))
                     sendControlLine(Control.command("dapnet"))
+                    sendControlLine(Control.command("msgs", "cnt" to 20))
+                    sendControlLine(Control.command("heard", "cnt" to 12))
+                    sendControlLine(Control.command("actlist"))
                     sendControlLine(Control.command("sub", "sensors" to 10, "gnss" to if (wantFastGnss) 1 else 5))
                     lastStatusMs = System.currentTimeMillis()
                 }
@@ -191,6 +205,25 @@ class Controller(
             is ControlEvent.Position -> onGnss(ev.gnss)
             is ControlEvent.DapnetHistory -> ev.pages.forEach { addPage(it, notify = false) }
             is ControlEvent.NewPage -> addPage(ev.page, notify = true)
+            is ControlEvent.Messages -> {
+                AppState.trackerMessageCounts.value = ev.total to ev.unread
+                AppState.trackerMessages.value = if (ev.from == 0) ev.items else AppState.trackerMessages.value + ev.items
+            }
+            is ControlEvent.MessageChanged -> {
+                AppState.trackerMessageCounts.value = ev.total to ev.unread
+                sendControlLine(Control.command("msgs", "cnt" to 20))
+            }
+            is ControlEvent.Heard -> {
+                AppState.heardCounts.value = ev.total to ev.packets
+                AppState.heard.value = if (ev.from == 0) ev.items else AppState.heard.value + ev.items
+            }
+            is ControlEvent.Screen -> AppState.screen.value = ev.screen
+            is ControlEvent.Actions -> {
+                if (actionsFresh) { actionsBuilding.clear(); actionsFresh = false }
+                actionsBuilding.add(ev.page)
+            }
+            is ControlEvent.ActionsEnd -> { AppState.actions.value = actionsBuilding.toList(); actionsFresh = true }
+            is ControlEvent.ConfigPiece -> onConfigPiece(ev)
             is ControlEvent.OtaProgress -> FirmwareUpdater.onProgress(ev.offset, ev.done)
             is ControlEvent.Firmware -> FirmwareUpdater.onWifiStatus(ev.status)
             is ControlEvent.Ok -> when (ev.command) {
@@ -198,11 +231,16 @@ class Controller(
                 "profile", "lora", "digi" -> { sendControlLine(Control.command("status")); sendControlLine(Control.command("info")) }
                 "beacon" -> AppState.notice.value = "Beacon requested (it goes out with the next GPS position)"
                 "cw" -> if (!AppState.cwActive.value) AppState.notice.value = "CW sent to the tracker"
+                "cfgset" -> onConfigStepDone()
+                "act" -> sendControlLine(Control.command("screen"))
+                "msg" -> { AppState.notice.value = "Message queued in the tracker"; sendControlLine(Control.command("msgs", "cnt" to 20)) }
                 "ota" -> FirmwareUpdater.onStarted()
                 "fwcheck", "fwinstall" -> FirmwareUpdater.onWifiStarted()
             }
             is ControlEvent.Error -> {
                 if (ev.command == "ota") FirmwareUpdater.onError(ev.message)
+                if (ev.command == "cfgset") onConfigFailed(ev.message)
+                if (ev.command == "cfgget") { AppState.configBusy.value = false; AppState.configMessage.value = ev.message }
                 AppState.error.value = "Tracker (${ev.command}): ${ev.message}"
             }
             is ControlEvent.Unknown -> AppState.addLog("control? ${ev.raw.take(80)}")
@@ -227,6 +265,79 @@ class Controller(
         if (notify) notifier.page(p)
     }
 
+    // ------------------------------------------------------------------ the tracker's configuration file (whole file, piece by piece)
+
+    /** Reads /tracker_conf.json from the tracker into [AppState.config] (any thread). */
+    fun configRead() {
+        exec.execute {
+            safe {
+                if (!controlOn) { AppState.configMessage.value = "No control service"; return@safe }
+                if (AppState.configBusy.value) return@safe
+                configBytes.reset(); configNext = 0; configWriting = false
+                AppState.configBusy.value = true
+                AppState.configMessage.value = "Reading..."
+                configDeadlineMs = System.currentTimeMillis() + 8000
+                sendControlLine(Control.command("cfgget", "o" to 0))
+            }
+        }
+    }
+
+    private fun onConfigPiece(p: ControlEvent.ConfigPiece) {
+        if (!AppState.configBusy.value || configWriting) return
+        if (p.offset != configNext) { AppState.configBusy.value = false; AppState.configMessage.value = "Configuration read out of order"; return }
+        configBytes.write(p.text.toByteArray(Charsets.UTF_8))
+        configNext = p.offset + p.bytes
+        configDeadlineMs = System.currentTimeMillis() + 8000
+        if (p.bytes == 0 || configNext >= p.total) {
+            AppState.config.value = String(configBytes.toByteArray(), Charsets.UTF_8)
+            AppState.configBusy.value = false
+            AppState.configMessage.value = "Read ${configNext} bytes"
+        } else {
+            AppState.configMessage.value = "Reading... ${configNext * 100 / p.total} %"
+            sendControlLine(Control.command("cfgget", "o" to configNext))
+        }
+    }
+
+    /** Replaces the tracker's configuration with [json] (the whole file). The tracker restarts when it is stored. */
+    fun configWrite(json: String, reboot: Boolean = true) {
+        exec.execute {
+            safe {
+                if (!controlOn) { AppState.configMessage.value = "No control service"; return@safe }
+                if (!Licence.isValid(settings)) { AppState.error.value = "Callsign not validated in RadioID: the app cannot command the tracker"; return@safe }
+                if (AppState.configBusy.value) return@safe
+                if (Json.parseObject(json) == null) { AppState.configMessage.value = "Not valid JSON: nothing sent"; return@safe }
+                configLines.clear(); configLines.addAll(Control.configSet(json, reboot))
+                configSteps = configLines.size
+                configWriting = true
+                AppState.configBusy.value = true
+                configNextLine()
+            }
+        }
+    }
+
+    private fun configNextLine() {
+        val line = configLines.removeFirstOrNull()
+        if (line == null) {
+            configWriting = false
+            AppState.configBusy.value = false
+            AppState.configMessage.value = "Configuration stored; the tracker restarts"
+            return
+        }
+        configDeadlineMs = System.currentTimeMillis() + 8000
+        AppState.configMessage.value = "Sending... ${(configSteps - configLines.size) * 100 / configSteps} %"
+        sendControlLine(line)
+    }
+
+    private fun onConfigStepDone() { if (configWriting) configNextLine() }
+
+    private fun onConfigFailed(message: String) {
+        if (!configWriting) return
+        configWriting = false; configLines.clear()
+        AppState.configBusy.value = false
+        AppState.configMessage.value = "Tracker refused the configuration: $message"
+        sendControlLine(Control.command("cfgset", "s" to "abort"))
+    }
+
     // ------------------------------------------------------------------ NMEA from the tracker
 
     fun onNmeaBytes(data: ByteArray) {
@@ -247,6 +358,11 @@ class Controller(
         if (engine.tick().isNotEmpty()) publish()
         drainTx()
         val now = System.currentTimeMillis()
+        if (AppState.configBusy.value && now > configDeadlineMs) {
+            if (configWriting) { configWriting = false; configLines.clear(); sendControlLine(Control.command("cfgset", "s" to "abort")) }
+            AppState.configBusy.value = false
+            AppState.configMessage.value = "The tracker did not answer"
+        }
         if (controlOn && now - lastStatusMs >= STATUS_EVERY_MS) {
             lastStatusMs = now
             sendControlLine(Control.command("status"))

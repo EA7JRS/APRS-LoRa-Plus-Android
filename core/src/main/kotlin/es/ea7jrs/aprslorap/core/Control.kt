@@ -67,6 +67,12 @@ data class TrackerStatus(
 data class Sensors(
     val batteryV: Double?, val temperatureC: Double?, val humidityPct: Double?, val pressureHpa: Double?, val qnhHpa: Double?,
     val baroAltitudeM: Double?, val headingDeg: Double?, val moving: Boolean?, val imuTemperatureC: Double?, val boardTemperatureC: Double?,
+    // Rest of the sensors and the power system (firmware with the full `sensors` event)
+    val gasKohm: Double? = null, val iaq: Double? = null, val iaqLabel: String? = null, val wxSensor: String? = null,
+    val accelG: List<Double>? = null, val gyroDps: List<Double>? = null, val flat: Boolean? = null,
+    val magCalibrated: Boolean? = null, val magAligned: Boolean? = null,
+    val charging: Boolean? = null, val vbusV: Double? = null, val pmuTemperatureC: Double? = null, val batteryMa: Double? = null,
+    val batteryPct: Int? = null, val freeHeap: Long? = null,
 )
 
 data class Gnss(
@@ -77,6 +83,23 @@ data class Gnss(
 /** A DAPNET page received by the tracker (POCSAG). */
 data class Page(val ric: Long, val function: Int, val own: Boolean, val corrupt: Boolean, val ageS: Long, val rssi: Int, val text: String)
 
+/** A message of the tracker's own log (APRS). state: 0 unread, 1 read, 2 sent, 3 waiting for ack, 4 acked, 5 failed. */
+data class TrackerMessage(val index: Int, val incoming: Boolean, val epoch: Long, val state: Int, val ackId: Int, val call: String, val text: String)
+
+/** A station heard by the tracker. */
+data class HeardStation(
+    val call: String, val symbol: String, val kind: String, val lat: Double?, val lon: Double?, val altitudeM: Int?, val speedKmh: Int?, val course: Int?,
+    val rssi: Int?, val snr: Double?, val ageS: Long, val packets: Int, val device: String?, val path: String?, val comment: String?, val status: String?,
+    val wx: Map<String, Any?>?,
+)
+
+/** Text of the tracker's screen (last page drawn). */
+data class ScreenMirror(val page: Int, val current: Int, val title: String, val right: String, val ageMs: Long, val displayOn: Boolean, val rows: List<String>)
+
+/** One menu option of the tracker; [allowed] false = it exists but cannot be run from the app. */
+data class TrackerAction(val name: String, val label: String, val allowed: Boolean)
+data class ActionPage(val page: Int, val title: String, val actions: List<TrackerAction>)
+
 sealed class ControlEvent {
     data class Info(val info: TrackerInfo) : ControlEvent()
     data class Status(val status: TrackerStatus) : ControlEvent()
@@ -86,6 +109,14 @@ sealed class ControlEvent {
     data class NewPage(val page: Page) : ControlEvent()
     data class OtaProgress(val offset: Long, val done: Boolean) : ControlEvent()
     data class Firmware(val status: FwStatus) : ControlEvent()
+    data class Messages(val total: Int, val unread: Int, val from: Int, val items: List<TrackerMessage>) : ControlEvent()
+    data class MessageChanged(val total: Int, val unread: Int, val newest: TrackerMessage?) : ControlEvent()
+    data class Heard(val total: Int, val packets: Long, val from: Int, val items: List<HeardStation>) : ControlEvent()
+    data class Screen(val screen: ScreenMirror) : ControlEvent()
+    data class Actions(val page: ActionPage) : ControlEvent()
+    data class ActionsEnd(val pages: Int) : ControlEvent()
+    /** A piece of the tracker's configuration file (answer to `cfgget`). */
+    data class ConfigPiece(val offset: Int, val total: Int, val bytes: Int, val text: String) : ControlEvent()
     data class Ok(val command: String, val id: Int?) : ControlEvent()
     data class Error(val command: String, val id: Int?, val message: String) : ControlEvent()
     data class Unknown(val raw: String) : ControlEvent()
@@ -115,6 +146,9 @@ object Control {
                 Sensors(
                     o.num("batt"), o.num("temp"), o.num("hum"), o.num("press"), o.num("qnh"), o.num("baroAlt"), o.num("heading"),
                     o.bool("moving"), o.num("imuTemp"), o.num("boardTemp"),
+                    o.num("gas"), o.num("iaq"), o.str("iaqLabel"), o.str("wxSensor"), numList(o, "accel"), numList(o, "gyro"), o.bool("flat"),
+                    o.bool("magCal"), o.bool("magAlign"), o.bool("charging"), o.num("vbus"), o.num("pmuTemp"), o.num("battMa"),
+                    o.int("battPct"), o.long("heap"),
                 ),
             )
             "gnss" -> ControlEvent.Position(
@@ -129,11 +163,69 @@ object Control {
             "fw" -> ControlEvent.Firmware(
                 FwStatus(o.str("state") ?: "?", o.int("progress") ?: 0, o.str("message") ?: "", o.str("latest") ?: "", o.str("current") ?: ""),
             )
+            "msgs" -> ControlEvent.Messages(o.int("tot") ?: 0, o.int("unread") ?: 0, o.int("from") ?: 0, o.objList("items").map { message(it) })
+            "msg" -> ControlEvent.MessageChanged(o.int("tot") ?: 0, o.int("unread") ?: 0, if (o.containsKey("c")) message(o) else null)
+            "heard" -> ControlEvent.Heard(o.int("tot") ?: 0, o.long("pkts") ?: 0, o.int("from") ?: 0, o.objList("items").mapNotNull { heard(it) })
+            "screen" -> ControlEvent.Screen(
+                ScreenMirror(
+                    o.int("p") ?: 0, o.int("cur") ?: 0, o.str("t") ?: "", o.str("r") ?: "", o.long("age") ?: 0, o.bool("on") ?: true, o.strList("rows"),
+                ),
+            )
+            "actlist" -> if (o.bool("end") == true) ControlEvent.ActionsEnd(o.int("pages") ?: 0) else ControlEvent.Actions(
+                ActionPage(
+                    o.int("p") ?: 0, o.str("pt") ?: "",
+                    o.objList("items").mapNotNull { a -> a.str("n")?.let { TrackerAction(it, a.str("l") ?: "", a.bool("ok") ?: true) } },
+                ),
+            )
+            "cfg" -> ControlEvent.ConfigPiece(o.int("o") ?: 0, o.int("n") ?: 0, o.int("b") ?: 0, o.str("d") ?: "")
             "ok" -> ControlEvent.Ok(o.str("c") ?: "", o.int("id"))
             "err" -> ControlEvent.Error(o.str("c") ?: "", o.int("id"), o.str("msg") ?: "error")
             else -> ControlEvent.Unknown(line)
         }
     }
+
+    private fun numList(o: Map<String, Any?>, key: String): List<Double>? = (o[key] as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() }
+
+    private fun message(o: Map<String, Any?>) = TrackerMessage(
+        o.int("i") ?: 0, o.str("d") != "T", o.long("ep") ?: 0, o.int("st") ?: 0, o.int("ack") ?: 0, o.str("c") ?: "", o.str("t") ?: "",
+    )
+
+    private fun heard(o: Map<String, Any?>): HeardStation? {
+        val call = o.str("c") ?: return null
+        return HeardStation(
+            call, o.str("sym") ?: "", o.str("k") ?: "", o.num("lat"), o.num("lon"), o.int("alt"), o.int("spd"), o.int("crs"), o.int("rssi"), o.num("snr"),
+            o.long("age") ?: 0, o.int("n") ?: 0, o.str("dev"), o.str("path"), o.str("cmt"), o.str("sts"), o.obj("wx"),
+        )
+    }
+
+    /**
+     * A long text sent in steps: begin, chunks, end (cfgset, satdata). Every line fits the tracker's 255-byte limit; the tracker answers
+     * `ok` to each step and the caller sends the next one then (stop and wait). Returns the command lines.
+     */
+    fun chunked(name: String, begin: Map<String, Any?>, text: String): List<String> {
+        val lines = ArrayList<String>()
+        lines.add(command(name, "s" to "begin", *begin.map { it.key to it.value }.toTypedArray()))
+        var pos = 0
+        while (pos < text.length) {
+            var end = minOf(text.length, pos + 200)
+            while (end - pos > 1) {
+                if (end < text.length && Character.isHighSurrogate(text[end - 1])) end--
+                if (command(name, "s" to "c", "d" to text.substring(pos, end)).toByteArray(Charsets.UTF_8).size <= MAX_LINE_SAFE) break
+                end--
+            }
+            lines.add(command(name, "s" to "c", "d" to text.substring(pos, end)))
+            pos = end
+        }
+        lines.add(command(name, "s" to "end"))
+        return lines
+    }
+
+    /** The tracker refuses command lines over 255 bytes; we stay below with room for an id. */
+    const val MAX_LINE_SAFE = 235
+
+    /** Whole configuration file for `cfgset` (read it with `cfgget`, change it, send it back). */
+    fun configSet(configJson: String, reboot: Boolean = true): List<String> =
+        chunked("cfgset", mapOf("n" to configJson.toByteArray(Charsets.UTF_8).size, "reboot" to reboot), configJson)
 
     private fun page(o: Map<String, Any?>) = Page(
         o.long("ric") ?: 0, o.int("f") ?: 0, o.bool("own") ?: false, o.bool("bad") ?: false, o.long("age") ?: 0, o.int("rssi") ?: 0, o.str("t") ?: "",

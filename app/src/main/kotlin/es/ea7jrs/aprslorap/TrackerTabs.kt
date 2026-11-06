@@ -45,16 +45,16 @@ import es.ea7jrs.aprslorap.core.Dapnet
 import es.ea7jrs.aprslorap.core.TrackerMode
 import java.util.Locale
 
-private fun fmt(v: Double?, pattern: String, unit: String): String =
+internal fun fmt(v: Double?, pattern: String, unit: String): String =
     if (v == null) "—" else String.format(Locale.US, pattern, v) + unit
 
 @Composable
-private fun Section(title: String) {
+internal fun Section(title: String) {
     Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
 }
 
 @Composable
-private fun Field(label: String, value: String) {
+internal fun Field(label: String, value: String) {
     Row(Modifier.fillMaxWidth()) {
         Text(label, Modifier.weight(1f), fontSize = 14.sp)
         Text(value, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -62,7 +62,7 @@ private fun Field(label: String, value: String) {
 }
 
 @Composable
-private fun NoControl() {
+internal fun NoControl() {
     val running by AppState.running.collectAsState()
     Text(
         if (!running) "Start the link in the Connect tab."
@@ -211,6 +211,24 @@ fun SensorsTab() {
             Field("Moving (IMU)", s.moving?.let { if (it) "Yes" else "No" } ?: "—")
             Field("IMU temperature", fmt(s.imuTemperatureC, "%.1f", " °C"))
             if (s.boardTemperatureC != null) Field("Board temperature", fmt(s.boardTemperatureC, "%.1f", " °C"))
+            if (s.gasKohm != null) Field("Gas resistance (${s.wxSensor ?: "BME680"})", fmt(s.gasKohm, "%.1f", " kΩ"))
+            if (s.iaq != null) Field("Air quality (IAQ)", fmt(s.iaq, "%.0f", "") + (s.iaqLabel?.let { " ($it)" } ?: ""))
+            s.accelG?.let { if (it.size == 3) Field("Acceleration", String.format(Locale.US, "%.2f, %.2f, %.2f g", it[0], it[1], it[2])) }
+            s.gyroDps?.let { if (it.size == 3) Field("Gyroscope", String.format(Locale.US, "%.1f, %.1f, %.1f °/s", it[0], it[1], it[2])) }
+            if (s.flat != null) Field("Lying flat", if (s.flat == true) "Yes" else "No")
+            if (s.magCalibrated != null) Field("Compass calibrated", if (s.magCalibrated == true) "Yes" else "No")
+            if (s.magAligned != null) Field("Compass aligned to the board", if (s.magAligned == true) "Yes" else "No")
+        }
+
+        Section("Power")
+        val pw = sensors
+        if (pw == null) Text("No data yet") else {
+            Field("Battery", fmt(pw.batteryV, "%.2f", " V") + (pw.batteryPct?.let { "  ($it %)" } ?: ""))
+            if (pw.charging != null) Field("Charging", if (pw.charging == true) "Yes" else "No")
+            if (pw.batteryMa != null) Field("Battery current", fmt(pw.batteryMa, "%.0f", " mA"))
+            if (pw.vbusV != null) Field("USB / external", fmt(pw.vbusV, "%.2f", " V"))
+            if (pw.pmuTemperatureC != null) Field("PMU temperature", fmt(pw.pmuTemperatureC, "%.1f", " °C"))
+            if (pw.freeHeap != null) Field("Free memory", "${pw.freeHeap / 1024} kB")
         }
 
         Section("NMEA")

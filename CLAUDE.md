@@ -7,6 +7,9 @@ Los archivos nuevos llevan la cabecera `Copyright (C) 2026 Manuel - EA7JRS` y li
 App Android compañera del tracker **APRS LoRa+** (firmware ESP32, repositorio `EA7JRS/APRS-LoRa-Plus`, fork de CA2RXU). Es un proyecto aparte, en Kotlin.
 Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3jRDCSA
 
+## Regla del proyecto (Manuel, 2026-11-06)
+**Todas las funciones del proyecto han de ser controladas por esta app, y la app ha de mostrar todos los datos** (sensores de la T-Beam Supreme y del resto de placas, mensajes APRS, DAPNET...). Cada función nueva del firmware necesita una orden BLE y una pantalla aquí; matriz de cobertura en `docs/APP_COVERAGE.md` (copia del firmware). Mecanismos genéricos del firmware que lo cubren todo desde el principio: `actlist`/`act` (cualquier opción de menú, pestaña Remote), `screen` (espejo de la pantalla del equipo, pestaña Remote), `cfgget`/`cfgset` (toda la configuración, el fichero entero en bruto, pestaña Config).
+
 ## Decisiones tomadas
 - Enlace principal con el tracker: **BLE con KISS**. Alternativa: KISS por TCP (puerto 8001 por defecto) por WiFi. Bluetooth clásico y BLE TNC2 quedan fuera por ahora.
 - **iGate móvil en la primera versión**: solo radio → APRS-IS. Internet → radio queda fuera.
@@ -30,7 +33,7 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 - Destino (tocall) de las tramas que envía la app: `APZLRP` (rango experimental; registrar uno propio al publicar).
 
 ## Estado (2026-11-05)
-- `core/` (Kotlin puro): KISS, AX.25, TNC2, APRS (posición sin comprimir y comprimida, mensajes, ack, rej), motor de mensajes (3 envíos a 30 s / 60 s / 120 s, duplicados), reglas de iGate, geodesia, tabla de estaciones, JSON mínimo, protocolo de control, DAPNET (petición), NMEA (checksum, RMC/GGA), validación de indicativo (RadioID), telegrafía (manipulador iámbico A/B, decodificador, adaptadores de teclado y MIDI). **Comprobado**: 190 comprobaciones en `core/src/test/.../SelfTest.kt`.
+- `core/` (Kotlin puro): KISS, AX.25, TNC2, APRS (posición sin comprimir y comprimida, mensajes, ack, rej), motor de mensajes (3 envíos a 30 s / 60 s / 120 s, duplicados), reglas de iGate, geodesia, tabla de estaciones, JSON mínimo, protocolo de control, DAPNET (petición), NMEA (checksum, RMC/GGA), validación de indicativo (RadioID), telegrafía (manipulador iámbico A/B, decodificador, adaptadores de teclado y MIDI). **Comprobado**: 227 comprobaciones en `core/src/test/.../SelfTest.kt`.
 - `app/` (Android, Compose): servicio en primer plano, cliente BLE, cliente APRS-IS, notificaciones; pestañas Stations, Messages, Tracker, Sensors, DAPNET, Firmware y Connect. **Compila en la CI** (2026-11-05, run 42039855408, APK de depuración como artefacto); **sin probar en el móvil**.
 - Revisión 2026-11-05, cambios:
   - BLE: un trozo cuya escritura rechaza la pila (ocupada) vuelve a la cola en vez de perderse; las escrituras empiezan tras `onDescriptorWrite`; tipo de escritura según las propiedades de la característica.
@@ -44,6 +47,12 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 
 - Control, DAPNET, NMEA y validación (2026-11-05): `TrackerBle` con cola GATT general (KISS, órdenes, suscripciones), `Controller` (eventos de control, páginas DAPNET, NMEA), `NmeaServer`, `MockLocation`, `DapnetSender`, `Licence`; pestañas Tracker, Sensors y DAPNET. Lo que no es Compose se comprobó contra `android.jar` de la API 35 (repositorio Reginer/aosp-android-jar, clonado parcial) con simulaciones de AndroidX y corrutinas; las pantallas Compose no se han podido compilar.
 - Firmware (repositorio `EA7JRS/APRS-LoRa-Plus`, rama `ble-control` subida el 2026-11-05, rebasada sobre los commits de CAT/Hamlib): `src/ble_control.cpp`, `include/ble_control.h`, cola de 4 tramas del móvil en `ble_utils.cpp`, `LoRa_Utils::selectLoraIndex`, `PAGES_Utils::cwSendText`, modo pedido por BLE en `selectMode`, NMEA a BLE en `nmea_link.cpp`. `ble_control.cpp` y `ble_utils.cpp` pasan `g++ -Wall -Werror` en el PC con cabeceras simuladas (NimBLE 2.5.2, ArduinoJson 7.4.3 reales). La CI del firmware compila T-Beam v1.2 y Supreme en cada push a cualquier rama.
+
+## Cobertura total (2026-11-06)
+- Pestañas nuevas: **Heard** (estaciones oídas por el tracker, su registro de mensajes APRS y envío de mensajes desde el tracker: `heard`, `msgs`, `msg`), **Remote** (espejo de pantalla + todas las opciones de menú por `act`, con confirmación), **Config** (editor de todo `/tracker_conf.json`: se lee por trozos con `cfgget`, se edita en árbol y se sube entero con `cfgset`; contraseñas ocultas en pantalla). Sensors muestra ya gas / IAQ, IMU, magnetómetro, PMU, carga y corriente.
+- Núcleo: eventos `Messages`, `MessageChanged`, `Heard`, `Screen`, `Actions`, `ConfigPiece`; `Control.chunked`/`configSet` (subida por trozos de ≤ 235 bytes, parada y espera con `ok`); `JsonEdit` (edición del árbol de la configuración). 227 comprobaciones.
+- Sin probar en el móvil ni con el firmware real. Firmware: `main` de `EA7JRS/APRS-LoRa-Plus` (el servicio de control ya está fusionado; la T-Beam Supreme queda al 99,8 % de la partición: cualquier función grande nueva obliga a recortar o a cambiar la tabla de particiones).
+- Falta: pantallas propias para SAT (lista, paso, receptor, emisión, transmisores, rotor, objetivos, subida de `sats.txt`, posición del móvil `pos`) y para las sesiones interactivas de CW / WSPR (el firmware aún no las expone); la app usa `Remote` mientras tanto.
 
 ## Pendiente
 - Firmware, rama `ble-control`: la CI compila T-Beam v1.2 y Supreme (2026-11-05). Falta probar el servicio de control en la Supreme y fusionar en `main` cuando Manuel lo diga.
