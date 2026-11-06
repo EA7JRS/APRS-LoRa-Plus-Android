@@ -273,7 +273,7 @@ class Controller(
                 AppState.notice.value = if (ev.ok) "Transmitted to the satellite on ${"%.4f".format(java.util.Locale.US, ev.freqHz / 1e6)} MHz (${ev.count} so far)"
                                         else "The tracker did not transmit"
             }
-            is ControlEvent.Rotor -> AppState.rotor.value = ev.pointing
+            is ControlEvent.Rotor -> { AppState.rotor.value = ev.pointing; RotctlLink.onPointing(ev.pointing) }
             is ControlEvent.Targets -> {
                 AppState.rotorTargets.value = ev.items; AppState.rotorTargetSel.value = ev.selected; AppState.rotorSource.value = ev.source
             }

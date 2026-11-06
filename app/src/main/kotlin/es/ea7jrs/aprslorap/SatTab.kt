@@ -224,6 +224,7 @@ fun SatTab() {
                 r.km?.let { Field("Distance", "$it km") }
                 if (r.mobile) Field("Vehicle heading", fmt(r.headingDeg, "%.0f", "°") + " (absolute azimuth " + fmt(r.absAzDeg, "%.0f", "°") + ")")
                 if (r.pitchDeg != null && r.rollDeg != null) Field("Mount tilt", fmt(r.pitchDeg, "%.1f", "° pitch, ") + fmt(r.rollDeg, "%.1f", "° roll"))
+                if (r.actualAzDeg != null && r.actualElDeg != null) Field("Rotor reports", fmt(r.actualAzDeg, "%.1f", "° / ") + fmt(r.actualElDeg, "%.1f", "°"))
             }
             Text("Follow", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -272,6 +273,9 @@ fun SatTab() {
                 },
                 enabled = newName.isNotBlank() && lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0,
             ) { Text("Store and follow") }
+            RepeaterBookSearch { name, mhz -> newName = name; newMhz = mhz }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            RotorPhoneTools()
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
         }
 

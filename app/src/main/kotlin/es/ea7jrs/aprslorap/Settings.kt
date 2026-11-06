@@ -127,6 +127,45 @@ class Settings(ctx: Context) {
         get() = p.getString("agps_url", "")!!
         set(v) { p.edit().putString("agps_url", v.trim()).apply() }
 
+    // Phone as the inclinometer of the rotor mount: tilt that counts as level
+    var attZeroPitch: Double
+        get() = p.getFloat("att_zero_p", 0f).toDouble()
+        set(v) { p.edit().putFloat("att_zero_p", v.toFloat()).apply() }
+    var attZeroRoll: Double
+        get() = p.getFloat("att_zero_r", 0f).toDouble()
+        set(v) { p.edit().putFloat("att_zero_r", v.toFloat()).apply() }
+
+    // rotctld: client (to a rotor on the network) and server (for Look4Sat, GPredict...)
+    var rotClient: Boolean
+        get() = p.getBoolean("rot_client", false)
+        set(v) { p.edit().putBoolean("rot_client", v).apply() }
+    var rotClientHost: String
+        get() = p.getString("rot_client_host", "")!!
+        set(v) { p.edit().putString("rot_client_host", v.trim()).apply() }
+    var rotClientPort: Int
+        get() = p.getInt("rot_client_port", es.ea7jrs.aprslorap.core.RotCtl.DEFAULT_PORT)
+        set(v) { p.edit().putInt("rot_client_port", v.coerceIn(1, 65535)).apply() }
+    var rotClientStep: Double
+        get() = p.getFloat("rot_client_step", 1f).toDouble()
+        set(v) { p.edit().putFloat("rot_client_step", v.coerceIn(0.1, 20.0).toFloat()).apply() }
+    var rotServer: Boolean
+        get() = p.getBoolean("rot_server", false)
+        set(v) { p.edit().putBoolean("rot_server", v).apply() }
+    var rotServerPort: Int
+        get() = p.getInt("rot_server_port", es.ea7jrs.aprslorap.core.RotCtl.DEFAULT_PORT)
+        set(v) { p.edit().putInt("rot_server_port", v.coerceIn(1024, 65535)).apply() }
+
+    // RepeaterBook: the user's own token and User-Agent (with contact e-mail), as RepeaterBook asks
+    var rbToken: String
+        get() = p.getString("rb_token", "")!!
+        set(v) { p.edit().putString("rb_token", v.trim()).apply() }
+    var rbUserAgent: String
+        get() = p.getString("rb_agent", "APRS-LoRa-Plus-Android/1.0 (personal use; contact: )")!!
+        set(v) { p.edit().putString("rb_agent", v.trim()).apply() }
+    var rbNorthAmerica: Boolean
+        get() = p.getBoolean("rb_na", false)
+        set(v) { p.edit().putBoolean("rb_na", v).apply() }
+
     val validatedCall: String get() = p.getString("valid_call", "")!!
     val validatedIds: String get() = p.getString("valid_ids", "")!!
     val validatedName: String get() = p.getString("valid_name", "")!!

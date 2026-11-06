@@ -55,6 +55,7 @@ data class TrackerInfo(
     val hasRemoteKey: Boolean = false,          // the firmware takes the key connected to the phone ("k" events)
     val hasSecondSlot: Boolean = false,         // firmware update over BLE ("ota")
     val hasGpsAid: Boolean = false,             // A-GPS for the u-blox receiver ("gpsaid")
+    val hasRotor: Boolean = false,              // rotor on in the WebUI ("rotext", "att", "tgt")
 )
 
 data class TrackerStatus(
@@ -126,6 +127,7 @@ data class RotorTarget(val slot: Int, val name: String, val lat: Double, val lon
 data class RotorPointing(
     val azDeg: Double, val elDeg: Double, val tracking: Boolean, val source: Int, val name: String?, val km: Int?,
     val pitchDeg: Double?, val rollDeg: Double?, val mobile: Boolean, val absAzDeg: Double?, val headingDeg: Double?,
+    val actualAzDeg: Double? = null, val actualElDeg: Double? = null,      // what the rotor reports, if known
 )
 
 sealed class ControlEvent {
@@ -238,7 +240,7 @@ object Control {
             "rot" -> ControlEvent.Rotor(
                 RotorPointing(
                     o.num("az") ?: 0.0, o.num("el") ?: 0.0, o.bool("trk") ?: false, o.int("src") ?: 0, o.str("name"), o.int("km"),
-                    o.num("pit"), o.num("rol"), o.bool("mob") ?: false, o.num("abs"), o.num("hdg"),
+                    o.num("pit"), o.num("rol"), o.bool("mob") ?: false, o.num("abs"), o.num("hdg"), o.num("aaz"), o.num("ael"),
                 ),
             )
             "targets" -> ControlEvent.Targets(
@@ -317,6 +319,7 @@ object Control {
             caps.bool("rkey") ?: false,
             caps.bool("ota") ?: false,
             caps.bool("gpsaid") ?: false,
+            caps.bool("rotor") ?: false,
         )
     }
 }

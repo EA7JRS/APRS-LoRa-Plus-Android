@@ -203,6 +203,8 @@ fun SensorsTab() {
             Field("UTC", g.utc ?: "—")
         }
 
+        PhoneSensorsSection()
+
         Section("A-GPS (u-blox receiver)")
         if (info?.hasGpsAid != true) Text("Not available: the tracker firmware is too old (no gpsaid command) or its GNSS receiver is not a u-blox.", fontSize = 12.sp)
         else {

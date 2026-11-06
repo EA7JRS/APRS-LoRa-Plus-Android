@@ -72,6 +72,16 @@ object AppState {
     val gpsAidBusy = MutableStateFlow(false)                                     // A-GPS going to the tracker
     val gpsAidMessage = MutableStateFlow("")
     val phoneAgpsMessage = MutableStateFlow("")                                  // A-GPS of the phone itself
+    // Phone sensors, rotctld, RepeaterBook
+    val phoneSensors = MutableStateFlow(PhoneSensors.Reading())
+    val attStatus = MutableStateFlow("Off")
+    val rotClientStatus = MutableStateFlow("Off")
+    val rotClientActual = MutableStateFlow<Pair<Double, Double>?>(null)          // what the network rotor reports
+    val rotServerStatus = MutableStateFlow("Off")
+    val rotServerLast = MutableStateFlow<Pair<Double, Double>?>(null)            // last az / el from Look4Sat, GPredict...
+    val rbBusy = MutableStateFlow(false)
+    val rbMessage = MutableStateFlow("")
+    val rbResults = MutableStateFlow<List<es.ea7jrs.aprslorap.core.RepeaterBook.Repeater>>(emptyList())
     val phonePosition = MutableStateFlow("Off")                                  // what the app tells about the phone position it sends
     val nmeaStatus = MutableStateFlow("Off")
     val nmeaRecent = MutableStateFlow<List<String>>(emptyList())

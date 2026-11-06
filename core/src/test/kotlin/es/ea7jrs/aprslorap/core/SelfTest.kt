@@ -505,8 +505,55 @@ private fun testUbx() {
     check(Control.parse("{\"e\":\"info\",\"v\":1,\"fw\":\"5.3.5\",\"board\":\"x\",\"caps\":{\"gpsaid\":true}}").let { it is ControlEvent.Info && it.info.hasGpsAid }, "caps.gpsaid")
 }
 
+private fun testRotator() {
+    var lastSet: Pair<Double, Double>? = null
+    val rot = object : RotCtl.Rot {
+        override fun setPos(azDeg: Double, elDeg: Double): Boolean { lastSet = azDeg to elDeg; return true }
+        override fun getPos() = 123.5 to 45.25
+        override fun park() = true
+        override fun info() = "APRS LoRa+ app"
+    }
+    val s = RotCtl.Session(rot)
+    val out = StringBuilder()
+    check(!s.feed("P 370.5 95\n", out), "rotctld P"); eq(out.toString(), "RPRT 0\n", "rotctld P reply"); eq(lastSet, 10.5 to 90.0, "rotctld P wraps az and caps el")
+    out.setLength(0); s.feed("p\r\n", out); eq(out.toString(), "123.500000\n45.250000\n", "rotctld p")
+    out.setLength(0); s.feed("\\set_pos -90 30\n", out); eq(lastSet, 270.0 to 30.0, "rotctld \\set_pos"); eq(out.toString(), "RPRT 0\n", "rotctld long form reply")
+    out.setLength(0); s.feed("P abc 3\n", out); eq(out.toString(), "RPRT -1\n", "rotctld bad number")
+    out.setLength(0); s.feed("\\dump_state\n", out); check(out.startsWith("1\n0\n0.000000\n360.000000"), "rotctld dump_state")
+    out.setLength(0); s.feed("_\nX\n", out); eq(out.toString(), "APRS LoRa+ app\nRPRT -4\n", "rotctld info and unknown")
+    out.setLength(0); s.feed("P 10 ", out); eq(out.toString(), "", "rotctld waits for the end of line"); s.feed("20\n", out); eq(lastSet, 10.0 to 20.0, "rotctld split line")
+    out.setLength(0); check(s.feed("q\n", out), "rotctld quit closes")
+    eq(RotCtl.setPosLine(-10.0, 95.0), "P 350.0 90.0\n", "rotctld client line"); eq(RotCtl.parseReply("RPRT -1"), -1, "rotctld reply"); eq(RotCtl.parseReply("12.0"), null, "not a reply")
+    eq(RotCtl.angleDiff(350.0, 10.0), 20.0, "angle diff wraps"); eq(RotCtl.angleDiff(10.0, 350.0), -20.0, "angle diff negative")
+    check(RotCtl.moved(null, null, 0.0, 0.0, 1.0), "first position always sent"); check(!RotCtl.moved(359.8, 10.0, 0.3, 10.2, 1.0), "small move across north not sent")
+    check(RotCtl.moved(359.0, 10.0, 0.5, 10.0, 1.0), "move across north sent")
+
+    val flat = PhoneMath.tilt(0.0, 0.0, 9.81)!!; check(abs(flat.first) < 1e-9 && abs(flat.second) < 1e-9, "flat phone: no tilt")
+    val up = PhoneMath.tilt(0.0, 9.81 * Math.sin(Math.toRadians(10.0)), 9.81 * Math.cos(Math.toRadians(10.0)))!!
+    check(abs(up.first - 10.0) < 1e-6 && abs(up.second) < 1e-6, "front up = pitch +10")
+    val right = PhoneMath.tilt(-9.81 * Math.sin(Math.toRadians(5.0)), 0.0, 9.81 * Math.cos(Math.toRadians(5.0)))!!
+    check(abs(right.second - 5.0) < 1e-6 && abs(right.first) < 1e-6, "right side down = roll +5")
+    eq(PhoneMath.tilt(0.0, 9.81, 0.0), null, "phone standing up: no tilt")
+    check(abs(PhoneMath.baroAltitude(1013.25)) < 1e-9, "baro altitude at QNH"); check(abs(PhoneMath.baroAltitude(899.0) - 1000.0) < 15.0, "baro altitude 1000 m")
+    check(abs(PhoneMath.qnh(1013.25 * Math.pow(1.0 - 1000.0 / 44330.0, 5.255), 1000.0) - 1013.25) < 0.01, "QNH back")
+
+    val json = """{"count":2,"results":[{"State ID":"","Rptr ID":"","Frequency":"145.6500","Input Freq":"145.0500","PL":"","Nearest City":"Granada","Region":null,"Country":"Spain","Lat":"37.1951","Long":"-3.4194","Callsign":"ED7ZAB","Use":"OPEN","Operational Status":"On-air"},
+        {"Frequency":438.9,"Input Freq":431.3,"PL":"77.0","Nearest City":"X","Country":"Spain","Lat":"","Long":"","Callsign":"ED7YAA","Use":"OPEN","Operational Status":"Off-air"}]}"""
+    val reps = RepeaterBook.parse(json).getOrThrow()
+    eq(reps.size, 2, "RepeaterBook results"); eq(reps[0].callsign, "ED7ZAB", "RepeaterBook callsign"); eq(reps[0].freqHz, 145_650_000L, "RepeaterBook frequency")
+    check(reps[0].hasPosition && abs(reps[0].lon!! + 3.4194) < 1e-9, "RepeaterBook position"); check(!reps[1].hasPosition, "RepeaterBook without position")
+    eq(reps[0].targetName, "ED7ZAB 145.650", "RepeaterBook target name"); eq(reps[1].tone, "77.0", "RepeaterBook tone")
+    eq(RepeaterBook.parse("{\"status\":\"error\",\"message\":\"Invalid token\"}").exceptionOrNull()?.message, "Invalid token", "RepeaterBook error")
+    check(RepeaterBook.parse("<html>").isFailure, "RepeaterBook not JSON")
+    eq(RepeaterBook.url(false, callsign = "ed7zab"), "https://www.repeaterbook.com/api/exportROW.php?callsign=ED7ZAB", "RepeaterBook url")
+    eq(RepeaterBook.url(false, city = "La Línea", country = "Spain"), "https://www.repeaterbook.com/api/exportROW.php?city=La+L%C3%ADnea&country=Spain", "RepeaterBook url encoded")
+
+    check(Control.parse("{\"e\":\"rot\",\"az\":10,\"el\":5,\"aaz\":9.5,\"ael\":4}").let { it is ControlEvent.Rotor && it.pointing.actualAzDeg == 9.5 && it.pointing.actualElDeg == 4.0 }, "rot actual position")
+    check(Control.parse("{\"e\":\"info\",\"caps\":{\"rotor\":true}}").let { it is ControlEvent.Info && it.info.hasRotor }, "caps.rotor")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
