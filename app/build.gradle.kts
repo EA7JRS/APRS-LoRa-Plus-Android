@@ -33,7 +33,7 @@ android {
     }
     sourceSets["main"].java.srcDirs("src/main/kotlin")
     // Digital voice decoder (dsd-fme), built by native/dsd/build.sh into native/dsd/out/<abi>/libdsdfme.so (the CI does it).
-    sourceSets["main"].jniLibs.srcDirs("../native/dsd/out")
+    sourceSets["main"].jniLibs.srcDirs("../native/dsd/out", "../native/ft8/out")
     // Extracted to the native library folder: Android only lets an app run a program from there.
     packaging { jniLibs { useLegacyPackaging = true } }
 }

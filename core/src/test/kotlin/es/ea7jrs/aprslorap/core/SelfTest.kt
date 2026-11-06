@@ -834,8 +834,24 @@ private fun testReceivers() {
     eq(Control.parse("{\"e\":\"cwrx\",\"on\":false,\"dbm\":-150,\"snr\":0,\"wpm\":0}"), ControlEvent.CwRx(false, null, -150.0, 0.0, 0), "cwrx end")
 }
 
+private fun testWsjt() {
+    eq(Wsjt.slotStart(30_100, 15_000), 30_000L, "FT8 slot"); eq(Wsjt.slotStart(37_400, 7_500), 30_000L, "FT4 slot"); eq(Wsjt.slotStart(37_600, 7_500), 37_500L, "FT4 second slot")
+    val d = Wsjt.parse("000000 +13.0 +1.60 1291 ~  CQ R7IW LN35", 30_000)!!
+    eq(d, Wsjt.Decode(30_000, 13.0, 1.6, 1291, "CQ R7IW LN35"), "decode line"); eq(d.calls, listOf("R7IW"), "calls in a message")
+    eq(Wsjt.parse("Max magnitude: -15.6 dB", 0), null, "other output ignored"); eq(Wsjt.parse("000000 +1.0 +0.10  500 ~  Error [3] while unpacking!", 0), null, "unpack error ignored")
+    eq(Wsjt.Decode(0, 0.0, 0.0, 0, "EA7JRS <PJ4/K1ABC> -12").calls, listOf("EA7JRS", "PJ4/K1ABC"), "calls with hash and prefix")
+    val slots = ArrayList<Pair<Long, Int>>()
+    val rec = Wsjt.SlotRecorder(Wsjt.Mode.FT4) { st, x -> slots.add(st to x.size) }
+    var t = 37_550L                                              // joins 50 ms into a slot
+    val block = ShortArray(1200)                                 // 100 ms
+    repeat(200) { rec.feed(block, block.size, t + 100); t += 100 }
+    check(slots.size >= 2 && slots.all { it.second == 90_000 && it.first % 7_500 == 0L }, "FT4 slots handed out whole (${slots.map { it.first }})")
+    check(slots.first().first == 37_500L, "first slot is the one joined at its start")
+    val w = Wsjt.wav(ShortArray(4) { 1000 }); eq(w.size, 44 + 8, "slot WAV size")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

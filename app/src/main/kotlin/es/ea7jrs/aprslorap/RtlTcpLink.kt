@@ -153,7 +153,7 @@ internal class RtlTcpLink(
                             if (DigitalVoiceRunner.active) DigitalVoiceRunner.feed(x, k)
                             if (PacketRunner.active) PacketRunner.feed(x, k)
                         } else if (!dv && !pk && rx.discriminatorTap != null) rx.discriminatorTap = null
-                        if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) ModemRunner.feedReceiver12k(audio, m)
+                        if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) { ModemRunner.feedReceiver12k(audio, m); WsjtRunner.feedReceiver12k(audio, m) }
                         Dsp.toPcm16(audio, m, pcm)
                         if (!dv) track?.write(pcm, 0, m, AudioTrack.WRITE_NON_BLOCKING)   // if the phone's audio falls behind, samples are dropped, not the IQ
                         synchronized(this) {

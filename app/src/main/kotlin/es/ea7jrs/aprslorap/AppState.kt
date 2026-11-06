@@ -87,6 +87,8 @@ object AppState {
     val modem = MutableStateFlow(ModemRunner.State())                           // text modes (CW, RTTY, PSK)
     val modemText = MutableStateFlow("")
     val waterfallRow = MutableStateFlow<FloatArray?>(null)
+    val wsjt = MutableStateFlow(WsjtRunner.State())                              // FT8 / FT4
+    val wsjtDecodes = MutableStateFlow<List<es.ea7jrs.aprslorap.core.Wsjt.Decode>>(emptyList())
     val extraStatus = MutableStateFlow<Map<String, String>>(emptyMap())          // receiver key -> status
     val cwRxOn = MutableStateFlow(false)                                          // tracker's CW listening on RF
     val cwRxText = MutableStateFlow("")

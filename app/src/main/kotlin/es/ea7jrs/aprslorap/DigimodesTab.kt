@@ -134,6 +134,47 @@ fun DigimodesTab() {
             TextButton(onClick = { AppState.modemText.value = "" }) { Text("Clear") }
         }
         Text(text.ifEmpty { "—" }, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+        WsjtSection(source)
         Text("CW, RTTY and BPSK receive in the manner of fldigi (varicode, Baudot and PSK timing from fldigi, GPL). More fldigi modes come in the next steps.", fontSize = 11.sp)
+    }
+}
+
+/** FT8 / FT4 (ft8_lib): decodes per UTC slot, newest first; own and tracker callsigns highlighted. */
+@Composable
+private fun WsjtSection(source: ModemRunner.Source) {
+    val ctx = LocalContext.current
+    val settings = remember { Settings(ctx) }
+    val st by AppState.wsjt.collectAsState()
+    val decodes by AppState.wsjtDecodes.collectAsState()
+    var mode by remember { mutableStateOf(st.mode) }
+    val mine = remember { setOf(settings.callsign.substringBefore('-'), settings.trackerCallsign.substringBefore('-')).filter { it.isNotEmpty() }.toSet() }
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) WsjtRunner.start(ctx, mode, ModemRunner.Source.MICROPHONE) else AppState.error.value = "Microphone permission is needed"
+    }
+    Section("FT8 / FT4 (WSJT-X modes)")
+    if (!WsjtRunner.available(ctx)) { Text("This build of the app has no FT8 / FT4 decoder for this phone.", fontSize = 12.sp); return }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        for (m in es.ea7jrs.aprslorap.core.Wsjt.Mode.entries) {
+            val go = { mode = m }
+            if (m == mode) Button(onClick = go) { Text(m.label, fontSize = 11.sp) } else OutlinedButton(onClick = go) { Text(m.label, fontSize = 11.sp) }
+        }
+        Button(onClick = {
+            if (source == ModemRunner.Source.MICROPHONE && ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            else WsjtRunner.start(ctx, mode, source)
+        }) { Text(if (st.running) "Restart" else "Decode") }
+        OutlinedButton(onClick = { WsjtRunner.stop() }, enabled = st.running) { Text("Stop") }
+    }
+    Text(st.status + (st.dialHz?.let { "  ·  dial " + es.ea7jrs.aprslorap.core.Sdr.mhz(it) + " MHz (USB)" } ?: ""), fontSize = 12.sp)
+    Text("Same source as above. Receiver in USB with a 3 kHz filter; the phone's clock must be on time (network time).", fontSize = 11.sp)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Decoded (${decodes.size})", fontSize = 13.sp, modifier = Modifier.weight(1f))
+        TextButton(onClick = { AppState.wsjtDecodes.value = emptyList() }) { Text("Clear") }
+    }
+    val fmt = remember { java.text.SimpleDateFormat("HHmmss", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") } }
+    for (d in decodes.takeLast(40).asReversed()) {
+        val hit = d.calls.any { it in mine }
+        Text(String.format(Locale.US, "%s %+3.0f %+4.1f %4d  %s", fmt.format(java.util.Date(d.slotMs)), d.snr, d.dt, d.audioHz, d.message),
+            fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = if (hit) Color(0xFFD32F2F) else Color.Unspecified)
     }
 }
