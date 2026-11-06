@@ -148,8 +148,11 @@ internal class RtlTcpLink(
                         while (n < buf.size) { val r = inp.read(buf, n, buf.size - n); if (r < 0) throw java.io.EOFException(); n += r }
                         val m = rx.process(buf, n, audio)
                         val dv = DigitalVoiceRunner.active
-                        if (dv && rx.discriminatorTap == null) rx.discriminatorTap = { x, k -> DigitalVoiceRunner.feed(x, k) }
-                        else if (!dv && rx.discriminatorTap != null) rx.discriminatorTap = null
+                        val pk = PacketRunner.active
+                        if ((dv || pk) && rx.discriminatorTap == null) rx.discriminatorTap = { x, k ->
+                            if (DigitalVoiceRunner.active) DigitalVoiceRunner.feed(x, k)
+                            if (PacketRunner.active) PacketRunner.feed(x, k)
+                        } else if (!dv && !pk && rx.discriminatorTap != null) rx.discriminatorTap = null
                         if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) ModemRunner.feedReceiver12k(audio, m)
                         Dsp.toPcm16(audio, m, pcm)
                         if (!dv) track?.write(pcm, 0, m, AudioTrack.WRITE_NON_BLOCKING)   // if the phone's audio falls behind, samples are dropped, not the IQ

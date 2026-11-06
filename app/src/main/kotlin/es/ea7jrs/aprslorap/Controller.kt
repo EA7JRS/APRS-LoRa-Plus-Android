@@ -130,6 +130,9 @@ class Controller(
         }
     }
 
+    /** A frame heard by the phone's own receiver (RTL-SDR: APRS FSK 9600...), handled like one from the tracker. */
+    fun onPhoneRadioFrame(frame: Ax25Frame) { exec.execute { safe { onFrame(frame) } } }
+
     private fun onFrame(frame: Ax25Frame) {
         val now = System.currentTimeMillis()
         table.onFrame(frame, now)

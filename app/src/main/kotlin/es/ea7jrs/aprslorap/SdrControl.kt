@@ -87,6 +87,7 @@ object SdrControl {
     @Synchronized
     fun disconnect() {
         DigitalVoiceRunner.stop()
+        PacketRunner.stop()
         link?.close(); link = null
         set { State() }
     }

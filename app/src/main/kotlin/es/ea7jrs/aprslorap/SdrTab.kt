@@ -71,6 +71,8 @@ fun SdrTab() {
     var dvMode by remember { mutableStateOf(settings.dvMode) }
     val dvStatus by AppState.dvStatus.collectAsState()
     val dvLog by AppState.dvLog.collectAsState()
+    val pkStatus by AppState.packetStatus.collectAsState()
+    val pkLog by AppState.packetLog.collectAsState()
     val local = host == "127.0.0.1" || host == "localhost"
 
     fun startLink() {
@@ -182,6 +184,25 @@ fun SdrTab() {
             var g by remember(st.gain) { mutableStateOf((st.gain ?: st.gainMin).toFloat()) }
             Slider(g, { g = it }, valueRange = st.gainMin.toFloat()..st.gainMax.toFloat(), steps = (st.gainMax - st.gainMin - 1).coerceAtLeast(0),
                 onValueChangeFinished = { if (kind == Sdr.Kind.RTLTCP) settings.sdrGainPercent = g.toInt(); SdrControl.gain(g.toInt()) }, enabled = st.connected)
+        }
+
+        // ---- packet FSK (the tracker's APRS FSK beacons)
+        if (kind == Sdr.Kind.RTLTCP) {
+            Section("Packet FSK G3RUH (tracker APRS FSK beacons)")
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (b in listOf(4800, 9600, 19200)) {
+                    val go = {
+                        val bw = (b * 2.1).toInt().coerceAtLeast(12_500)
+                        settings.sdrMode = "NFM"; settings.sdrBandwidth = bw; SdrControl.mode("NFM", bw)
+                        PacketRunner.start(b.toDouble())
+                    }
+                    OutlinedButton(onClick = go, enabled = st.connected) { Text("$b bd", fontSize = 11.sp) }
+                }
+                OutlinedButton(onClick = { PacketRunner.stop() }, enabled = pkStatus != "Off") { Text("Stop", fontSize = 11.sp) }
+            }
+            Text(pkStatus, fontSize = 12.sp)
+            for (l in pkLog.takeLast(10).asReversed()) Text(l, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+            Text("AX.25 with the G3RUH scrambler, as the tracker sends in APRS FSK mode (also FX.25, which carries a normal frame; not IL2P). Frames go to Stations and Messages like those from the tracker. Follow \"Tracker LoRa\" below to tune to its frequency. The CW beacon: Modes tab, CW, with the receiver in CW.", fontSize = 11.sp)
         }
 
         // ---- digital voice

@@ -788,8 +788,41 @@ private fun testModems() {
     eq(Modems.create("RTTY 45/170", 1500.0).label, "RTTY 45/170", "mode factory"); eq(Modems.create("BPSK63", 1000.0).label, "BPSK62", "mode factory PSK63 (62.5 Bd)")
 }
 
+private fun testG3ruh() {
+    eq(G3ruh.crc16("123456789".toByteArray()), 0x906E, "CRC-16/X.25 check value")
+    val frame = Tnc2.parse("EA7JRS-7>APZLRP,WIDE1-1:!3711.49N/00356.20W>APRS LoRa+ FSK test")!!.encode()
+    // 1) bits straight into the decoder's line stage: 5 samples a bit, ideal levels
+    val line = G3ruh.lineBits(G3ruh.hdlcBits(frame))
+    val got = ArrayList<ByteArray>()
+    val dec = G3ruh.Decoder(48_000.0) { got.add(it) }
+    val sq = FloatArray(line.size * 5) { if (line[it / 5] == 1) 1f else -1f }
+    dec.process(sq, sq.size)
+    check(got.size == 1 && got[0].contentEquals(frame), "G3RUH line bits decode (${got.size})")
+    // 2) end to end: FM at 960 kS/s (±3 kHz, 9600 bd, smoothed), the app receiver in NFM 20 kHz, the discriminator tap
+    val off = -Dsp.IF_OFFSET.toDouble()
+    val spb = Dsp.INPUT_RATE / 9600.0
+    val nrz = DoubleArray((line.size * spb).toInt() + 2000)
+    var lvl = -1.0
+    for (i in nrz.indices) { val b = (i / spb).toInt(); val target = if (b < line.size && line[b] == 1) 1.0 else -1.0; lvl += (target - lvl) * 0.12; nrz[i] = lvl }
+    var ph = 0.0
+    val rnd = java.util.Random(5)
+    val iq = ByteArray(2 * nrz.size)
+    for (i in nrz.indices) {
+        ph += 2 * Math.PI * (off + 3000.0 * nrz[i]) / Dsp.INPUT_RATE
+        iq[2 * i] = (127.5 + 90 * Math.cos(ph) + 6 * rnd.nextGaussian()).toInt().coerceIn(0, 255).toByte()
+        iq[2 * i + 1] = (127.5 + 90 * Math.sin(ph) + 6 * rnd.nextGaussian()).toInt().coerceIn(0, 255).toByte()
+    }
+    val rx = Dsp.Receiver(); rx.setOffset(off); rx.setMode("NFM", 20_000)
+    val got2 = ArrayList<ByteArray>()
+    val dec2 = G3ruh.Decoder(48_000.0) { got2.add(it) }
+    rx.discriminatorTap = { x, n -> dec2.process(x, n) }
+    runRx(rx, iq)
+    check(got2.any { it.contentEquals(frame) }, "G3RUH 9600 through the RTL receiver (${got2.size} frames, ${dec2.badFcs} bad FCS)")
+    eq(Ax25Frame.decode(got2.firstOrNull() ?: ByteArray(0))?.toTnc2(), "EA7JRS-7>APZLRP,WIDE1-1:!3711.49N/00356.20W>APRS LoRa+ FSK test", "G3RUH frame to TNC2")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
