@@ -37,15 +37,16 @@ object SdrControl {
         val followHz: Long? = null, val dopplerHz: Long? = null,
     )
 
-    private interface Link {
+    internal interface LinkApi {
         fun tune(hz: Long)
         fun mode(mode: String, bwHz: Int)
         fun gain(g: Int)
         fun record(on: Boolean)
         fun close()
     }
+    private interface Link : LinkApi
 
-    private var link: Link? = null
+    private var link: LinkApi? = null
     private val tick = Executors.newSingleThreadScheduledExecutor()
     @Volatile private var follow = Follow.MANUAL
     @Volatile private var stepHz = 100L
@@ -60,20 +61,28 @@ object SdrControl {
     init { tick.scheduleWithFixedDelay({ try { followTick() } catch (_: Exception) {} }, 500, 500, TimeUnit.MILLISECONDS) }
 
     private fun set(f: (State) -> State) { synchronized(this) { AppState.sdr.value = f(AppState.sdr.value) } }
+    internal fun update(f: (State) -> State) = set(f)
 
     // ------------------------------------------------------------------ public
 
     @Synchronized
-    fun connect(kind: Sdr.Kind, host: String, port: Int) {
+    fun connect(ctx: android.content.Context, kind: Sdr.Kind, host: String, port: Int, s: Settings) {
         disconnect()
-        set { State(status = "Connecting to $host:$port...") }
-        link = when (kind) {
+        set { State(status = "Connecting to $host:$port...", mode = if (kind == Sdr.Kind.RTLTCP) s.sdrMode else null) }
+        val l = when (kind) {
             Sdr.Kind.RIGCTL -> RigctlLink(host, port)
             Sdr.Kind.SDRCONNECT -> SdrConnectLink(host, port)
             Sdr.Kind.SPYSERVER -> SpyLink(host, port)
+            Sdr.Kind.RTLTCP -> RtlTcpLink(ctx.applicationContext, host, port, s.sdrPpm, s.sdrGainPercent, s.sdrSquelchDb.toDouble())
         }
+        link = l
+        if (l is RtlTcpLink) { l.mode(s.sdrMode, s.sdrBandwidth); l.tune(s.sdrLastHz) }
         lastSentHz = null
     }
+
+    /** RTL-SDR receiver only: NFM squelch level, dBFS. */
+    fun squelch(db: Double) { (link as? RtlTcpLink)?.squelch(db) }
+    val isLocalReceiver: Boolean get() = link is RtlTcpLink
 
     @Synchronized
     fun disconnect() {

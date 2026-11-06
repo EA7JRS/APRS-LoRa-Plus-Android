@@ -188,6 +188,29 @@ class Settings(ctx: Context) {
     var sdrTx: Int
         get() = p.getInt("sdr_tx", -1)
         set(v) { p.edit().putInt("sdr_tx", v).apply() }
+    // RTL-SDR receiver in the app
+    var sdrPpm: Int
+        get() = p.getInt("sdr_ppm", 0)
+        set(v) { p.edit().putInt("sdr_ppm", v.coerceIn(-200, 200)).apply() }
+    var sdrBiasTee: Boolean
+        get() = p.getBoolean("sdr_biast", false)
+        set(v) { p.edit().putBoolean("sdr_biast", v).apply() }
+    var sdrGainPercent: Int                                   // -1 = automatic
+        get() = p.getInt("sdr_gain", -1)
+        set(v) { p.edit().putInt("sdr_gain", v.coerceIn(-1, 100)).apply() }
+    var sdrSquelchDb: Int
+        get() = p.getInt("sdr_sql", -200)
+        set(v) { p.edit().putInt("sdr_sql", v).apply() }
+    var sdrMode: String
+        get() = p.getString("sdr_mode", "NFM")!!
+        set(v) { p.edit().putString("sdr_mode", v).apply() }
+    var sdrBandwidth: Int
+        get() = p.getInt("sdr_bw", 0)
+        set(v) { p.edit().putInt("sdr_bw", v.coerceAtLeast(0)).apply() }
+    var sdrLastHz: Long
+        get() = p.getLong("sdr_last_hz", 145_800_000L)
+        set(v) { p.edit().putLong("sdr_last_hz", v).apply() }
+
     var sdrRecordPasses: Boolean
         get() = p.getBoolean("sdr_rec", false)
         set(v) { p.edit().putBoolean("sdr_rec", v).apply() }

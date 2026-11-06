@@ -26,6 +26,7 @@ object Sdr {
         RIGCTL("SDR++ / gqrx (rigctl)", 4532),
         SDRCONNECT("SDRconnect (SDRplay)", 5454),
         SPYSERVER("SpyServer (Airspy)", 5555),
+        RTLTCP("RTL-SDR USB / rtl_tcp", 14423),
     }
 
     /** Modes shown in the app; each backend maps them to its own names. */
@@ -151,6 +152,42 @@ object Sdr {
             val p = ByteArray(len.toInt()); readFully(inp, p)
             if (mask != null) for (i in p.indices) p[i] = (p[i].toInt() xor mask[i % 4].toInt()).toByte()
             return Frame(fin, op, p)
+        }
+    }
+
+    // ------------------------------------------------------------------ rtl_tcp (RTL-SDR; on Android through the "RTL-SDR driver" app)
+
+    /**
+     * rtl_tcp: 12-byte greeting ("RTL0", tuner type, gain count, big endian), then 8-bit unsigned IQ. Commands: 1 byte code +
+     * 32-bit big-endian value. On Android the driver app marto.rtl_tcp_andro opens the USB dongle when asked with an
+     * `iqsrc://` intent and serves rtl_tcp on 127.0.0.1.
+     */
+    object RtlTcp {
+        const val DRIVER_PACKAGE = "marto.rtl_tcp_andro"
+        const val SET_FREQ = 0x01
+        const val SET_SAMPLE_RATE = 0x02
+        const val SET_GAIN_MODE = 0x03
+        const val SET_GAIN = 0x04
+        const val SET_FREQ_CORRECTION = 0x05
+        const val SET_AGC_MODE = 0x08
+        const val SET_BIAS_TEE = 0x0e
+        const val ANDROID_EXIT = 0x7e
+        const val ANDROID_GAIN_PERCENT = 0x7f
+
+        fun cmd(code: Int, value: Int): ByteArray = byteArrayOf(code.toByte(), (value ushr 24).toByte(), (value ushr 16).toByte(), (value ushr 8).toByte(), value.toByte())
+
+        /** The intent address that asks the driver app to open the dongle and serve on 127.0.0.1:[port]. */
+        fun driverUri(port: Int, sampleRate: Int, freqHz: Long, ppm: Int, biasTee: Boolean): String =
+            "iqsrc://-a 127.0.0.1 -p $port -s $sampleRate -f $freqHz -P $ppm" + if (biasTee) " -T 1" else ""
+
+        data class Greeting(val tuner: String, val gains: Int)
+
+        fun greeting(b: ByteArray): Greeting? {
+            if (b.size < 12 || b[0] != 'R'.code.toByte() || b[1] != 'T'.code.toByte() || b[2] != 'L'.code.toByte() || b[3] != '0'.code.toByte()) return null
+            val t = ByteBuffer.wrap(b, 4, 8).int
+            val g = ByteBuffer.wrap(b, 8, 4).int
+            val name = when (t) { 1 -> "E4000"; 2 -> "FC0012"; 3 -> "FC0013"; 4 -> "FC2580"; 5 -> "R820T / R860"; 6 -> "R828D"; else -> "tuner $t" }
+            return Greeting(name, g)
         }
     }
 

@@ -585,8 +585,80 @@ private fun testSdr() {
     val di = Sdr.SpyServer.deviceInfo(infoBody)!!; eq(di.serial, 0xFFFFFFFFL, "SpyServer serial unsigned"); eq(di.maxGainIndex, 21, "SpyServer gain steps"); eq(di.name, "Airspy R2 / Mini", "SpyServer device")
 }
 
+/** 8-bit IQ at Dsp.INPUT_RATE of [seconds]; [sample] gives the complex baseband (re, im) at time t, amplitude <= 1. */
+private fun synthIq(seconds: Double, sample: (Double) -> Pair<Double, Double>): ByteArray {
+    val n = (Dsp.INPUT_RATE * seconds).toInt()
+    val b = ByteArray(2 * n)
+    for (i in 0 until n) {
+        val (re, im) = sample(i.toDouble() / Dsp.INPUT_RATE)
+        b[2 * i] = (127.5 + 100 * re).toInt().coerceIn(0, 255).toByte(); b[2 * i + 1] = (127.5 + 100 * im).toInt().coerceIn(0, 255).toByte()
+    }
+    return b
+}
+
+/** Runs the receiver over [iq] in blocks and returns the audio after the first 0.05 s (filters settled). */
+private fun runRx(rx: Dsp.Receiver, iq: ByteArray): FloatArray {
+    val out = ArrayList<Float>()
+    val buf = FloatArray(16384)
+    var pos = 0
+    while (pos < iq.size) {
+        val len = minOf(32768, iq.size - pos)
+        val m = rx.process(iq.copyOfRange(pos, pos + len), len, buf)
+        for (i in 0 until m) out.add(buf[i])
+        pos += len
+    }
+    return out.drop(rx.audioRate / 20).toFloatArray()
+}
+
+private fun toneRatio(a: FloatArray, rate: Int, f: Double, other: Double) = Dsp.goertzel(a, a.size, f, rate.toDouble()) / (Dsp.goertzel(a, a.size, other, rate.toDouble()) + 1e-9)
+
+private fun testDsp() {
+    val off = -Dsp.IF_OFFSET.toDouble()                      // the wanted signal sits IF_OFFSET below the tuner
+    val pi2 = 2 * Math.PI
+    // NFM: carrier at the wanted frequency, 1 kHz tone, 3 kHz deviation
+    val fm = synthIq(0.3) { t -> val ph = pi2 * off * t + 3.0 * Math.sin(pi2 * 1000 * t); Math.cos(ph) to Math.sin(ph) }
+    val rx = Dsp.Receiver(); rx.setOffset(off); rx.setMode("NFM", 0)
+    val a = runRx(rx, fm)
+    check(toneRatio(a, rx.audioRate, 1000.0, 2300.0) > 50, "NFM demodulates the 1 kHz tone"); check(rx.levelDb > -10, "NFM channel level")
+    // a signal 60 kHz away is outside the channel
+    val far = synthIq(0.3) { t -> val ph = pi2 * (off + 60_000) * t + 3.0 * Math.sin(pi2 * 1000 * t); Math.cos(ph) to Math.sin(ph) }
+    val rxF = Dsp.Receiver(); rxF.setOffset(off); rxF.setMode("NFM", 0); runRx(rxF, far)
+    check(rxF.levelDb < -40, "adjacent signal rejected (${"%.0f".format(rxF.levelDb)} dB)")
+    rxF.squelchDb = -30.0; val muted = runRx(rxF, far); check(muted.all { it == 0f }, "NFM squelch mutes")
+    // AM: carrier with 80 % 700 Hz modulation, 2 kHz off the wanted frequency then retuned with the NCO
+    val am = synthIq(0.3) { t -> val env = 0.5 * (1 + 0.8 * Math.sin(pi2 * 700 * t)); val ph = pi2 * (off + 2000) * t; env * Math.cos(ph) to env * Math.sin(ph) }
+    val rxA = Dsp.Receiver(); rxA.setOffset(off + 2000); rxA.setMode("AM", 0)
+    check(toneRatio(runRx(rxA, am), rxA.audioRate, 700.0, 1700.0) > 50, "AM demodulates the 700 Hz tone (NCO retune)")
+    // SSB: a tone 1 kHz above the carrier is heard in USB, not in LSB
+    val usbTone = synthIq(0.3) { t -> val ph = pi2 * (off + 1000) * t; 0.5 * Math.cos(ph) to 0.5 * Math.sin(ph) }
+    val rxU = Dsp.Receiver(); rxU.setOffset(off); rxU.setMode("USB", 0)
+    val u = runRx(rxU, usbTone); check(toneRatio(u, rxU.audioRate, 1000.0, 2000.0) > 50, "USB hears +1 kHz")
+    val rxL = Dsp.Receiver(); rxL.setOffset(off); rxL.setMode("LSB", 0)
+    val pU = Dsp.goertzel(u, u.size, 1000.0, 12000.0); val l = runRx(rxL, usbTone)
+    val pL = Dsp.goertzel(l, l.size, 1000.0, 12000.0)
+    check(rxL.levelDb > -20 && pL < pU, "LSB weaker than USB on an upper tone")
+    val lsbTone = synthIq(0.3) { t -> val ph = pi2 * (off - 1000) * t; 0.5 * Math.cos(ph) to 0.5 * Math.sin(ph) }
+    val rxL2 = Dsp.Receiver(); rxL2.setOffset(off); rxL2.setMode("LSB", 0)
+    check(toneRatio(runRx(rxL2, lsbTone), 12000, 1000.0, 2000.0) > 50, "LSB hears -1 kHz")
+    // CW: a carrier on the frequency gives the 700 Hz tone
+    val carrier = synthIq(0.3) { t -> val ph = pi2 * off * t; 0.5 * Math.cos(ph) to 0.5 * Math.sin(ph) }
+    val rxC = Dsp.Receiver(); rxC.setOffset(off); rxC.setMode("CW", 0)
+    check(toneRatio(runRx(rxC, carrier), 12000, Dsp.CW_TONE, 1500.0) > 50, "CW carrier gives the 700 Hz tone")
+    // WFM: 75 kHz deviation 1 kHz tone, 48 kHz audio
+    val wfm = synthIq(0.3) { t -> val ph = pi2 * off * t + 75.0 * Math.sin(pi2 * 1000 * t); Math.cos(ph) to Math.sin(ph) }
+    val rxW = Dsp.Receiver(); rxW.setOffset(off); rxW.setMode("WFM", 0); eq(rxW.audioRate, 48000, "WFM audio rate")
+    check(toneRatio(runRx(rxW, wfm), 48000, 1000.0, 3300.0) > 50, "WFM demodulates the 1 kHz tone")
+    // rtl_tcp
+    eq(hex(Sdr.RtlTcp.cmd(Sdr.RtlTcp.SET_FREQ, 145_800_000)), "0108b0bb40", "rtl_tcp set frequency")
+    eq(hex(Sdr.RtlTcp.cmd(Sdr.RtlTcp.SET_FREQ_CORRECTION, -3)), "05fffffffd", "rtl_tcp negative ppm")
+    eq(Sdr.RtlTcp.greeting(byteArrayOf(0x52, 0x54, 0x4c, 0x30, 0, 0, 0, 5, 0, 0, 0, 29)), Sdr.RtlTcp.Greeting("R820T / R860", 29), "rtl_tcp greeting")
+    eq(Sdr.RtlTcp.greeting(ByteArray(12)), null, "rtl_tcp bad greeting")
+    eq(Sdr.RtlTcp.driverUri(14423, 960000, 145800000, 1, true), "iqsrc://-a 127.0.0.1 -p 14423 -s 960000 -f 145800000 -P 1 -T 1", "driver intent")
+    val w = Dsp.wavHeader(12000, 2400); eq(String(w, 0, 4), "RIFF", "WAV header"); eq(w.size, 44, "WAV header size")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

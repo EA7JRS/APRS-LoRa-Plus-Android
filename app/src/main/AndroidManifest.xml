@@ -26,6 +26,15 @@
     <!-- Tracker GNSS as the phone location: only works if the user picks this app in Developer options > Select mock location app -->
     <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION" tools:ignore="MockLocation,ProtectedPermissions" />
 
+    <!-- RTL-SDR driver app (marto.rtl_tcp_andro): opened with an iqsrc:// address -->
+    <queries>
+        <package android:name="marto.rtl_tcp_andro" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="iqsrc" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/sym_def_app_icon"

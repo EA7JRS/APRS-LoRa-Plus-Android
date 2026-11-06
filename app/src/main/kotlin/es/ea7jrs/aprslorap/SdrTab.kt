@@ -34,6 +34,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import es.ea7jrs.aprslorap.core.Dsp
 import es.ea7jrs.aprslorap.core.Sdr
 import java.util.Locale
 
@@ -57,6 +64,32 @@ fun SdrTab() {
     var tx by remember { mutableStateOf(settings.sdrTx) }
     var rec by remember { mutableStateOf(settings.sdrRecordPasses) }
 
+    var ppm by rememberSaveable { mutableStateOf(settings.sdrPpm.toString()) }
+    var biasT by remember { mutableStateOf(settings.sdrBiasTee) }
+    var sql by remember { mutableStateOf(settings.sdrSquelchDb.toFloat()) }
+    var driverMissing by remember { mutableStateOf(false) }
+    val local = host == "127.0.0.1" || host == "localhost"
+
+    fun startLink() {
+        settings.sdrKind = kind.name; settings.sdrHost = host; settings.sdrPort = port.toIntOrNull() ?: kind.defaultPort
+        settings.sdrPpm = ppm.toIntOrNull() ?: 0; settings.sdrBiasTee = biasT
+        SdrControl.configure(settings)
+        SdrControl.connect(ctx, kind, host, settings.sdrPort, settings)
+    }
+    val driver = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) startLink()
+        else SdrControl.update { it.copy(status = "The RTL-SDR driver did not start: " + (r.data?.getStringExtra("detailed_exception_message") ?: "is the dongle plugged in (USB OTG) and allowed?")) }
+    }
+    fun connectNow() {
+        settings.sdrPpm = ppm.toIntOrNull() ?: 0; settings.sdrBiasTee = biasT
+        if (kind == Sdr.Kind.RTLTCP && local) {
+            val p = port.toIntOrNull() ?: kind.defaultPort
+            val uri = Sdr.RtlTcp.driverUri(p, Dsp.INPUT_RATE, settings.sdrLastHz + Dsp.IF_OFFSET, settings.sdrPpm, biasT)
+            try { driverMissing = false; driver.launch(Intent(Intent.ACTION_VIEW, Uri.parse(uri))) }
+            catch (e: ActivityNotFoundException) { driverMissing = true; SdrControl.update { it.copy(status = "The RTL-SDR driver app is not installed") } }
+        } else startLink()
+    }
+
     fun saveFollow() {
         settings.sdrFollow = follow.name; settings.sdrStepHz = step.toIntOrNull() ?: 100; settings.sdrOffsetHz = offset.toIntOrNull() ?: 0
         settings.sdrTx = tx; settings.sdrRecordPasses = rec
@@ -66,9 +99,9 @@ fun SdrTab() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // ---- receiver
         Section("SDR program or server")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (k in Sdr.Kind.entries) {
-                val pick = { kind = k; port = k.defaultPort.toString() }
+        for (pair in Sdr.Kind.entries.chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (k in pair) {
+                val pick = { kind = k; port = k.defaultPort.toString(); if (k == Sdr.Kind.RTLTCP) host = "127.0.0.1" }
                 if (k == kind) Button(onClick = pick) { Text(k.label, fontSize = 11.sp) } else OutlinedButton(onClick = pick) { Text(k.label, fontSize = 11.sp) }
             }
         }
@@ -78,11 +111,7 @@ fun SdrTab() {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {
-                settings.sdrKind = kind.name; settings.sdrHost = host; settings.sdrPort = port.toIntOrNull() ?: kind.defaultPort
-                SdrControl.configure(settings)
-                SdrControl.connect(kind, host, settings.sdrPort)
-            }, enabled = host.isNotBlank()) { Text(if (st.status == "Off") "Connect" else "Reconnect") }
+            Button(onClick = { connectNow() }, enabled = host.isNotBlank()) { Text(if (st.status == "Off") "Connect" else "Reconnect") }
             OutlinedButton(onClick = { SdrControl.disconnect() }, enabled = st.status != "Off") { Text("Disconnect") }
         }
         Text(st.status, fontSize = 12.sp)
@@ -91,18 +120,35 @@ fun SdrTab() {
             Sdr.Kind.RIGCTL -> "SDR++: Module manager > add \"Rigctl Server\", tick Tuning, Listen (port 4532). Also SDR++ on this phone with a USB SDR (127.0.0.1). gqrx: Tools > Remote control (port 7356)."
             Sdr.Kind.SDRCONNECT -> "SDRconnect (GUI or headless) with the WebSocket interface on (port 5454). Audio stays in SDRconnect."
             Sdr.Kind.SPYSERVER -> "Airspy SpyServer (port 5555): the app keeps the device running with a tiny spectrum and tunes it if it is the first client (allow control in spyserver.config). Mode and filter belong to the program that listens (SDR#, SDR++)."
+            Sdr.Kind.RTLTCP -> "The app is the receiver: it demodulates and plays the audio. 127.0.0.1 = RTL-SDR on this phone's USB (OTG) through the free \"RTL-SDR driver\" app; another address = an rtl_tcp server on the network (rtl_tcp -a 0.0.0.0)."
         }, fontSize = 11.sp)
+        if (kind == Sdr.Kind.RTLTCP) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(ppm, { ppm = it.filter { c -> c.isDigit() || c == '-' }.take(4) }, label = { Text("PPM correction") }, singleLine = true, modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                Text("Bias-T (LNA)", fontSize = 13.sp)
+                Switch(biasT, { biasT = it; settings.sdrBiasTee = it })
+            }
+            if (driverMissing) OutlinedButton(onClick = {
+                try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + Sdr.RtlTcp.DRIVER_PACKAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                catch (_: Exception) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + Sdr.RtlTcp.DRIVER_PACKAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            }) { Text("Install the RTL-SDR driver") }
+        }
 
         // ---- tuning
         Section("Tuning")
         Field("Frequency", st.freqHz?.let { Sdr.mhz(it) + " MHz" } ?: "—")
         Field("Mode / filter", (st.mode ?: "—") + (st.bandwidthHz?.let { " / ${it} Hz" } ?: ""))
-        if (st.signalDb != null || st.snrDb != null) Field("Signal", String.format(Locale.US, "%.1f dB, SNR %.1f dB", st.signalDb ?: Double.NaN, st.snrDb ?: Double.NaN))
+        if (st.signalDb != null) Field("Signal", String.format(Locale.US, "%.1f dB", st.signalDb) + (st.snrDb?.let { String.format(Locale.US, ", SNR %.1f dB", it) } ?: ""))
+        if (kind == Sdr.Kind.RTLTCP) {
+            Text(if (sql <= -100f) "Squelch (NFM): open" else String.format(Locale.US, "Squelch (NFM): %.0f dB", sql), fontSize = 13.sp)
+            Slider(sql, { sql = it }, valueRange = -100f..0f, onValueChangeFinished = { val v = if (sql <= -100f) -200 else sql.toInt(); settings.sdrSquelchDb = v; SdrControl.squelch(v.toDouble()) })
+        }
         if (!st.canControl) Text("This program does not let the app control the device.", fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(freq, { freq = it }, label = { Text("MHz") }, singleLine = true, modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            Button(onClick = { Sdr.parseFreq(freq)?.let { SdrControl.tune(it) } }, enabled = st.connected && Sdr.parseFreq(freq) != null) { Text("Tune") }
+            Button(onClick = { Sdr.parseFreq(freq)?.let { settings.sdrLastHz = it; SdrControl.tune(it) } }, enabled = st.connected && Sdr.parseFreq(freq) != null) { Text("Tune") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             for (d in listOf(-12_500L, -1_000L, -100L, 100L, 1_000L, 12_500L)) {
@@ -119,7 +165,7 @@ fun SdrTab() {
         if (kind != Sdr.Kind.SPYSERVER) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (m in Sdr.MODES) {
-                    val go = { SdrControl.mode(m, bw.toIntOrNull() ?: 0) }
+                    val go = { settings.sdrMode = m; settings.sdrBandwidth = bw.toIntOrNull() ?: 0; SdrControl.mode(m, bw.toIntOrNull() ?: 0) }
                     if (st.mode == m) Button(onClick = go, enabled = st.connected) { Text(m, fontSize = 10.sp) }
                     else OutlinedButton(onClick = go, enabled = st.connected) { Text(m, fontSize = 10.sp) }
                 }
@@ -128,10 +174,11 @@ fun SdrTab() {
                 modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         }
         if (st.gainMax > st.gainMin) {
-            Text("Gain " + (st.gain?.toString() ?: "?") + if (kind == Sdr.Kind.SDRCONNECT) " (LNA state: higher = less gain)" else "", fontSize = 13.sp)
+            Text("Gain " + (st.gain?.let { if (it < 0) "automatic" else it.toString() } ?: "?") + when (kind) { Sdr.Kind.SDRCONNECT -> " (LNA state: higher = less gain)"; Sdr.Kind.RTLTCP -> " %"; else -> "" }, fontSize = 13.sp)
+            if (kind == Sdr.Kind.RTLTCP) OutlinedButton(onClick = { settings.sdrGainPercent = -1; SdrControl.gain(-1) }, enabled = st.connected) { Text("Automatic gain") }
             var g by remember(st.gain) { mutableStateOf((st.gain ?: st.gainMin).toFloat()) }
             Slider(g, { g = it }, valueRange = st.gainMin.toFloat()..st.gainMax.toFloat(), steps = (st.gainMax - st.gainMin - 1).coerceAtLeast(0),
-                onValueChangeFinished = { SdrControl.gain(g.toInt()) }, enabled = st.connected)
+                onValueChangeFinished = { if (kind == Sdr.Kind.RTLTCP) settings.sdrGainPercent = g.toInt(); SdrControl.gain(g.toInt()) }, enabled = st.connected)
         }
 
         // ---- follow the tracker
@@ -166,7 +213,7 @@ fun SdrTab() {
                     }
                 }
                 if (kind != Sdr.Kind.SPYSERVER) Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Record each pass (SDR++ recorder / SDRconnect audio)", Modifier.weight(1f), fontSize = 13.sp)
+                    Text("Record each pass (SDR++ recorder, SDRconnect audio, WAV of the app receiver)", Modifier.weight(1f), fontSize = 13.sp)
                     Switch(rec, { rec = it; saveFollow() })
                 }
             }
