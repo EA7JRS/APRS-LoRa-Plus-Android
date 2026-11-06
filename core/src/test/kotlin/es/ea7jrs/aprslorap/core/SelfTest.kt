@@ -665,8 +665,41 @@ private fun testDsp() {
     val w = Dsp.wavHeader(12000, 2400); eq(String(w, 0, 4), "RIFF", "WAV header"); eq(w.size, 44, "WAV header size")
 }
 
+private fun testSigId() {
+    // ustar header built here: "./data.sqlite", 995328 bytes
+    val h = ByteArray(512)
+    fun put(o: Int, t: String) { t.toByteArray().copyInto(h, o) }
+    put(0, "./data.sqlite"); put(100, "0000666"); put(108, "0000000"); put(116, "0000000"); put(124, "00003630000"); put(136, "00000000000")
+    h[156] = '0'.code.toByte(); put(257, "ustar"); put(263, "00")
+    var sum = 0; for (i in 0 until 512) sum += if (i in 148 until 156) 32 else (h[i].toInt() and 0xFF)
+    put(148, String.format("%06o", sum)); h[154] = 0; h[155] = ' '.code.toByte()
+    eq(SigId.tarHeader(h), SigId.TarEntry("./data.sqlite", 995328, '0'), "tar header")
+    eq(SigId.findMember(h + ByteArray(1024), "data.sqlite"), 512L to 995328L, "tar member found")
+    h[0] = 'X'.code.toByte(); eq(SigId.tarHeader(h), null, "tar header with bad checksum"); eq(SigId.tarHeader(ByteArray(512)), null, "tar end")
+    val rel = SigId.parseRelease("{\"sigID_DB\":{\"version\":74,\"url\":\"https://x/v74.tar\",\"sha256_hash\":\"ab\",\"total_bytes\":302172160}}")
+    eq(rel, SigId.Release(74, "https://x/v74.tar", "ab", 302172160L), "release info")
+    eq(SigId.parseIndex("{\"102\":{\"title\":\"Single Sideband Voice\",\"added_in_db\":65}}"), mapOf("Single Sideband Voice" to "102"), "index")
+    val ssb = SigId.Signal(1, "Single Sideband Voice", "u", "**SSB** voice", listOf(3_000_000, 30_000_000), listOf(1900), listOf("SSB"), listOf("AM"), listOf("Amateur Radio"), listOf("Worldwide"))
+    val aprs = SigId.Signal(2, "APRS", "u", "Automatic Packet Reporting System", listOf(144_390_000, 144_800_000, 145_825_000), listOf(12_500), listOf("NFM"), listOf("AFSK"), listOf("Amateur Radio", "Digital"), emptyList())
+    val radar = SigId.Signal(3, "OTH Radar", "u", "radar", listOf(6_000_000, 22_000_000), listOf(40_000), emptyList(), listOf("FMCW"), listOf("Radar"), emptyList())
+    val all = listOf(ssb, aprs, radar)
+    eq(SigId.freqDistance(ssb.frequencies, 14_200_000, 0.02), 0.0, "inside a band")
+    eq(SigId.freqDistance(aprs.frequencies, 144_801_000, 0.02)?.let { it < 1e-5 }, true, "near a spot frequency")
+    eq(SigId.freqDistance(aprs.frequencies, 430_000_000, 0.02), null, "far from every frequency")
+    eq(SigId.search(all, SigId.Query(freqHz = 144_800_000)).map { it.id }, listOf(2), "search by frequency")
+    eq(SigId.search(all, SigId.Query(freqHz = 14_200_000)).map { it.id }, listOf(3, 1), "search by frequency, bands (same score: by name)")
+    eq(SigId.search(all, SigId.Query(freqHz = 14_200_000, bandwidthHz = 2_000)).map { it.id }, listOf(1), "frequency and bandwidth")
+    eq(SigId.search(all, SigId.Query(text = "packet")).map { it.id }, listOf(2), "search by text")
+    eq(SigId.search(all, SigId.Query(category = "radar")).map { it.id }, listOf(3), "search by category")
+    eq(SigId.search(all, SigId.Query(mode = "afsk")).map { it.id }, listOf(2), "search by modulation")
+    eq(ssb.freqText, "3 MHz – 30 MHz", "band text"); eq(SigId.hz(12_500), "12.5 kHz", "hz text")
+    eq(SigId.plainText("### SUMMARY\nA **bold** [link](http://x) text"), "SUMMARY\nA bold link text", "markdown to text")
+    check(SigId.isSqlite("SQLite format 3\u0000xx".toByteArray()), "sqlite header"); check(!SigId.isSqlite("<html>".toByteArray()), "not sqlite")
+    eq(SigId.mediaUrl("102", "ogg"), "https://raw.githubusercontent.com/AresValley/Artemis-Database/master/static/102/media/1.ogg", "media url")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

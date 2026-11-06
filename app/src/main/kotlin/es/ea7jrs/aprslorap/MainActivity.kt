@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App() {
-    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "SAT", "SDR", "Remote", "Config", "DAPNET", "Firmware", "Connect")
+    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "SAT", "SDR", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect")
     var tab by rememberSaveable { mutableStateOf(titles.size - 1) }
     val error by AppState.error.collectAsState()
     val notice by AppState.notice.collectAsState()
@@ -119,10 +119,11 @@ fun App() {
                 4 -> HeardTab()
                 5 -> SatTab()
                 6 -> SdrTab()
-                7 -> RemoteTab()
-                8 -> ConfigTab()
-                9 -> DapnetTab()
-                10 -> FirmwareTab()
+                7 -> SigIdTab()
+                8 -> RemoteTab()
+                9 -> ConfigTab()
+                10 -> DapnetTab()
+                11 -> FirmwareTab()
                 else -> ConnectTab()
             }
         }

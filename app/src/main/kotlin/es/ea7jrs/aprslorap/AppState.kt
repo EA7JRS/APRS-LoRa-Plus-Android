@@ -81,6 +81,9 @@ object AppState {
     val rotServerLast = MutableStateFlow<Pair<Double, Double>?>(null)            // last az / el from Look4Sat, GPredict...
     val rbBusy = MutableStateFlow(false)
     val sdr = MutableStateFlow(SdrControl.State())
+    val sigIdInfo = MutableStateFlow<SigIdDb.Info?>(null)                       // signal identification database
+    val sigIdBusy = MutableStateFlow(false)
+    val sigIdMessage = MutableStateFlow("")
     val dvStatus = MutableStateFlow("Off")                                       // digital voice decoder (dsd-fme)
     val dvLog = MutableStateFlow<List<String>>(emptyList())                               // SDR program / server under control
     val rbMessage = MutableStateFlow("")
