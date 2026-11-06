@@ -71,6 +71,7 @@ class TrackerService : Service() {
             onControlBytes = { controller?.onControlBytes(it) },
             onNmeaBytes = { controller?.onNmeaBytes(it) },
             onControlReady = { controller?.onControlReady(it) },
+            onLog = { AppState.addLog(it) },
         )
         ble = bleLink
         AppState.ble = bleLink

@@ -66,7 +66,8 @@ private fun NoControl() {
     val running by AppState.running.collectAsState()
     Text(
         if (!running) "Start the link in the Connect tab."
-        else "Waiting for the tracker's control service. If it never appears, the tracker needs a firmware with BLE control (docs/BLE_CONTROL.md).",
+        else "The tracker has not offered the control service. The Connect tab log says which BLE services it found: " +
+            "\"control NO\" means the firmware on the tracker is not the ble-control one (flash it again from that branch).",
         Modifier.padding(16.dp),
     )
 }

@@ -51,8 +51,11 @@ class BleScanner(ctx: Context) {
         stop()
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val name = result.scanRecord?.deviceName ?: result.device.name ?: "(no name)"
-                onFound(name, result.device.address)
+                // The tracker sends its name in the scan response: the first result of a device may come without it,
+                // so every result is passed on and the list keeps the best name it saw
+                val name = result.scanRecord?.deviceName?.takeIf { it.isNotBlank() }
+                    ?: try { result.device.name } catch (e: SecurityException) { null }
+                onFound(name ?: "", result.device.address)
             }
         }
         callback = cb
@@ -81,6 +84,7 @@ class TrackerBle(
     private val onControlBytes: (ByteArray) -> Unit = {},           // control events (JSON lines)
     private val onNmeaBytes: (ByteArray) -> Unit = {},              // raw NMEA
     private val onControlReady: (Boolean) -> Unit = {},             // true: the tracker has the control service; false: link lost
+    private val onLog: (String) -> Unit = {},
 ) {
     private sealed class Op {
         class Write(val ch: BluetoothGattCharacteristic, val data: ByteArray, val fast: Boolean = false) : Op()
@@ -254,6 +258,9 @@ class TrackerBle(
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 onStatus("Connected, preparing...")
+                // Android keeps the service list of a device it met before: after a firmware update the new services
+                // (the control service) would not show up. Empty that cache before discovering (hidden API, best effort).
+                refreshCache(g)
                 if (!g.requestMtu(247)) g.discoverServices()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 clearLink()
@@ -283,10 +290,17 @@ class TrackerBle(
             val cmd = control?.getCharacteristic(TrackerUuids.CONTROL_CMD)
             val nmea = control?.getCharacteristic(TrackerUuids.CONTROL_NMEA)
             val firmware = control?.getCharacteristic(TrackerUuids.CONTROL_FIRMWARE)
+            onLog(
+                "BLE services: KISS yes, control " + when {
+                    control == null -> "NO (the firmware has no ble-control)"
+                    evt == null || cmd == null -> "incomplete"
+                    else -> "yes (NMEA ${if (nmea != null) "yes" else "no"}, firmware update ${if (firmware != null) "yes" else "no"})"
+                },
+            )
 
             val ops = ArrayList<Op>()
             ops.add(Op.Subscribe(notifyChar, true))
-            ops.add(Op.Run { kissChar = write; onStatus("Connected") })
+            ops.add(Op.Run { kissChar = write; onStatus(if (evt != null && cmd != null) "Connected" else "Connected (KISS only: firmware without ble-control)") })
             if (evt != null && cmd != null) {
                 ops.add(Op.Subscribe(evt, true))
                 ops.add(
@@ -321,6 +335,14 @@ class TrackerBle(
         @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
             if (Build.VERSION.SDK_INT < 33) ch.value?.let { dispatch(ch, it) }
+        }
+    }
+
+    private fun refreshCache(g: BluetoothGatt) {
+        try {
+            g.javaClass.getMethod("refresh").invoke(g)
+        } catch (e: Exception) {
+            onLog("BLE: could not refresh the service cache (${e.javaClass.simpleName})")
         }
     }
 

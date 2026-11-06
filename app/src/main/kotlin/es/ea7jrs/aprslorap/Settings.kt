@@ -29,6 +29,11 @@ class Settings(ctx: Context) {
         get() = p.getString("device", "")!!
         set(v) { p.edit().putString("device", v).apply() }
 
+    /** Name the tracker advertised when it was chosen (only for display). */
+    var deviceName: String
+        get() = p.getString("device_name", "")!!
+        set(v) { p.edit().putString("device_name", v).apply() }
+
     var igateEnabled: Boolean
         get() = p.getBoolean("igate", false)
         set(v) { p.edit().putBoolean("igate", v).apply() }

@@ -247,6 +247,7 @@ fun ConnectTab() {
     var trackerCall by rememberSaveable { mutableStateOf(settings.trackerCallsign) }
     var path by rememberSaveable { mutableStateOf(settings.path) }
     var device by rememberSaveable { mutableStateOf(settings.deviceAddress) }
+    var deviceName by rememberSaveable { mutableStateOf(settings.deviceName) }
     var igate by rememberSaveable { mutableStateOf(settings.igateEnabled) }
     var host by rememberSaveable { mutableStateOf(settings.isHost) }
     var port by rememberSaveable { mutableStateOf(settings.isPort.toString()) }
@@ -287,6 +288,7 @@ fun ConnectTab() {
         settings.trackerCallsign = trackerCall
         settings.path = path
         settings.deviceAddress = device
+        settings.deviceName = deviceName
         settings.igateEnabled = igate
         settings.isHost = host
         settings.isPort = port.toIntOrNull() ?: 14580
@@ -325,15 +327,23 @@ fun ConnectTab() {
         OutlinedTextField(path, { path = it.uppercase() }, label = { Text("Path (WIDE1-1,WIDE2-1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
         Text("Tracker (Bluetooth LE, KISS)", fontWeight = FontWeight.Bold)
-        Text(if (device.isEmpty()) "No tracker chosen" else "Chosen: $device")
+        Text(if (device.isEmpty()) "No tracker chosen" else "Chosen: " + (if (deviceName.isNotEmpty()) "$deviceName  ($device)" else device))
         OutlinedButton(onClick = {
             withPermissions {
                 found.clear()
-                if (!scanner.start { n, a -> if (found.none { it.second == a }) found.add(n to a) }) AppState.error.value = "Bluetooth is off"
+                val ok = scanner.start { n, a ->
+                    val i = found.indexOfFirst { it.second == a }
+                    if (i < 0) found.add(n to a)
+                    else if (found[i].first.isEmpty() && n.isNotEmpty()) found[i] = n to a      // the name came later
+                }
+                if (!ok) AppState.error.value = "Bluetooth is off"
             }
         }) { Text("Scan for trackers") }
         for ((n, a) in found) {
-            Text("$n  ($a)", Modifier.fillMaxWidth().clickable { device = a; scanner.stop() }.padding(vertical = 6.dp))
+            Text(
+                (if (n.isNotEmpty()) n else "(name not received yet)") + "  ($a)",
+                Modifier.fillMaxWidth().clickable { device = a; deviceName = n; scanner.stop() }.padding(vertical = 6.dp),
+            )
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
