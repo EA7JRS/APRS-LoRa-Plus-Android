@@ -85,6 +85,7 @@ class TrackerBle(
     private val onNmeaBytes: (ByteArray) -> Unit = {},              // raw NMEA
     private val onControlReady: (Boolean) -> Unit = {},             // true: the tracker has the control service; false: link lost
     private val onLog: (String) -> Unit = {},
+    private val kissOnly: Boolean = false,                           // extra receivers: KISS only, no control service, no PIN
 ) {
     private sealed class Op {
         class Write(val ch: BluetoothGattCharacteristic, val data: ByteArray, val fast: Boolean = false) : Op()
@@ -309,8 +310,8 @@ class TrackerBle(
 
             val ops = ArrayList<Op>()
             ops.add(Op.Subscribe(notifyChar, true))
-            ops.add(Op.Run { kissChar = write; onStatus(if (evt != null && cmd != null) "Connected" else "Connected (KISS only: firmware without ble-control)") })
-            if (evt != null && cmd != null) {
+            ops.add(Op.Run { kissChar = write; onStatus(if (kissOnly) "Connected (receiver, KISS)" else if (evt != null && cmd != null) "Connected" else "Connected (KISS only: firmware without ble-control)") })
+            if (evt != null && cmd != null && !kissOnly) {
                 // Since firmware 5.3.4 the control service needs an encrypted link paired with the tracker's PIN
                 // (WebUI > Bluetooth > Control PIN). KISS stays open, so APRS works meanwhile.
                 ops.add(Op.Authenticate(evt))

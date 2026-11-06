@@ -821,8 +821,19 @@ private fun testG3ruh() {
     eq(Ax25Frame.decode(got2.firstOrNull() ?: ByteArray(0))?.toTnc2(), "EA7JRS-7>APZLRP,WIDE1-1:!3711.49N/00356.20W>APRS LoRa+ FSK test", "G3RUH frame to TNC2")
 }
 
+private fun testReceivers() {
+    val b = Receivers.entry("aa:bb:cc:dd:ee:01", " Supreme FSK ")!!
+    eq(b, Receivers.Entry(Receivers.Kind.BLE, "AA:BB:CC:DD:EE:01", "Supreme FSK"), "BLE receiver")
+    eq(Receivers.entry("192.168.4.1", "")!!.address, "192.168.4.1:8001", "TCP receiver, default KISS port")
+    eq(Receivers.entry("tracker.local:9001", "x")!!.hostPort(), "tracker.local" to 9001, "TCP receiver with port")
+    eq(Receivers.entry("host:99999", ""), null, "bad port refused"); eq(Receivers.entry("a b", ""), null, "spaces refused")
+    val list = listOf(b, Receivers.entry("10.0.0.5:8001", "Roof")!!.copy(enabled = false))
+    eq(Receivers.decode(Receivers.encode(list)), list, "receivers saved and read back")
+    eq(b.key, "ble:AA:BB:CC:DD:EE:01", "receiver key")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

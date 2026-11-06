@@ -87,6 +87,7 @@ object AppState {
     val modem = MutableStateFlow(ModemRunner.State())                           // text modes (CW, RTTY, PSK)
     val modemText = MutableStateFlow("")
     val waterfallRow = MutableStateFlow<FloatArray?>(null)
+    val extraStatus = MutableStateFlow<Map<String, String>>(emptyMap())          // receiver key -> status
     val packetStatus = MutableStateFlow("Off")                                   // packet FSK (G3RUH) from the app receiver
     val packetLog = MutableStateFlow<List<String>>(emptyList())
     val dvStatus = MutableStateFlow("Off")                                       // digital voice decoder (dsd-fme)

@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -267,6 +268,10 @@ fun ConnectTab() {
     var licence by remember { mutableStateOf(Licence.summary(settings)) }
     var checking by remember { mutableStateOf(false) }
     val found = remember { mutableStateListOf<Pair<String, String>>() }
+    var extras by remember { mutableStateOf(settings.extraReceivers) }
+    var rxAddr by rememberSaveable { mutableStateOf("") }
+    var rxName by rememberSaveable { mutableStateOf("") }
+    val extraStatus by AppState.extraStatus.collectAsState()
     val scanner = remember { BleScanner(ctx) }
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -360,11 +365,41 @@ fun ConnectTab() {
             }
         }) { Text("Scan for trackers") }
         for ((n, a) in found) {
-            Text(
-                (if (n.isNotEmpty()) n else "(name not received yet)") + "  ($a)",
-                Modifier.fillMaxWidth().clickable { device = a; deviceName = n; scanner.stop() }.padding(vertical = 6.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    (if (n.isNotEmpty()) n else "(name not received yet)") + "  ($a)",
+                    Modifier.weight(1f).clickable { device = a; deviceName = n; scanner.stop() }.padding(vertical = 6.dp),
+                )
+                TextButton(onClick = {
+                    es.ea7jrs.aprslorap.core.Receivers.entry(a, n)?.let { e ->
+                        if (extras.none { it.key == e.key }) { extras = extras + e; settings.extraReceivers = extras }
+                    }
+                }) { Text("+ receiver", fontSize = 11.sp) }
+            }
         }
+
+        // ---- more trackers as receivers
+        Text("More trackers as receivers", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+        Text("Each one listens in its own mode and frequency (APRS LoRa, APRS FSK...) and what it hears goes to Stations and Messages. " +
+            "The tracker chosen above keeps the control and the transmitting. Bluetooth: KISS only, no PIN. WiFi: the tracker's KISS server (port 8001).", fontSize = 11.sp)
+        for (e in extras) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(e.label + "  (" + (if (e.kind == es.ea7jrs.aprslorap.core.Receivers.Kind.BLE) "Bluetooth " else "WiFi ") + e.address + ")", fontSize = 13.sp)
+                    Text(if (!e.enabled) "Disabled" else extraStatus[e.key] ?: if (running) "Starting..." else "Starts with the link", fontSize = 11.sp)
+                }
+                Switch(e.enabled, { on -> extras = extras.map { if (it.key == e.key) it.copy(enabled = on) else it }; settings.extraReceivers = extras })
+                TextButton(onClick = { extras = extras.filter { it.key != e.key }; settings.extraReceivers = extras }) { Text("Remove", fontSize = 11.sp) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(rxAddr, { rxAddr = it.trim() }, label = { Text("IP[:port] or Bluetooth address") }, singleLine = true, modifier = Modifier.weight(1.4f))
+            OutlinedTextField(rxName, { rxName = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.weight(1f))
+        }
+        val newRx = es.ea7jrs.aprslorap.core.Receivers.entry(rxAddr, rxName)
+        OutlinedButton(onClick = { newRx?.let { e -> if (extras.none { it.key == e.key }) { extras = extras + e; settings.extraReceivers = extras }; rxAddr = ""; rxName = "" } },
+            enabled = newRx != null) { Text("Add receiver") }
+        if (running && extras.isNotEmpty()) Text("Changes apply when the link is restarted.", fontSize = 11.sp)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = igate, onCheckedChange = { igate = it })

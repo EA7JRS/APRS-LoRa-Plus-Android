@@ -28,7 +28,7 @@ object PacketRunner {
             val line = f?.toTnc2() ?: ("(not AX.25) " + bytes.joinToString("") { String.format("%02X", it) }.take(80))
             val l = AppState.packetLog.value
             AppState.packetLog.value = (if (l.size >= 50) l.drop(1) else l) + (fmt.format(Date()) + " " + line)
-            if (f != null) AppState.controller?.onPhoneRadioFrame(f)
+            if (f != null) AppState.controller?.onPhoneRadioFrame(f, "RTL-SDR")
             AppState.packetStatus.value = "Packet ${baud.toInt()} bd: ${decoder?.frames ?: 0} frame(s), ${decoder?.badFcs ?: 0} with bad FCS"
         }
         active = true

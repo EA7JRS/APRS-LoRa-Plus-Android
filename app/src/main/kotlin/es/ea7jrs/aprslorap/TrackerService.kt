@@ -105,6 +105,7 @@ class TrackerService : Service() {
         isClient?.start()
         RotctlLink.apply(settings)
         bleLink.connect(settings.deviceAddress)
+        ExtraReceivers.start(this, settings)
         AppState.running.value = true
         return START_STICKY
     }
@@ -120,6 +121,7 @@ class TrackerService : Service() {
         nmeaServer?.stop(); nmeaServer = null
         mock?.stop(); mock = null
         RotctlLink.stopAll()
+        ExtraReceivers.stop()
         PhoneSensors.stopAtt()
         AppState.controller = null
         AppState.controlReady.value = false

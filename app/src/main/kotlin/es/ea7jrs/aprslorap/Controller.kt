@@ -131,12 +131,12 @@ class Controller(
     }
 
     /** A frame heard by the phone's own receiver (RTL-SDR: APRS FSK 9600...), handled like one from the tracker. */
-    fun onPhoneRadioFrame(frame: Ax25Frame) { exec.execute { safe { onFrame(frame) } } }
+    fun onPhoneRadioFrame(frame: Ax25Frame, via: String = "phone receiver") { exec.execute { safe { onFrame(frame, via) } } }
 
-    private fun onFrame(frame: Ax25Frame) {
+    private fun onFrame(frame: Ax25Frame, via: String? = null) {
         val now = System.currentTimeMillis()
         table.onFrame(frame, now)
-        AppState.addLog("RX " + frame.toTnc2())
+        AppState.addLog("RX " + (via?.let { "[$it] " } ?: "") + frame.toTnc2())
         val p = Aprs.parse(frame.infoText)
         if (p is AprsPacket.Message) {
             engine.onMessage(frame.source.text(), p)?.let { msg ->

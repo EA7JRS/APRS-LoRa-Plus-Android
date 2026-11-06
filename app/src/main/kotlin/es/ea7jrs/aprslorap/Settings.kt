@@ -219,6 +219,11 @@ class Settings(ctx: Context) {
         get() = p.getBoolean("sdr_rec", false)
         set(v) { p.edit().putBoolean("sdr_rec", v).apply() }
 
+    /** More trackers as receivers (see core Receivers). */
+    var extraReceivers: List<es.ea7jrs.aprslorap.core.Receivers.Entry>
+        get() = es.ea7jrs.aprslorap.core.Receivers.decode(p.getString("extra_rx", "")!!)
+        set(v) { p.edit().putString("extra_rx", es.ea7jrs.aprslorap.core.Receivers.encode(v)).apply() }
+
     val validatedCall: String get() = p.getString("valid_call", "")!!
     val validatedIds: String get() = p.getString("valid_ids", "")!!
     val validatedName: String get() = p.getString("valid_name", "")!!
