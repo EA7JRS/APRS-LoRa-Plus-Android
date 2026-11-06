@@ -420,8 +420,70 @@ private fun testFirmware() {
     eq((fw as ControlEvent.Firmware).status.latest, "5.3.3", "tracker WiFi update status")
 }
 
+private fun testSat() {
+    val st = Control.parse("""{"e":"sat","ok":true,"n":"ISS (ZARYA)","id":25544,"i":3,"geo":false,"tx":4,"tle":1.2,"pos":"GPS","az":123.4,"el":45.0,"rng":850,"rr":-1.234,"aos":1790000000,"los":1790000600,"max":62}""")
+    val s = (st as ControlEvent.Sat).state
+    check(s.ok && s.name == "ISS (ZARYA)" && s.noradId == 25544 && s.index == 3 && !s.geostationary && s.transmitters == 4, "sat state")
+    check(s.azDeg == 123.4 && s.elDeg == 45.0 && s.rangeKm == 850 && s.rangeRateKmS == -1.234 && s.maxElDeg == 62, "sat look angles")
+    eq(s.aos, 1790000000L, "sat AOS"); eq(s.positionSource, "GPS", "sat position source")
+    val none = (Control.parse("""{"e":"sat","ok":false,"pos":""}""") as ControlEvent.Sat).state
+    check(!none.ok && none.name == null && none.azDeg == null && none.aos == null, "sat without data")
+
+    val sl = Control.parse("""{"e":"satlist","tot":239,"sel":3,"from":0,"items":[{"i":0,"id":25544,"n":"ISS (ZARYA)","c":"U","t":4},{"i":1,"id":43770,"n":"FOSSASAT-1B","c":"L","t":1}]}""") as ControlEvent.SatList
+    eq(sl.total, 239, "satlist total"); eq(sl.selected, 3, "satlist selected"); eq(sl.items.size, 2, "satlist items")
+    eq(sl.items[1], SatEntry(1, 43770, "FOSSASAT-1B", "L", 1), "satlist item")
+
+    val tl = Control.parse("""{"e":"sattxlist","items":[{"i":0,"m":"FM","b":0,"d":"Voice","up":145990000,"dn":437800000,"rx":"n/a","tx":"n/a"},{"i":1,"m":"AFSK","b":1200,"d":"APRS","up":0,"dn":145825000,"rx":"FSK","tx":"FSK","rxd":145826100}]}""") as ControlEvent.SatTransmitters
+    eq(tl.items.size, 2, "transmitters"); eq(tl.items[1].baud, 1200, "transmitter baud"); eq(tl.items[1].rxDopplerHz, 145826100L, "transmitter Doppler")
+    eq(tl.items[0].rxDopplerHz, null, "transmitter without Doppler"); eq(tl.items[1].rxKind, "FSK", "transmitter RX class")
+
+    val rx = (Control.parse("""{"e":"satrx","on":true,"k":"FSK","f":437425310,"dop":-3120,"fine":0,"rssi":-104,"n":7,"tx":2,"txt":"EA4XYZ-1>APRS:>telemetry ok"}""") as ControlEvent.SatRx).receiver
+    check(rx.on && rx.kind == "FSK" && rx.freqHz == 437425310L && rx.dopplerHz == -3120 && rx.rssi == -104 && rx.frames == 7 && rx.tx == 2, "satrx")
+    eq(rx.text, "EA4XYZ-1>APRS:>telemetry ok", "satrx line")
+    val off = (Control.parse("""{"e":"satrx","on":false}""") as ControlEvent.SatRx).receiver
+    check(!off.on && off.kind == null && off.text == null, "satrx off")
+
+    eq(Control.parse("""{"e":"sattx","ok":true,"f":437425000,"n":3}"""), ControlEvent.SatTxDone(true, 437425000L, 3), "sattx result")
+
+    val rot = (Control.parse("""{"e":"rot","az":123.4,"el":45.0,"trk":true,"src":0,"pit":1.5,"rol":-2.0,"mob":true,"abs":200.0,"hdg":76.6,"name":"ISS (ZARYA)","km":0}""") as ControlEvent.Rotor).pointing
+    check(rot.azDeg == 123.4 && rot.elDeg == 45.0 && rot.tracking && rot.source == 0 && rot.mobile && rot.absAzDeg == 200.0 && rot.headingDeg == 76.6, "rot")
+    eq(rot.pitchDeg, 1.5, "rot pitch"); eq(rot.name, "ISS (ZARYA)", "rot name")
+    val rot2 = (Control.parse("""{"e":"rot","az":10.0,"el":0.0,"trk":false,"src":2}""") as ControlEvent.Rotor).pointing
+    check(!rot2.mobile && rot2.name == null && rot2.km == null && rot2.pitchDeg == null, "rot minimal")
+
+    val tg = Control.parse("""{"e":"targets","sel":0,"src":2,"items":[{"i":0,"n":"Repetidor X","lat":37.1,"lon":-5.9,"alt":850,"f":145600000}]}""") as ControlEvent.Targets
+    eq(tg.items, listOf(RotorTarget(0, "Repetidor X", 37.1, -5.9, 850, 145600000L)), "targets"); eq(tg.source, 2, "targets source")
+
+    eq(TrackerMode.name(TrackerMode.SAT), "SAT", "SAT mode name")
+
+    // sats.txt
+    val blocks = StringBuilder()
+    for (k in 0 until 4) blocks.append("S|${25544 + k}|SAT $k\n1 25544U 98067A   26300.50000000  .00016717  00000-0  10270-3 0  9993\n2 25544  51.6400 208.9163 0006317  69.9862  25.2906 15.49560000 00009\nT|145800000|145800000|437800000|437800000|FM|0|0|Voice\n")
+    val data = blocks.toString()
+    eq(Sat.checkData(data), null, "sats.txt accepted"); eq(Sat.countSatellites(data), 4, "sats.txt satellites")
+    check(Sat.checkData("S|1|x\n") != null, "short sats.txt refused")
+    check(Sat.checkData("x".repeat(500)) != null, "sats.txt without satellites refused")
+    check(Sat.checkData(data.repeat(80)) != null, "sats.txt too big refused")
+    val lines = Control.satData(data)
+    check(lines.first().contains("\"c\":\"satdata\"") && lines.first().contains("\"s\":\"begin\"") && lines.first().contains("\"n\":${data.toByteArray().size}"), "satdata begin")
+    check(lines.last().contains("\"s\":\"end\""), "satdata end")
+    check(lines.all { it.toByteArray(Charsets.UTF_8).size <= Control.MAX_LINE_SAFE + 1 }, "satdata lines fit the tracker")
+    val back = StringBuilder()
+    for (l in lines) { val o = Json.parseObject(l.trim())!!; if (o.str("s") == "c") back.append(o.str("d")) }
+    eq(back.toString(), data, "satdata chunks rebuild the file")
+
+    // phone position
+    eq(Sat.position(37.1915123456, -3.9367014, 512.4, 8.6f), "{\"c\":\"pos\",\"lat\":37.191512,\"lon\":-3.936701,\"alt\":512,\"acc\":9}\n", "pos command")
+    eq(Sat.position(91.0, 0.0, null, null), null, "pos out of range"); eq(Sat.position(10.0, 20.0, null, null), "{\"c\":\"pos\",\"lat\":10,\"lon\":20}\n", "pos without alt")
+
+    eq(Sat.relative(1000, 940), "in 1 min 00 s", "relative future"); eq(Sat.relative(1000, 1000), "now", "relative now"); eq(Sat.relative(0, 7500), "2 h 05 min ago", "relative past")
+    eq(Sat.passText(1000, 1600, 900), "Next pass starts in 1 min 40 s", "pass waiting"); eq(Sat.passText(1000, 1600, 1100), "In view, ends in 8 min 20 s", "pass in view")
+    eq(Sat.passText(1000, 1600, 2000), "Pass over", "pass over"); eq(Sat.passText(null, null, 0), null, "pass unknown")
+    eq(Sat.compass(0.0), "N", "compass N"); eq(Sat.compass(359.0), "N", "compass wrap"); eq(Sat.compass(135.0), "SE", "compass SE"); eq(Sat.compass(-90.0), "W", "compass negative")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

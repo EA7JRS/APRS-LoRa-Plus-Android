@@ -28,10 +28,11 @@ object TrackerMode {
     const val FT8 = 6
     const val FT4 = 7
     const val FST4W = 8
+    const val SAT = 9
 
     fun name(m: Int): String = when (m) {
         APRS_LORA -> "APRS LoRa"; APRS_FSK -> "APRS FSK"; MORSE -> "Morse / CW"; WSPR -> "WSPR"; LRFHSS -> "LR-FHSS"
-        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; else -> "Mode $m"
+        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; else -> "Mode $m"
     }
 
     fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK
@@ -100,6 +101,36 @@ data class ScreenMirror(val page: Int, val current: Int, val title: String, val 
 data class TrackerAction(val name: String, val label: String, val allowed: Boolean)
 data class ActionPage(val page: Int, val title: String, val actions: List<TrackerAction>)
 
+/** State of SAT mode (event `sat`, every 2 s while in that mode). Times are Unix UTC seconds. */
+data class SatState(
+    val ok: Boolean, val name: String?, val noradId: Int?, val index: Int?, val geostationary: Boolean, val transmitters: Int, val tleAgeDays: Double?,
+    val positionSource: String, val azDeg: Double?, val elDeg: Double?, val rangeKm: Int?, val rangeRateKmS: Double?,
+    val aos: Long?, val los: Long?, val maxElDeg: Int?,
+)
+
+/** One satellite of the tracker's list. [category]: U 70 cm, L LoRa, G geostationary. */
+data class SatEntry(val index: Int, val noradId: Int, val name: String, val category: String, val transmitters: Int)
+
+/** One transmitter of the chosen satellite; [rxKind] / [txKind]: CW, FSK, LoRa, n/a (what the tracker can do with it). */
+data class SatTransmitter(
+    val index: Int, val mode: String, val baud: Int, val description: String, val upHz: Long, val downHz: Long,
+    val rxKind: String, val txKind: String, val rxDopplerHz: Long?, val txDopplerHz: Long?,
+)
+
+/** Receiver of satellites (event `satrx`). [text] only when there is a new received line. */
+data class SatReceiver(
+    val on: Boolean, val kind: String?, val freqHz: Long?, val dopplerHz: Int?, val fineHz: Int?, val rssi: Int?, val frames: Int?, val tx: Int?, val text: String?,
+)
+
+/** A fixed target of the rotor (repeater, beacon...). */
+data class RotorTarget(val slot: Int, val name: String, val lat: Double, val lon: Double, val altM: Int, val freqHz: Long)
+
+/** Where the rotor points (event `rot`). [source]: 0 satellite, 1 APRS station of the compass, 2 fixed target. */
+data class RotorPointing(
+    val azDeg: Double, val elDeg: Double, val tracking: Boolean, val source: Int, val name: String?, val km: Int?,
+    val pitchDeg: Double?, val rollDeg: Double?, val mobile: Boolean, val absAzDeg: Double?, val headingDeg: Double?,
+)
+
 sealed class ControlEvent {
     data class Info(val info: TrackerInfo) : ControlEvent()
     data class Status(val status: TrackerStatus) : ControlEvent()
@@ -117,6 +148,13 @@ sealed class ControlEvent {
     data class ActionsEnd(val pages: Int) : ControlEvent()
     /** A piece of the tracker's configuration file (answer to `cfgget`). */
     data class ConfigPiece(val offset: Int, val total: Int, val bytes: Int, val text: String) : ControlEvent()
+    data class Sat(val state: SatState) : ControlEvent()
+    data class SatList(val total: Int, val selected: Int, val from: Int, val items: List<SatEntry>) : ControlEvent()
+    data class SatTransmitters(val items: List<SatTransmitter>) : ControlEvent()
+    data class SatRx(val receiver: SatReceiver) : ControlEvent()
+    data class SatTxDone(val ok: Boolean, val freqHz: Long, val count: Int) : ControlEvent()
+    data class Rotor(val pointing: RotorPointing) : ControlEvent()
+    data class Targets(val selected: Int, val source: Int, val items: List<RotorTarget>) : ControlEvent()
     data class Ok(val command: String, val id: Int?) : ControlEvent()
     data class Error(val command: String, val id: Int?, val message: String) : ControlEvent()
     data class Unknown(val raw: String) : ControlEvent()
@@ -178,6 +216,44 @@ object Control {
                 ),
             )
             "cfg" -> ControlEvent.ConfigPiece(o.int("o") ?: 0, o.int("n") ?: 0, o.int("b") ?: 0, o.str("d") ?: "")
+            "sat" -> ControlEvent.Sat(
+                SatState(
+                    o.bool("ok") ?: false, o.str("n"), o.int("id"), o.int("i"), o.bool("geo") ?: false, o.int("tx") ?: 0, o.num("tle"),
+                    o.str("pos") ?: "", o.num("az"), o.num("el"), o.int("rng"), o.num("rr"), o.long("aos"), o.long("los"), o.int("max"),
+                ),
+            )
+            "satlist" -> ControlEvent.SatList(
+                o.int("tot") ?: 0, o.int("sel") ?: -1, o.int("from") ?: 0,
+                o.objList("items").mapNotNull { e -> e.int("i")?.let { SatEntry(it, e.int("id") ?: 0, e.str("n") ?: "?", e.str("c") ?: "", e.int("t") ?: 0) } },
+            )
+            "sattxlist" -> ControlEvent.SatTransmitters(
+                o.objList("items").mapNotNull { t ->
+                    t.int("i")?.let {
+                        SatTransmitter(
+                            it, t.str("m") ?: "", t.int("b") ?: 0, t.str("d") ?: "", t.long("up") ?: 0, t.long("dn") ?: 0,
+                            t.str("rx") ?: "n/a", t.str("tx") ?: "n/a", t.long("rxd"), t.long("txd"),
+                        )
+                    }
+                },
+            )
+            "satrx" -> ControlEvent.SatRx(
+                SatReceiver(
+                    o.bool("on") ?: false, o.str("k"), o.long("f"), o.int("dop"), o.int("fine"), o.int("rssi"), o.int("n"), o.int("tx"), o.str("txt"),
+                ),
+            )
+            "sattx" -> ControlEvent.SatTxDone(o.bool("ok") ?: false, o.long("f") ?: 0, o.int("n") ?: 0)
+            "rot" -> ControlEvent.Rotor(
+                RotorPointing(
+                    o.num("az") ?: 0.0, o.num("el") ?: 0.0, o.bool("trk") ?: false, o.int("src") ?: 0, o.str("name"), o.int("km"),
+                    o.num("pit"), o.num("rol"), o.bool("mob") ?: false, o.num("abs"), o.num("hdg"),
+                ),
+            )
+            "targets" -> ControlEvent.Targets(
+                o.int("sel") ?: 0, o.int("src") ?: 0,
+                o.objList("items").mapNotNull { t ->
+                    t.int("i")?.let { RotorTarget(it, t.str("n") ?: "", t.num("lat") ?: 0.0, t.num("lon") ?: 0.0, t.int("alt") ?: 0, t.long("f") ?: 0) }
+                },
+            )
             "ok" -> ControlEvent.Ok(o.str("c") ?: "", o.int("id"))
             "err" -> ControlEvent.Error(o.str("c") ?: "", o.int("id"), o.str("msg") ?: "error")
             else -> ControlEvent.Unknown(line)
@@ -226,6 +302,11 @@ object Control {
     /** Whole configuration file for `cfgset` (read it with `cfgget`, change it, send it back). */
     fun configSet(configJson: String, reboot: Boolean = true): List<String> =
         chunked("cfgset", mapOf("n" to configJson.toByteArray(Charsets.UTF_8).size, "reboot" to reboot), configJson)
+
+    /** The file `sats.txt` for `satdata` (the tracker takes up to [SAT_DATA_MAX] bytes). Same stop-and-wait steps as [configSet]. */
+    fun satData(text: String): List<String> = chunked("satdata", mapOf("n" to text.toByteArray(Charsets.UTF_8).size), text)
+
+    const val SAT_DATA_MAX = 64_000
 
     private fun page(o: Map<String, Any?>) = Page(
         o.long("ric") ?: 0, o.int("f") ?: 0, o.bool("own") ?: false, o.bool("bad") ?: false, o.long("age") ?: 0, o.int("rssi") ?: 0, o.str("t") ?: "",

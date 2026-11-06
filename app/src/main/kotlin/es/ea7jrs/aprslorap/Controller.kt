@@ -19,6 +19,7 @@ import es.ea7jrs.aprslorap.core.MessageEngine
 import es.ea7jrs.aprslorap.core.Nmea
 import es.ea7jrs.aprslorap.core.ActionPage
 import es.ea7jrs.aprslorap.core.Page
+import es.ea7jrs.aprslorap.core.Sat
 import es.ea7jrs.aprslorap.core.StationTable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -53,7 +54,11 @@ class Controller(
         /** Commands that only read: allowed without a validated callsign. */
         val QUERIES = setOf("info", "status", "sensors", "gnss", "dapnet", "sub", "msgs", "heard", "actlist", "screen", "cfgget",
             // the firmware update does not transmit: allowed too
-            "ota", "ota_abort", "fwcheck", "fwinstall", "fwstatus")
+            "ota", "ota_abort", "fwcheck", "fwinstall", "fwstatus",
+            // SAT mode: reading, listening and telling the tracker where the phone is do not transmit (sattx, satdata and tgt are not here)
+            "sat", "satlist", "sattxlist", "tgtlist", "satsel", "satrx", "pos")
+        const val SAT_LIST_PAGE = 40
+        const val SAT_LIST_MAX = 600
     }
 
     private val exec = Executors.newSingleThreadScheduledExecutor()
@@ -74,6 +79,18 @@ class Controller(
     private var configSteps = 0
     private var configWriting = false
     private var configDeadlineMs = 0L
+
+    private val satLines = ArrayDeque<String>()
+    private var satSteps = 0
+    private var satWriting = false
+    private var satDeadlineMs = 0L
+    private var satListLoading = false
+    private var phoneLat = 0.0
+    private var phoneLon = 0.0
+    private var phoneAlt: Double? = null
+    private var phoneAcc: Float? = null
+    private var phoneAtMs = 0L
+    private var phoneSentMs = 0L
 
     private val controlLines = LineAssembler()
     private val nmeaLines = LineAssembler(512)
@@ -175,6 +192,11 @@ class Controller(
                 controlOn = on
                 AppState.controlReady.value = on
                 controlLines.reset(); nmeaLines.reset()
+                if (!on) {
+                    satWriting = false; satLines.clear(); satListLoading = false
+                    AppState.satDataBusy.value = false
+                    AppState.satReceiver.value = null
+                }
                 if (on) {
                     sendControlLine(Control.command("info"))
                     sendControlLine(Control.command("status"))
@@ -224,6 +246,28 @@ class Controller(
             }
             is ControlEvent.ActionsEnd -> { AppState.actions.value = actionsBuilding.toList(); actionsFresh = true }
             is ControlEvent.ConfigPiece -> onConfigPiece(ev)
+            is ControlEvent.Sat -> {
+                AppState.satState.value = ev.state
+                ev.state.index?.let { AppState.satSelected.value = it }
+            }
+            is ControlEvent.SatList -> onSatList(ev)
+            is ControlEvent.SatTransmitters -> AppState.satTransmitters.value = ev.items
+            is ControlEvent.SatRx -> {
+                AppState.satReceiver.value = ev.receiver
+                ev.receiver.text?.let { t ->
+                    val l = AppState.satRxLog.value
+                    AppState.satRxLog.value = (if (l.size >= 40) l.drop(l.size - 39) else l) + t
+                }
+            }
+            is ControlEvent.SatTxDone -> {
+                AppState.satTxSent.value = ev.count
+                AppState.notice.value = if (ev.ok) "Transmitted to the satellite on ${"%.4f".format(java.util.Locale.US, ev.freqHz / 1e6)} MHz (${ev.count} so far)"
+                                        else "The tracker did not transmit"
+            }
+            is ControlEvent.Rotor -> AppState.rotor.value = ev.pointing
+            is ControlEvent.Targets -> {
+                AppState.rotorTargets.value = ev.items; AppState.rotorTargetSel.value = ev.selected; AppState.rotorSource.value = ev.source
+            }
             is ControlEvent.OtaProgress -> FirmwareUpdater.onProgress(ev.offset, ev.done)
             is ControlEvent.Firmware -> FirmwareUpdater.onWifiStatus(ev.status)
             is ControlEvent.Ok -> when (ev.command) {
@@ -232,6 +276,8 @@ class Controller(
                 "beacon" -> AppState.notice.value = "Beacon requested (it goes out with the next GPS position)"
                 "cw" -> if (!AppState.cwActive.value) AppState.notice.value = "CW sent to the tracker"
                 "cfgset" -> onConfigStepDone()
+                "satdata" -> onSatDataStepDone()
+                "satsel" -> { AppState.satRxLog.value = emptyList(); sendControlLine(Control.command("sattxlist")) }
                 "act" -> sendControlLine(Control.command("screen"))
                 "msg" -> { AppState.notice.value = "Message queued in the tracker"; sendControlLine(Control.command("msgs", "cnt" to 20)) }
                 "ota" -> FirmwareUpdater.onStarted()
@@ -240,6 +286,7 @@ class Controller(
             is ControlEvent.Error -> {
                 if (ev.command == "ota") FirmwareUpdater.onError(ev.message)
                 if (ev.command == "cfgset") onConfigFailed(ev.message)
+                if (ev.command == "satdata") onSatDataFailed(ev.message)
                 if (ev.command == "cfgget") { AppState.configBusy.value = false; AppState.configMessage.value = ev.message }
                 AppState.error.value = "Tracker (${ev.command}): ${ev.message}"
             }
@@ -338,6 +385,97 @@ class Controller(
         sendControlLine(Control.command("cfgset", "s" to "abort"))
     }
 
+    // ------------------------------------------------------------------ SAT mode: list, file of satellites, phone position
+
+    /** Asks the tracker for its whole list of satellites, page by page (any thread). */
+    fun satListRead() {
+        exec.execute {
+            safe {
+                if (!controlOn) return@safe
+                satListLoading = true
+                sendControlLine(Control.command("satlist", "from" to 0, "cnt" to SAT_LIST_PAGE))
+            }
+        }
+    }
+
+    private fun onSatList(ev: ControlEvent.SatList) {
+        AppState.satListTotal.value = ev.total
+        AppState.satSelected.value = ev.selected
+        if (!satListLoading && ev.from != 0) return
+        AppState.satList.value = if (ev.from == 0) ev.items else AppState.satList.value + ev.items
+        val got = ev.from + ev.items.size
+        if (satListLoading && ev.items.isNotEmpty() && got < ev.total && got < SAT_LIST_MAX) {
+            sendControlLine(Control.command("satlist", "from" to got, "cnt" to SAT_LIST_PAGE))
+        } else {
+            satListLoading = false
+        }
+    }
+
+    /** Sends the text of a `sats.txt` to the tracker, step by step (any thread). The tracker validates it and reloads its list. */
+    fun satDataWrite(text: String) {
+        exec.execute {
+            safe {
+                if (!controlOn) { AppState.satDataMessage.value = "No control service"; return@safe }
+                if (!Licence.isValid(settings)) { AppState.error.value = "Callsign not validated in RadioID: the app cannot command the tracker"; return@safe }
+                if (AppState.satDataBusy.value) return@safe
+                val bad = Sat.checkData(text)
+                if (bad != null) { AppState.satDataMessage.value = bad; return@safe }
+                satLines.clear(); satLines.addAll(Control.satData(text))
+                satSteps = satLines.size
+                satWriting = true
+                AppState.satDataBusy.value = true
+                satDataNextLine()
+            }
+        }
+    }
+
+    private fun satDataNextLine() {
+        val line = satLines.removeFirstOrNull()
+        if (line == null) {
+            satWriting = false
+            AppState.satDataBusy.value = false
+            AppState.satDataMessage.value = "Satellite file stored in the tracker"
+            satListRead()
+            sendControlLine(Control.command("sattxlist"))
+            return
+        }
+        satDeadlineMs = System.currentTimeMillis() + 8000
+        AppState.satDataMessage.value = "Sending to the tracker... ${(satSteps - satLines.size) * 100 / satSteps} %"
+        sendControlLine(line)
+    }
+
+    private fun onSatDataStepDone() { if (satWriting) satDataNextLine() }
+
+    private fun onSatDataFailed(message: String) {
+        if (!satWriting) return
+        satWriting = false; satLines.clear()
+        AppState.satDataBusy.value = false
+        AppState.satDataMessage.value = "Tracker refused the file: $message"
+        sendControlLine(Control.command("satdata", "s" to "abort"))
+    }
+
+    /** The phone's position, for the tracker's SAT mode (any thread). The tracker forgets it after 2 minutes: it is repeated here. */
+    fun phonePosition(lat: Double, lon: Double, altM: Double?, accM: Float?) {
+        exec.execute {
+            safe {
+                phoneLat = lat; phoneLon = lon; phoneAlt = altM; phoneAcc = accM; phoneAtMs = System.currentTimeMillis()
+                sendPhonePosition(force = true)
+            }
+        }
+    }
+
+    /** Stops repeating the phone position (the tracker uses its own GNSS again after 2 minutes). */
+    fun phonePositionOff() { exec.execute { safe { phoneAtMs = 0 } } }
+
+    private fun sendPhonePosition(force: Boolean) {
+        val now = System.currentTimeMillis()
+        if (!controlOn || phoneAtMs == 0L || now - phoneAtMs > 90_000) return
+        if (!force && now - phoneSentMs < Sat.POSITION_EVERY_MS) return
+        val line = Sat.position(phoneLat, phoneLon, phoneAlt, phoneAcc) ?: return
+        phoneSentMs = now
+        sendControlLine(line)
+    }
+
     // ------------------------------------------------------------------ NMEA from the tracker
 
     fun onNmeaBytes(data: ByteArray) {
@@ -363,6 +501,13 @@ class Controller(
             AppState.configBusy.value = false
             AppState.configMessage.value = "The tracker did not answer"
         }
+        if (AppState.satDataBusy.value && satWriting && now > satDeadlineMs) {
+            satWriting = false; satLines.clear()
+            AppState.satDataBusy.value = false
+            AppState.satDataMessage.value = "The tracker did not answer"
+            sendControlLine(Control.command("satdata", "s" to "abort"))
+        }
+        sendPhonePosition(force = false)
         if (controlOn && now - lastStatusMs >= STATUS_EVERY_MS) {
             lastStatusMs = now
             sendControlLine(Control.command("status"))

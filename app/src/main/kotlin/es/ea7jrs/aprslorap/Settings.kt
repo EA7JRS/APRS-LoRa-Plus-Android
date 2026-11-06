@@ -116,6 +116,11 @@ class Settings(ctx: Context) {
         get() = runCatching { es.ea7jrs.aprslorap.core.SerialLine.valueOf(p.getString("cw_dah_line", "CTS")!!) }.getOrDefault(es.ea7jrs.aprslorap.core.SerialLine.CTS)
         set(v) { p.edit().putString("cw_dah_line", v.name).apply() }
 
+    /** Where the app downloads the satellite file (sats.txt) it sends to the tracker. */
+    var satDataUrl: String
+        get() = p.getString("sat_url", es.ea7jrs.aprslorap.core.Sat.DEFAULT_DATA_URL)!!.ifBlank { es.ea7jrs.aprslorap.core.Sat.DEFAULT_DATA_URL }
+        set(v) { p.edit().putString("sat_url", v.trim()).apply() }
+
     // Callsign validated in RadioID.net (DMR ID / CCS7); see Licence
     val validatedCall: String get() = p.getString("valid_call", "")!!
     val validatedIds: String get() = p.getString("valid_ids", "")!!

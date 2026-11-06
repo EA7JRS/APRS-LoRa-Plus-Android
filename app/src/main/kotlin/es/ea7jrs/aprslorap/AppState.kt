@@ -8,6 +8,12 @@ package es.ea7jrs.aprslorap
 import es.ea7jrs.aprslorap.core.ChatMessage
 import es.ea7jrs.aprslorap.core.ActionPage
 import es.ea7jrs.aprslorap.core.Gnss
+import es.ea7jrs.aprslorap.core.RotorPointing
+import es.ea7jrs.aprslorap.core.RotorTarget
+import es.ea7jrs.aprslorap.core.SatEntry
+import es.ea7jrs.aprslorap.core.SatReceiver
+import es.ea7jrs.aprslorap.core.SatState
+import es.ea7jrs.aprslorap.core.SatTransmitter
 import es.ea7jrs.aprslorap.core.HeardStation
 import es.ea7jrs.aprslorap.core.ScreenMirror
 import es.ea7jrs.aprslorap.core.TrackerMessage
@@ -48,6 +54,22 @@ object AppState {
     val config = MutableStateFlow<String?>(null)                                 // /tracker_conf.json as read from the tracker
     val configBusy = MutableStateFlow(false)
     val configMessage = MutableStateFlow("")
+    // SAT mode: current pass, list of satellites, transmitters, receiver, rotor
+    val satState = MutableStateFlow<SatState?>(null)
+    val satList = MutableStateFlow<List<SatEntry>>(emptyList())
+    val satSelected = MutableStateFlow(-1)                                       // index in the tracker's list
+    val satListTotal = MutableStateFlow(0)
+    val satTransmitters = MutableStateFlow<List<SatTransmitter>>(emptyList())
+    val satReceiver = MutableStateFlow<SatReceiver?>(null)
+    val satRxLog = MutableStateFlow<List<String>>(emptyList())                   // received lines, newest last
+    val satTxSent = MutableStateFlow(0)                                          // transmissions made in this link
+    val rotor = MutableStateFlow<RotorPointing?>(null)
+    val rotorTargets = MutableStateFlow<List<RotorTarget>>(emptyList())
+    val rotorTargetSel = MutableStateFlow(0)
+    val rotorSource = MutableStateFlow(0)
+    val satDataBusy = MutableStateFlow(false)
+    val satDataMessage = MutableStateFlow("")
+    val phonePosition = MutableStateFlow("Off")                                  // what the app tells about the phone position it sends
     val nmeaStatus = MutableStateFlow("Off")
     val nmeaRecent = MutableStateFlow<List<String>>(emptyList())
     val mockStatus = MutableStateFlow("Off")
