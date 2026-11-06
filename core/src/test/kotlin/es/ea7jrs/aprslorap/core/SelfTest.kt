@@ -552,8 +552,41 @@ private fun testRotator() {
     check(Control.parse("{\"e\":\"info\",\"caps\":{\"rotor\":true}}").let { it is ControlEvent.Info && it.info.hasRotor }, "caps.rotor")
 }
 
+private fun testSdr() {
+    eq(Sdr.dopplerRx(437_800_000L, -7.0), 437_810_222L, "Doppler approaching raises the frequency")
+    eq(Sdr.dopplerRx(437_800_000L, 0.0), 437_800_000L, "no Doppler")
+    eq(Sdr.parseFreq("145,8"), 145_800_000L, "freq in MHz with comma"); eq(Sdr.parseFreq("433775000"), 433_775_000L, "freq in Hz"); eq(Sdr.parseFreq("x"), null, "bad freq")
+    eq(Sdr.Rigctl.setFreq(145_800_000L), "F 145800000\n", "rigctl F"); eq(Sdr.Rigctl.setMode("NFM", 12500), "M FM 12500\n", "rigctl M for SDR++")
+    eq(Sdr.Rigctl.appMode("FM"), "NFM", "rigctl FM is NFM"); eq(Sdr.Rigctl.reply("RPRT -1"), -1, "rigctl reply")
+    eq(Sdr.SdrConnect.setFreq(101_000_000L), "{\"event_type\":\"set_property\",\"property\":\"device_vfo_frequency\",\"device\":\"primary\",\"value\":\"101000000\"}", "SDRconnect set_property")
+    val m = Sdr.SdrConnect.parse("{\"event_type\":\"property_changed\",\"property\":\"device_center_frequency\",\"device\":\"primary\",\"value\":\"100000000\"}")!!
+    eq(m.type, "property_changed", "SDRconnect event"); eq(m.value, "100000000", "SDRconnect value"); eq(Sdr.SdrConnect.parse("nope"), null, "SDRconnect bad")
+    // RFC 6455 example: key dGhlIHNhbXBsZSBub25jZQ== -> s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+    eq(Sdr.WebSocket.accept("dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "WebSocket accept key")
+    check(Sdr.WebSocket.checkResponse("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "dGhlIHNhbXBsZSBub25jZQ==") == null, "WebSocket handshake ok")
+    check(Sdr.WebSocket.checkResponse("HTTP/1.1 404 Not Found", "x") != null, "WebSocket handshake refused")
+    // RFC 6455 5.7: masked "Hello" with mask 37 fa 21 3d
+    val f = Sdr.WebSocket.frame(1, "Hello".toByteArray(), byteArrayOf(0x37, 0xfa.toByte(), 0x21, 0x3d))
+    eq(hex(f), "818537fa213d7f9f4d5158", "WebSocket masked frame")
+    val back = Sdr.WebSocket.read(java.io.ByteArrayInputStream(f)); eq(String(back.payload), "Hello", "WebSocket frame read back"); check(back.fin && back.opcode == 1, "WebSocket frame flags")
+    val unmasked = Sdr.WebSocket.read(java.io.ByteArrayInputStream(byteArrayOf(0x81.toByte(), 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f))); eq(String(unmasked.payload), "Hello", "WebSocket server frame")
+    val big = ByteArray(70000) { 1 }
+    val bf = Sdr.WebSocket.frame(2, big, byteArrayOf(1, 2, 3, 4)); eq(bf[1].toInt() and 0x7F, 127, "WebSocket 64-bit length")
+    val dropped = Sdr.WebSocket.read(java.io.ByteArrayInputStream(bf), 1000); check(dropped.payload.isEmpty() && dropped.opcode == 2, "WebSocket big frame dropped")
+    val mid = Sdr.WebSocket.frame(1, ByteArray(300), byteArrayOf(0, 0, 0, 0)); eq(mid[1].toInt() and 0x7F, 126, "WebSocket 16-bit length"); eq(Sdr.WebSocket.read(java.io.ByteArrayInputStream(mid)).payload.size, 300, "WebSocket 16-bit read")
+    val hello = Sdr.SpyServer.hello("APRS")
+    eq(hex(hello), "0000000008000000a4060002" + "41505253", "SpyServer hello")
+    eq(hex(Sdr.SpyServer.setting(Sdr.SpyServer.SET_IQ_FREQUENCY, 145_800_000)), "02000000080000006500000040bbb008", "SpyServer set frequency")
+    val hdr = java.nio.ByteBuffer.allocate(20).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(Sdr.SpyServer.PROTOCOL_VERSION).putInt(0x00010001).putInt(0).putInt(7).putInt(36).array()
+    val h = Sdr.SpyServer.header(hdr); eq(h.type, 1, "SpyServer message type"); eq(h.bodySize, 36, "SpyServer body size")
+    val syncBody = java.nio.ByteBuffer.allocate(36).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(1).putInt(10).putInt(145_000_000).putInt(145_800_000).array()
+    eq(Sdr.SpyServer.sync(syncBody), Sdr.SpyServer.Sync(true, 10, 145_000_000L, 145_800_000L), "SpyServer client sync")
+    val infoBody = java.nio.ByteBuffer.allocate(48).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(1).putInt(-1).putInt(10_000_000).putInt(0).putInt(0).putInt(0).putInt(21).putInt(24_000_000).putInt(1_800_000_000).array()
+    val di = Sdr.SpyServer.deviceInfo(infoBody)!!; eq(di.serial, 0xFFFFFFFFL, "SpyServer serial unsigned"); eq(di.maxGainIndex, 21, "SpyServer gain steps"); eq(di.name, "Airspy R2 / Mini", "SpyServer device")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

@@ -225,6 +225,7 @@ class Controller(
     }
 
     private fun onControlEvent(ev: ControlEvent) {
+        SdrControl.onEvent(ev)
         when (ev) {
             is ControlEvent.Info -> {
                 AppState.trackerInfo.value = ev.info

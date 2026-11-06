@@ -166,6 +166,32 @@ class Settings(ctx: Context) {
         get() = p.getBoolean("rb_na", false)
         set(v) { p.edit().putBoolean("rb_na", v).apply() }
 
+    // SDR program or server under control
+    var sdrKind: String
+        get() = p.getString("sdr_kind", es.ea7jrs.aprslorap.core.Sdr.Kind.RIGCTL.name)!!
+        set(v) { p.edit().putString("sdr_kind", v).apply() }
+    var sdrHost: String
+        get() = p.getString("sdr_host", "127.0.0.1")!!
+        set(v) { p.edit().putString("sdr_host", v.trim()).apply() }
+    var sdrPort: Int
+        get() = p.getInt("sdr_port", es.ea7jrs.aprslorap.core.Sdr.Kind.RIGCTL.defaultPort)
+        set(v) { p.edit().putInt("sdr_port", v.coerceIn(1, 65535)).apply() }
+    var sdrFollow: String
+        get() = p.getString("sdr_follow", "MANUAL")!!
+        set(v) { p.edit().putString("sdr_follow", v).apply() }
+    var sdrStepHz: Int
+        get() = p.getInt("sdr_step", 100)
+        set(v) { p.edit().putInt("sdr_step", v.coerceIn(1, 100_000)).apply() }
+    var sdrOffsetHz: Int
+        get() = p.getInt("sdr_offset", 0)
+        set(v) { p.edit().putInt("sdr_offset", v).apply() }
+    var sdrTx: Int
+        get() = p.getInt("sdr_tx", -1)
+        set(v) { p.edit().putInt("sdr_tx", v).apply() }
+    var sdrRecordPasses: Boolean
+        get() = p.getBoolean("sdr_rec", false)
+        set(v) { p.edit().putBoolean("sdr_rec", v).apply() }
+
     val validatedCall: String get() = p.getString("valid_call", "")!!
     val validatedIds: String get() = p.getString("valid_ids", "")!!
     val validatedName: String get() = p.getString("valid_name", "")!!
