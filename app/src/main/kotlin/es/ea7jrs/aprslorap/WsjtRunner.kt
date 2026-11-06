@@ -32,8 +32,8 @@ object WsjtRunner {
     private val decoders = Executors.newSingleThreadExecutor()
     private var app: Context? = null
 
-    fun binary(ctx: Context): File = File(ctx.applicationInfo.nativeLibraryDir, "libft8dec.so")
-    fun available(ctx: Context) = binary(ctx).canExecute()
+    fun binary(ctx: Context, mode: Wsjt.Mode = Wsjt.Mode.FT8): File = File(ctx.applicationInfo.nativeLibraryDir, mode.program)
+    fun available(ctx: Context, mode: Wsjt.Mode = Wsjt.Mode.FT8) = binary(ctx, mode).canExecute()
 
     private fun set(f: (State) -> State) { synchronized(this) { AppState.wsjt.value = f(AppState.wsjt.value) } }
 
@@ -41,7 +41,7 @@ object WsjtRunner {
     fun start(ctx: Context, mode: Wsjt.Mode, src: ModemRunner.Source) {
         stop()
         app = ctx.applicationContext
-        if (!available(ctx)) { set { it.copy(status = "This build has no FT8 / FT4 decoder for this phone") }; return }
+        if (!available(ctx, mode)) { set { it.copy(status = "This build has no ${mode.label} decoder for this phone") }; return }
         source = src
         recorder = Wsjt.SlotRecorder(mode) { start, samples -> decoders.execute { decode(mode, start, samples) } }
         active = true
@@ -100,17 +100,19 @@ object WsjtRunner {
         val f = File(ctx.cacheDir, "slot_${mode.label}.wav")
         try {
             f.writeBytes(Wsjt.wav(samples))
-            val args = listOf(binary(ctx).absolutePath) + listOfNotNull(mode.flag) + f.absolutePath
-            val p = ProcessBuilder(args).redirectErrorStream(false).start()
+            val dial = if (source == ModemRunner.Source.RECEIVER) AppState.sdr.value.freqHz else null
+            val args = Wsjt.arguments(mode, binary(ctx, mode).absolutePath, f.absolutePath, dial)
+            val p = ProcessBuilder(args).directory(ctx.filesDir).redirectErrorStream(false).start()     // WSPR keeps its hash table there
+            Thread { try { p.errorStream.readBytes() } catch (_: Exception) {} }.start()
             val out = p.inputStream.bufferedReader().readLines()
-            p.waitFor(20, TimeUnit.SECONDS)
-            val found = out.mapNotNull { Wsjt.parse(it, slotMs) }
+            p.waitFor(60, TimeUnit.SECONDS)
+            val found = out.mapNotNull { Wsjt.parse(mode, it, slotMs, dial) }
             if (found.isNotEmpty()) {
                 val l = AppState.wsjtDecodes.value
                 AppState.wsjtDecodes.value = (l + found).takeLast(300)
             }
             val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(slotMs))
-            set { it.copy(status = "${mode.label}: slot $t UTC, ${found.size} decoded", dialHz = if (source == ModemRunner.Source.RECEIVER) AppState.sdr.value.freqHz else null) }
+            set { it.copy(status = "${mode.label}: slot $t UTC, ${found.size} decoded", dialHz = dial) }
         } catch (e: Exception) {
             set { it.copy(status = "Decoder error: ${e.message}") }
         } finally { f.delete() }

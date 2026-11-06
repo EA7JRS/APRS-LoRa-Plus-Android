@@ -848,6 +848,11 @@ private fun testWsjt() {
     check(slots.size >= 2 && slots.all { it.second == 90_000 && it.first % 7_500 == 0L }, "FT4 slots handed out whole (${slots.map { it.first }})")
     check(slots.first().first == 37_500L, "first slot is the one joined at its start")
     val w = Wsjt.wav(ShortArray(4) { 1000 }); eq(w.size, 44 + 8, "slot WAV size")
+    eq(Wsjt.parseWspr("WSPR +18 +0.0 432.301537 +0 EA7JRS IM76 23", 0, 432_300_000), Wsjt.Decode(0, 18.0, 0.0, 1537, "EA7JRS IM76 23", 432_301_537, 0), "WSPR line")
+    eq(Wsjt.parseWspr("WSPR -21 +0.3 0.001493 -1 K1JT FN20 30", 0, 0)?.audioHz, 1493, "WSPR line without dial")
+    eq(Wsjt.parse(Wsjt.Mode.WSPR, "Max", 0, 0), null, "WSPR other output ignored")
+    eq(Wsjt.arguments(Wsjt.Mode.WSPR, "/x/libwsprdec.so", "/c/s.wav", 432_300_000), listOf("/x/libwsprdec.so", "/c/s.wav", "432300000"), "WSPR command")
+    eq(Wsjt.arguments(Wsjt.Mode.FT4, "/x/libft8dec.so", "/c/s.wav", null), listOf("/x/libft8dec.so", "-ft4", "/c/s.wav"), "FT4 command")
 }
 
 fun main() {

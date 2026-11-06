@@ -7,3 +7,4 @@ captures/
 *.apk
 native/dsd/out/
 native/ft8/out/
+native/wspr/out/

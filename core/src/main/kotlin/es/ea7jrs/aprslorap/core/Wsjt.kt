@@ -10,8 +10,15 @@ package es.ea7jrs.aprslorap.core
  * handed to a decoder program (FT8 / FT4: ft8_lib, native/ft8). Here: slots, the decoder's output lines, messages.
  */
 object Wsjt {
-    enum class Mode(val label: String, val periodMs: Long, val flag: String?) {
-        FT8("FT8", 15_000, null), FT4("FT4", 7_500, "-ft4"),
+    /** [program]: the decoder in lib/<abi>/ (native/ft8, native/wspr). */
+    enum class Mode(val label: String, val periodMs: Long, val flag: String?, val program: String) {
+        FT8("FT8", 15_000, null, "libft8dec.so"), FT4("FT4", 7_500, "-ft4", "libft8dec.so"), WSPR("WSPR", 120_000, null, "libwsprdec.so"),
+    }
+
+    /** Command line of the decoder for one slot file. */
+    fun arguments(mode: Mode, programPath: String, wavPath: String, dialHz: Long?): List<String> = when (mode) {
+        Mode.WSPR -> listOf(programPath, wavPath, (dialHz ?: 0L).toString())
+        else -> listOf(programPath) + listOfNotNull(mode.flag) + wavPath
     }
 
     const val RATE = 12_000
@@ -19,13 +26,27 @@ object Wsjt {
     /** Start (ms since the epoch, UTC) of the slot that contains [ms]. */
     fun slotStart(ms: Long, periodMs: Long): Long = ms - Math.floorMod(ms, periodMs)
 
-    data class Decode(val slotMs: Long, val snr: Double, val dt: Double, val audioHz: Int, val message: String) {
+    /** [rfHz]: WSPR gives the frequency itself (dial + audio); FT8 / FT4 the audio frequency ([audioHz]). */
+    data class Decode(val slotMs: Long, val snr: Double, val dt: Double, val audioHz: Int, val message: String, val rfHz: Long? = null, val drift: Int? = null) {
         /** Callsign-like words of the message (for highlighting own / the tracker's calls). */
         val calls: List<String> get() = message.split(' ').map { it.trim('<', '>') }.filter { Regex("^[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,4}(/[A-Z0-9]+)?$").matches(it) && it.any(Char::isLetter) && !GRID.matches(it) }
     }
 
     private val GRID = Regex("^[A-R]{2}[0-9]{2}([A-X]{2})?$")
     private val LINE = Regex("^\\s*(\\d{6})\\s+([+-]?\\d+(?:\\.\\d+)?)\\s+([+-]?\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+~\\s+(.*)$")
+
+    private val WSPR_LINE = Regex("^WSPR\\s+([+-]?\\d+)\\s+([+-]?\\d+(?:\\.\\d+)?)\\s+(\\d+\\.\\d+)\\s+([+-]?\\d+)\\s+(.+)$")
+
+    /** One line of libwsprdec.so ("WSPR snr dt freqMHz drift CALL LOC DBM"); [dialHz] 0 or null = audio only. */
+    fun parseWspr(line: String, slotMs: Long, dialHz: Long?): Decode? {
+        val m = WSPR_LINE.find(line.trim()) ?: return null
+        val hz = Math.round(m.groupValues[3].toDouble() * 1e6)
+        val dial = dialHz ?: 0L
+        return Decode(slotMs, m.groupValues[1].toDouble(), m.groupValues[2].toDouble(), (hz - dial).toInt(), m.groupValues[5].trim(),
+            if (dial > 0) hz else null, m.groupValues[4].toInt())
+    }
+
+    fun parse(mode: Mode, line: String, slotMs: Long, dialHz: Long?): Decode? = if (mode == Mode.WSPR) parseWspr(line, slotMs, dialHz) else parse(line, slotMs)
 
     /** One line of ft8_lib's decode_ft8 ("HHMMSS SNR DT FREQ ~  MESSAGE"); null for its other output. */
     fun parse(line: String, slotMs: Long): Decode? {
