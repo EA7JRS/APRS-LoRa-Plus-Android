@@ -90,6 +90,7 @@ class TrackerBle(
         class Write(val ch: BluetoothGattCharacteristic, val data: ByteArray, val fast: Boolean = false) : Op()
         class Subscribe(val ch: BluetoothGattCharacteristic, val on: Boolean) : Op()
         class Run(val block: () -> Unit) : Op()                      // runs when the operations before it are done
+        class Authenticate(val ch: BluetoothGattCharacteristic) : Op()   // encrypted read: makes Android pair (PIN) if needed
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -100,6 +101,11 @@ class TrackerBle(
     @Volatile private var nmeaChar: BluetoothGattCharacteristic? = null
     @Volatile private var firmwareChar: BluetoothGattCharacteristic? = null
     @Volatile private var ready = false
+    @Volatile private var controlAuthed = false                     // the control service accepted us (PIN pairing done)
+    private var pairChar: BluetoothGattCharacteristic? = null
+    private var pairStartMs = 0L
+    private var bondRequested = false
+    private var pairReads = 0
     @Volatile private var nmeaWanted = false
     private var address = ""
     @Volatile private var wanted = false
@@ -125,6 +131,8 @@ class TrackerBle(
     }
 
     private fun clearLink() {
+        controlAuthed = false
+        pairChar = null
         val hadControl = cmdChar != null
         kissChar = null; cmdChar = null; nmeaChar = null; firmwareChar = null
         ready = false
@@ -209,6 +217,7 @@ class TrackerBle(
                 is Op.Write -> writeChar(g, op.ch, op.data, op.fast)
                 is Op.Subscribe -> subscribe(g, op.ch, op.on)
                 is Op.Run -> { op.block(); synchronized(queue) { busy = false }; pump(); return }
+                is Op.Authenticate -> { startPairing(g, op.ch); return }
             }
         } catch (e: SecurityException) { false }
         if (!ok) {
@@ -302,19 +311,42 @@ class TrackerBle(
             ops.add(Op.Subscribe(notifyChar, true))
             ops.add(Op.Run { kissChar = write; onStatus(if (evt != null && cmd != null) "Connected" else "Connected (KISS only: firmware without ble-control)") })
             if (evt != null && cmd != null) {
-                ops.add(Op.Subscribe(evt, true))
+                // Since firmware 5.3.4 the control service needs an encrypted link paired with the tracker's PIN
+                // (WebUI > Bluetooth > Control PIN). KISS stays open, so APRS works meanwhile.
+                ops.add(Op.Authenticate(evt))
                 ops.add(
                     Op.Run {
-                        cmdChar = cmd; nmeaChar = nmea; firmwareChar = firmware
-                        // NMEA asked for before or during the discovery: subscribe now (it runs right after this step)
-                        if (nmea != null && nmeaWanted) synchronized(queue) { queue.addFirst(Op.Subscribe(nmea, true)) }
-                        onControlReady(true)
+                        if (!controlAuthed) return@Run
+                        synchronized(queue) {
+                            queue.addFirst(
+                                Op.Run {
+                                    cmdChar = cmd; nmeaChar = nmea; firmwareChar = firmware
+                                    // NMEA asked for before or during the discovery: subscribe now (it runs right after this step)
+                                    if (nmea != null && nmeaWanted) synchronized(queue) { queue.addFirst(Op.Subscribe(nmea, true)) }
+                                    onStatus("Connected (control paired)")
+                                    onControlReady(true)
+                                },
+                            )
+                            queue.addFirst(Op.Subscribe(evt, true))
+                        }
                     },
                 )
             }
             synchronized(queue) { queue.clear(); queue.addAll(ops); busy = false }
             ready = true
             pump()
+        }
+
+        // Android 13 and newer
+        override fun onCharacteristicRead(g: BluetoothGatt, ch: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+            onPairRead(g, ch, status)
+        }
+
+        // Android 12 and older
+        @Deprecated("Deprecated in Java")
+        @Suppress("DEPRECATION")
+        override fun onCharacteristicRead(g: BluetoothGatt, ch: BluetoothGattCharacteristic, status: Int) {
+            if (Build.VERSION.SDK_INT < 33) onPairRead(g, ch, status)
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
@@ -338,6 +370,65 @@ class TrackerBle(
         }
     }
 
+    // ------------------------------------------------------------------ PIN pairing of the control service
+
+    private fun startPairing(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
+        pairChar = ch
+        pairStartMs = System.currentTimeMillis()
+        bondRequested = false
+        pairReads = 0
+        controlAuthed = false
+        if (g.device.bondState != BluetoothDevice.BOND_BONDED) onStatus("Connected (KISS). Pairing the control service: enter the tracker's PIN")
+        pairRead(g)
+    }
+
+    private fun pairRead(g: BluetoothGatt) {
+        val ch = pairChar ?: return pairDone(false, "no control characteristic")
+        pairReads++
+        val ok = try { g.readCharacteristic(ch) } catch (e: SecurityException) { false }
+        if (!ok) handler.postDelayed({ waitBond(g) }, 1000)
+    }
+
+    /** The encrypted read came back: success = paired; otherwise Android is pairing (or it failed). */
+    private fun onPairRead(g: BluetoothGatt, ch: BluetoothGattCharacteristic, status: Int) {
+        if (ch !== pairChar && ch.uuid != pairChar?.uuid) { done(); return }
+        if (status == BluetoothGatt.GATT_SUCCESS) { pairDone(true, null); return }
+        // 5 = insufficient authentication, 15 = insufficient encryption, 137 = auth failed: pairing needed or under way
+        handler.postDelayed({ waitBond(g) }, 1000)
+    }
+
+    /** Waits for Android's pairing (the PIN dialog) and reads again when it is done; asks for it if nobody did. */
+    private fun waitBond(g: BluetoothGatt) {
+        if (gatt !== g || !wanted) return
+        val elapsed = System.currentTimeMillis() - pairStartMs
+        when (g.device.bondState) {
+            BluetoothDevice.BOND_BONDED ->
+                if (pairReads < 4) pairRead(g) else pairDone(false, "the tracker refuses the pairing: forget it in the Connect tab and pair again")
+            BluetoothDevice.BOND_BONDING ->
+                if (elapsed < 120_000) handler.postDelayed({ waitBond(g) }, 1000) else pairDone(false, "no PIN entered")
+            else -> when {
+                !bondRequested -> {
+                    bondRequested = true
+                    val asked = try { g.device.createBond() } catch (e: SecurityException) { false }
+                    if (!asked) pairDone(false, "Android did not start the pairing") else handler.postDelayed({ waitBond(g) }, 1000)
+                }
+                elapsed < 8_000 -> handler.postDelayed({ waitBond(g) }, 1000)
+                else -> pairDone(false, "pairing refused or wrong PIN (WebUI > Bluetooth > Control PIN; if you changed it, forget the tracker in the Connect tab)")
+            }
+        }
+    }
+
+    private fun pairDone(ok: Boolean, reason: String?) {
+        controlAuthed = ok
+        pairChar = null
+        if (ok) onLog("BLE: control service paired")
+        else {
+            onLog("BLE: control not available: $reason")
+            onStatus("Connected (KISS only). Control: $reason")
+        }
+        done()
+    }
+
     private fun refreshCache(g: BluetoothGatt) {
         try {
             g.javaClass.getMethod("refresh").invoke(g)
@@ -353,4 +444,13 @@ class TrackerBle(
             TrackerUuids.CONTROL_NMEA -> onNmeaBytes(value)
         }
     }
+}
+
+/** Forgets Android's pairing with the tracker (needed after changing the tracker's Control PIN). Hidden API, best effort. */
+@SuppressLint("MissingPermission")
+fun forgetTrackerPairing(ctx: Context, address: String): Boolean {
+    val adapter = ctx.getSystemService(BluetoothManager::class.java)?.adapter ?: return false
+    val device = try { adapter.getRemoteDevice(address) } catch (e: IllegalArgumentException) { return false }
+    if (device.bondState == BluetoothDevice.BOND_NONE) return true
+    return try { device.javaClass.getMethod("removeBond").invoke(device) as? Boolean ?: false } catch (e: Exception) { false }
 }

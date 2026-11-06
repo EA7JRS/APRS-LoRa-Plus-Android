@@ -332,6 +332,19 @@ fun ConnectTab() {
 
         Text("Tracker (Bluetooth LE, KISS)", fontWeight = FontWeight.Bold)
         Text(if (device.isEmpty()) "No tracker chosen" else "Chosen: " + (if (deviceName.isNotEmpty()) "$deviceName  ($device)" else device))
+        Text(
+            "The first time, Android asks for the tracker's Control PIN (WebUI > Bluetooth > Control PIN, 123456 until you change it). " +
+                "APRS (KISS) works without it.",
+            fontSize = 11.sp,
+        )
+        if (device.isNotEmpty()) {
+            OutlinedButton(enabled = !running, onClick = {
+                withPermissions {
+                    if (forgetTrackerPairing(ctx, device)) AppState.notice.value = "Pairing forgotten: the PIN is asked again at the next start"
+                    else AppState.error.value = "Could not forget it here: do it in Android's Bluetooth settings"
+                }
+            }) { Text("Forget pairing (after changing the PIN)") }
+        }
         OutlinedButton(onClick = {
             withPermissions {
                 found.clear()
