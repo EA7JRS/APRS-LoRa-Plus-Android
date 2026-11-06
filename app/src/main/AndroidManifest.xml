@@ -16,6 +16,8 @@
     <!-- Android 11 and older need it for the Bluetooth scan; on every version SAT mode uses it to tell the tracker where the phone is -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- asking Android to refresh the phone's own A-GPS data (normal permission) -->
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

@@ -54,6 +54,7 @@ data class TrackerInfo(
     val cwMessages: List<String>,
     val hasRemoteKey: Boolean = false,          // the firmware takes the key connected to the phone ("k" events)
     val hasSecondSlot: Boolean = false,         // firmware update over BLE ("ota")
+    val hasGpsAid: Boolean = false,             // A-GPS for the u-blox receiver ("gpsaid")
 )
 
 data class TrackerStatus(
@@ -315,6 +316,7 @@ object Control {
             o.strList("cwMsgs"),
             caps.bool("rkey") ?: false,
             caps.bool("ota") ?: false,
+            caps.bool("gpsaid") ?: false,
         )
     }
 }

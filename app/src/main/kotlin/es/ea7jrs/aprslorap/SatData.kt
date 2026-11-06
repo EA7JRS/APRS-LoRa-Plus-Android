@@ -96,6 +96,7 @@ class PhonePosition(private val ctx: Context) {
     }
 
     private fun report(l: Location) {
+        if (GpsAid.isMock(l)) return            // our own simulated location (the tracker's position): not the phone's
         AppState.controller?.phonePosition(l.latitude, l.longitude, if (l.hasAltitude()) l.altitude else null, if (l.hasAccuracy()) l.accuracy else null)
         AppState.phonePosition.value = String.format(java.util.Locale.US, "%.5f, %.5f (±%.0f m, %s)", l.latitude, l.longitude, l.accuracy, l.provider ?: "?")
     }

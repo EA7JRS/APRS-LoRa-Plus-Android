@@ -122,6 +122,11 @@ class Settings(ctx: Context) {
         set(v) { p.edit().putString("sat_url", v.trim()).apply() }
 
     // Callsign validated in RadioID.net (DMR ID / CCS7); see Licence
+    /** u-blox AssistNow Predictive Orbits address, with the chipcode / token of the user's Thingstream account (empty: not used). */
+    var agpsUrl: String
+        get() = p.getString("agps_url", "")!!
+        set(v) { p.edit().putString("agps_url", v.trim()).apply() }
+
     val validatedCall: String get() = p.getString("valid_call", "")!!
     val validatedIds: String get() = p.getString("valid_ids", "")!!
     val validatedName: String get() = p.getString("valid_name", "")!!

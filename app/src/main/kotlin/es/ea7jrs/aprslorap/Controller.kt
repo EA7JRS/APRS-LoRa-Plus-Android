@@ -56,7 +56,9 @@ class Controller(
             // the firmware update does not transmit: allowed too
             "ota", "ota_abort",
             // SAT mode: reading, listening and telling the tracker where the phone is do not transmit (sattx, satdata and tgt are not here)
-            "sat", "satlist", "sattxlist", "tgtlist", "satsel", "satrx", "pos")
+            "sat", "satlist", "sattxlist", "tgtlist", "satsel", "satrx", "pos",
+            // A-GPS data for the tracker's GNSS receiver: nothing is transmitted
+            "gpsaid")
         const val SAT_LIST_PAGE = 40
         const val SAT_LIST_MAX = 600
     }
@@ -84,6 +86,11 @@ class Controller(
     private var satSteps = 0
     private var satWriting = false
     private var satDeadlineMs = 0L
+    private val aidLines = ArrayDeque<String>()
+    private var aidSteps = 0
+    private var aidWriting = false
+    private var aidDeadlineMs = 0L
+    private var aidDoneText = ""
     private var satListLoading = false
     private var phoneLat = 0.0
     private var phoneLon = 0.0
@@ -194,6 +201,7 @@ class Controller(
                 controlLines.reset(); nmeaLines.reset()
                 if (!on) {
                     satWriting = false; satLines.clear(); satListLoading = false
+                    if (aidWriting) { aidWriting = false; aidLines.clear(); AppState.gpsAidBusy.value = false; AppState.gpsAidMessage.value = "Link lost" }
                     AppState.satDataBusy.value = false
                     AppState.satReceiver.value = null
                 }
@@ -276,6 +284,7 @@ class Controller(
                 "cw" -> if (!AppState.cwActive.value) AppState.notice.value = "CW sent to the tracker"
                 "cfgset" -> onConfigStepDone()
                 "satdata" -> onSatDataStepDone()
+                "gpsaid" -> onGpsAidStepDone()
                 "satsel" -> { AppState.satRxLog.value = emptyList(); sendControlLine(Control.command("sattxlist")) }
                 "act" -> sendControlLine(Control.command("screen"))
                 "msg" -> { AppState.notice.value = "Message queued in the tracker"; sendControlLine(Control.command("msgs", "cnt" to 20)) }
@@ -285,6 +294,7 @@ class Controller(
                 if (ev.command == "ota") FirmwareUpdater.onError(ev.message)
                 if (ev.command == "cfgset") onConfigFailed(ev.message)
                 if (ev.command == "satdata") onSatDataFailed(ev.message)
+                if (ev.command == "gpsaid") onGpsAidFailed(ev.message)
                 if (ev.command == "cfgget") { AppState.configBusy.value = false; AppState.configMessage.value = ev.message }
                 AppState.error.value = "Tracker (${ev.command}): ${ev.message}"
             }
@@ -452,6 +462,49 @@ class Controller(
         sendControlLine(Control.command("satdata", "s" to "abort"))
     }
 
+    /**
+     * Sends A-GPS data (UBX-MGA messages) to the tracker's u-blox receiver, step by step (any thread). [what] names it in the
+     * messages ("time and position", "orbits"...).
+     */
+    fun gpsAidWrite(data: ByteArray, what: String) {
+        exec.execute {
+            safe {
+                if (!controlOn) { AppState.gpsAidMessage.value = "No control service"; return@safe }
+                if (AppState.trackerInfo.value?.hasGpsAid != true) { AppState.gpsAidMessage.value = "The tracker firmware or its GNSS receiver does not take A-GPS (u-blox only)"; return@safe }
+                if (aidWriting) return@safe
+                aidLines.clear(); aidLines.addAll(es.ea7jrs.aprslorap.core.Ubx.aidLines(data))
+                aidSteps = aidLines.size
+                aidDoneText = "A-GPS sent to the tracker: $what (${data.size} bytes)"
+                aidWriting = true
+                AppState.gpsAidBusy.value = true
+                gpsAidNextLine()
+            }
+        }
+    }
+
+    private fun gpsAidNextLine() {
+        val line = aidLines.removeFirstOrNull()
+        if (line == null) {
+            aidWriting = false
+            AppState.gpsAidBusy.value = false
+            AppState.gpsAidMessage.value = aidDoneText
+            return
+        }
+        aidDeadlineMs = System.currentTimeMillis() + 8000
+        AppState.gpsAidMessage.value = "Sending A-GPS to the tracker... ${(aidSteps - aidLines.size) * 100 / aidSteps} %"
+        sendControlLine(line)
+    }
+
+    private fun onGpsAidStepDone() { if (aidWriting) gpsAidNextLine() }
+
+    private fun onGpsAidFailed(message: String) {
+        if (!aidWriting) return
+        aidWriting = false; aidLines.clear()
+        AppState.gpsAidBusy.value = false
+        AppState.gpsAidMessage.value = "Tracker refused the A-GPS data: $message"
+        sendControlLine(Control.command("gpsaid", "s" to "abort"))
+    }
+
     /** The phone's position, for the tracker's SAT mode (any thread). The tracker forgets it after 2 minutes: it is repeated here. */
     fun phonePosition(lat: Double, lon: Double, altM: Double?, accM: Float?) {
         exec.execute {
@@ -504,6 +557,12 @@ class Controller(
             AppState.satDataBusy.value = false
             AppState.satDataMessage.value = "The tracker did not answer"
             sendControlLine(Control.command("satdata", "s" to "abort"))
+        }
+        if (aidWriting && now > aidDeadlineMs) {
+            aidWriting = false; aidLines.clear()
+            AppState.gpsAidBusy.value = false
+            AppState.gpsAidMessage.value = "The tracker did not answer"
+            sendControlLine(Control.command("gpsaid", "s" to "abort"))
         }
         sendPhonePosition(force = false)
         if (controlOn && now - lastStatusMs >= STATUS_EVERY_MS) {

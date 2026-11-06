@@ -182,6 +182,11 @@ fun SensorsTab() {
     val nmeaStatus by AppState.nmeaStatus.collectAsState()
     val mockStatus by AppState.mockStatus.collectAsState()
     val nmea by AppState.nmeaRecent.collectAsState()
+    val aidBusy by AppState.gpsAidBusy.collectAsState()
+    val aidMsg by AppState.gpsAidMessage.collectAsState()
+    val ctx = LocalContext.current
+    val settings = remember { Settings(ctx) }
+    var agpsUrl by rememberSaveable { mutableStateOf(settings.agpsUrl) }
     if (!ready) { NoControl(); return }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -196,6 +201,17 @@ fun SensorsTab() {
             Field("Satellites", g.satellites?.toString() ?: "—")
             Field("HDOP", fmt(g.hdop, "%.1f", ""))
             Field("UTC", g.utc ?: "—")
+        }
+
+        Section("A-GPS (u-blox receiver)")
+        if (info?.hasGpsAid != true) Text("Not available: the tracker firmware is too old (no "gpsaid") or its GNSS receiver is not a u-blox.", fontSize = 12.sp)
+        else {
+            Button(onClick = { GpsAid.sendTimeAndPosition(ctx) }, enabled = !aidBusy) { Text("Send time and position") }
+            Text("The phone's time and last real position (MGA-INI): the first fix comes sooner. No account needed.", fontSize = 11.sp)
+            OutlinedTextField(agpsUrl, { agpsUrl = it }, label = { Text("AssistNow Predictive Orbits address (with your token)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { settings.agpsUrl = agpsUrl; GpsAid.sendOrbits(ctx, agpsUrl.trim()) }, enabled = !aidBusy && agpsUrl.isNotBlank()) { Text("Download orbits and send") }
+            Text("Needs a free u-blox Thingstream account (AssistNow, Predictive Orbits for M10). The file is good for days; it is downloaded at most every 12 h (u-blox allows 2 a day).", fontSize = 11.sp)
+            if (aidMsg.isNotBlank()) Text(aidMsg, fontSize = 13.sp)
         }
 
         Section("Sensors")

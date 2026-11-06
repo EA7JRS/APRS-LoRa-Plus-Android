@@ -481,8 +481,32 @@ private fun testSat() {
     eq(Sat.compass(0.0), "N", "compass N"); eq(Sat.compass(359.0), "N", "compass wrap"); eq(Sat.compass(135.0), "SE", "compass SE"); eq(Sat.compass(-90.0), "W", "compass negative")
 }
 
+private fun hex(b: ByteArray) = b.joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
+
+private fun testUbx() {
+    eq(hex(Ubx.frame(0x0A, 0x04, ByteArray(0))), "b5620a0400000e34", "UBX checksum (MON-VER poll)")
+    eq(hex(Ubx.iniTimeUtc(1793968496789L)), "b5621340180010000080ea070b060c223800402f072f02000000000000000a0d", "MGA-INI-TIME_UTC")
+    eq(hex(Ubx.iniPosLlh(37.1915, -3.9367, 512.4, 25.0)), "b5621340140001000000f8f82a16a84ea7fd28c80000c4090000ef4e", "MGA-INI-POS_LLH")
+    val two = Ubx.iniTimeUtc(1793968496789L) + Ubx.iniPosLlh(37.1915, -3.9367, 512.4, 25.0)
+    eq(Ubx.countFrames(two), 2, "UBX stream counted")
+    val why = StringBuilder()
+    eq(Ubx.countFrames("<html>Unauthorized</html>".toByteArray(), why), null, "error page refused"); check(why.startsWith("not u-blox data"), "error page reason")
+    eq(Ubx.countFrames(two.copyOf(two.size - 1)), null, "truncated stream refused")
+    val bad = two.copyOf(); bad[10] = (bad[10] + 1).toByte()
+    eq(Ubx.countFrames(bad), null, "bad checksum refused"); eq(Ubx.countFrames(ByteArray(0)), null, "empty refused")
+    val big = ByteArray(1000) { it.toByte() }
+    val lines = Ubx.aidLines(big)
+    check(lines.first().contains("\"c\":\"gpsaid\"") && lines.first().contains("\"s\":\"begin\"") && lines.first().contains("\"n\":1000"), "gpsaid begin")
+    check(lines.last().contains("\"s\":\"end\""), "gpsaid end"); eq(lines.size, 2 + 8, "gpsaid pieces")
+    val back = java.io.ByteArrayOutputStream()
+    for (l in lines) { val o = Json.parseObject(l.trim())!!; if (o.str("s") == "c") { val d = o.str("d")!!; check(d.length <= 180, "gpsaid piece fits the tracker"); back.write(java.util.Base64.getDecoder().decode(d)) } }
+    check(back.toByteArray().contentEquals(big), "gpsaid pieces rebuild the data")
+    check(lines.all { it.toByteArray().size <= Control.MAX_LINE_SAFE + 1 }, "gpsaid lines fit the tracker")
+    check(Control.parse("{\"e\":\"info\",\"v\":1,\"fw\":\"5.3.5\",\"board\":\"x\",\"caps\":{\"gpsaid\":true}}").let { it is ControlEvent.Info && it.info.hasGpsAid }, "caps.gpsaid")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

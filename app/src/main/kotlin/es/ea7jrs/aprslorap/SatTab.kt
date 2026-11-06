@@ -76,6 +76,9 @@ fun SatTab() {
     val dataBusy by AppState.satDataBusy.collectAsState()
     val dataMsg by AppState.satDataMessage.collectAsState()
     val phoneText by AppState.phonePosition.collectAsState()
+    val phoneAgps by AppState.phoneAgpsMessage.collectAsState()
+    val aidBusy by AppState.gpsAidBusy.collectAsState()
+    val aidMsg by AppState.gpsAidMessage.collectAsState()
     val c = AppState.controller
 
     val inSat = info?.mode == TrackerMode.SAT
@@ -286,6 +289,13 @@ fun SatTab() {
             }
             Text(phoneText, fontSize = 12.sp)
             Text("For when the tracker has no GNSS fix. Sent every few seconds while this screen is open; the tracker's own GNSS is used otherwise.", fontSize = 11.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { GpsAid.refreshPhone(ctx) }) { Text("Refresh phone A-GPS") }
+                if (info?.hasGpsAid == true)
+                    OutlinedButton(onClick = { GpsAid.sendTimeAndPosition(ctx) }, enabled = !aidBusy) { Text("A-GPS to tracker") }
+            }
+            if (phoneAgps.isNotBlank()) Text(phoneAgps, fontSize = 12.sp)
+            if (aidMsg.isNotBlank()) Text(aidMsg, fontSize = 12.sp)
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
         }
 

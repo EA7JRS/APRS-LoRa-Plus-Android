@@ -69,6 +69,9 @@ object AppState {
     val rotorSource = MutableStateFlow(0)
     val satDataBusy = MutableStateFlow(false)
     val satDataMessage = MutableStateFlow("")
+    val gpsAidBusy = MutableStateFlow(false)                                     // A-GPS going to the tracker
+    val gpsAidMessage = MutableStateFlow("")
+    val phoneAgpsMessage = MutableStateFlow("")                                  // A-GPS of the phone itself
     val phonePosition = MutableStateFlow("Off")                                  // what the app tells about the phone position it sends
     val nmeaStatus = MutableStateFlow("Off")
     val nmeaRecent = MutableStateFlow<List<String>>(emptyList())
