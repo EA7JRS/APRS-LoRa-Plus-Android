@@ -698,8 +698,98 @@ private fun testSigId() {
     eq(SigId.mediaUrl("102", "ogg"), "https://raw.githubusercontent.com/AresValley/Artemis-Database/master/static/102/media/1.ogg", "media url")
 }
 
+private fun noiseOf(seed: Long) = java.util.Random(seed)
+
+private fun genPsk(text: String, baud: Double, f: Double, snrAmp: Double, seed: Long = 1): FloatArray {
+    val bits = StringBuilder("0".repeat(40))
+    for (c in text) bits.append(Modems.varicode(c)).append("00")
+    bits.append("1".repeat(40))
+    val sps = (Modems.RATE / baud).toInt()
+    val out = FloatArray(bits.length * sps + 500)
+    val rnd = noiseOf(seed); var sign = 1.0; var n = 0
+    for (b in bits) {
+        for (k in 0 until sps) {
+            val a = if (b == '0') sign * Math.cos(Math.PI * k / sps) else sign
+            out[n] = (0.5 * a * Math.cos(2 * Math.PI * f * n / Modems.RATE) + snrAmp * rnd.nextGaussian()).toFloat(); n++
+        }
+        if (b == '0') sign = -sign
+    }
+    return out
+}
+
+private fun genRtty(text: String, baud: Double, shift: Double, f: Double, noise: Double, seed: Long = 2): FloatArray {
+    val levels = ArrayList<Pair<Boolean, Double>>()                    // (mark, bit lengths)
+    levels.add(true to 15.0)
+    fun ch(code: Int) { levels.add(false to 1.0); for (i in 0 until 5) levels.add(((code shr i) and 1 == 1) to 1.0); levels.add(true to 1.5) }
+    var figs = false; ch(0x1F)
+    for (c in text) { val (code, f2) = Modems.baudot(c) ?: continue; if (c != ' ' && f2 != figs) { ch(if (f2) 0x1B else 0x1F); figs = f2 }; ch(code); if (c == ' ') figs = false }
+    levels.add(true to 10.0)
+    val total = levels.sumOf { it.second } * Modems.RATE / baud
+    val out = FloatArray(total.toInt() + 10); val rnd = noiseOf(seed)
+    var ph = 0.0; var n = 0
+    for ((mark, len) in levels) {
+        val ns = (len * Modems.RATE / baud).toInt()
+        val fr = f + (if (mark) shift else -shift) / 2
+        for (k in 0 until ns) { ph += 2 * Math.PI * fr / Modems.RATE; out[n++] = (0.5 * Math.sin(ph) + noise * rnd.nextGaussian()).toFloat() }
+    }
+    return out.copyOf(n)
+}
+
+private fun genCw(text: String, wpm: Int, f: Double, noise: Double, seed: Long = 3): FloatArray {
+    val dit = 1.2 / wpm * Modems.RATE
+    val keys = ArrayList<Pair<Boolean, Double>>()                       // (on, dits)
+    keys.add(false to 10.0)
+    for (w in text.split(' ')) {
+        for (c in w) { for (e in Morse.pattern(c)!!) { keys.add(true to (if (e == '.') 1.0 else 3.0)); keys.add(false to 1.0) }; keys.add(false to 2.0) }
+        keys.add(false to 4.0)
+    }
+    keys.add(false to 20.0)
+    val out = FloatArray((keys.sumOf { it.second } * dit).toInt() + 10); val rnd = noiseOf(seed); var n = 0; var env = 0.0
+    for ((on, d) in keys) for (k in 0 until (d * dit).toInt()) {
+        env += ((if (on) 1.0 else 0.0) - env) * 0.03                      // ~4 ms edges
+        out[n] = (0.5 * env * Math.sin(2 * Math.PI * f * n / Modems.RATE) + noise * rnd.nextGaussian()).toFloat(); n++
+    }
+    return out.copyOf(n)
+}
+
+private fun decode(m: Modems.Modem, x: FloatArray, block: Int = 512): String {
+    val sb = StringBuilder(); m.onText = { sb.append(it) }
+    var p = 0; while (p < x.size) { val n = minOf(block, x.size - p); m.process(x.copyOfRange(p, p + n), n); p += n }
+    return sb.toString()
+}
+
+private fun testModems() {
+    eq(Modems.varicode('e'), "11", "varicode e"); eq(Modems.varicode('E'), "1110111", "varicode E"); eq(Modems.varicode(' '), "1", "varicode space")
+    val msg = "CQ CQ DE EA7JRS EA7JRS K"
+    for (baud in listOf(31.25, 62.5, 125.0)) {
+        val psk = Modems.Psk(1003.0, baud)                                 // 3 Hz off: AFC pulls it in
+        val got = decode(psk, genPsk(msg, baud, 1000.0, 0.15))
+        check(got.contains(msg), "BPSK${baud.toInt()} decodes (got '$got')")
+    }
+    val noisy = decode(Modems.Psk(1500.0), genPsk(msg, 31.25, 1500.0, 0.6, 7))
+    check(noisy.contains("EA7JRS"), "BPSK31 in noise (got '$noisy')")
+    val tx = "RYRY THE QUICK BROWN FOX 0123456789 EA7JRS"
+    for ((b, s) in listOf(45.45 to 170.0, 50.0 to 450.0, 75.0 to 170.0)) {
+        val got = decode(Modems.Rtty(1500.0, b, s), genRtty(tx, b, s, 1500.0, 0.2))
+        check(got.contains(tx), "RTTY $b/$s decodes (got '$got')")
+    }
+    val rev = decode(Modems.Rtty(1500.0, 45.45, 170.0, reverse = true), genRtty("ABC", 45.45, -170.0, 1500.0, 0.05))
+    check(rev.contains("ABC"), "RTTY reverse (got '$rev')")
+    val cw = decode(Modems.Cw(700.0, 20), genCw("VVV CQ DE EA7JRS TEST", 20, 700.0, 0.1))
+    check(cw.replace(" ", "").contains("CQDEEA7JRSTEST"), "CW decodes after the first letters (got '$cw')")
+    val cw30 = decode(Modems.Cw(650.0, 18), genCw("PARIS PARIS", 30, 650.0, 0.15))
+    check(cw30.replace(" ", "").contains("PARIS"), "CW adapts to 30 wpm (got '$cw30')")
+    val sp = Modems.Spectrum(1024); val tone = FloatArray(1024) { Math.sin(2 * Math.PI * 1000 * it / 8000.0).toFloat() }
+    sp.push(tone, 1024); val db = sp.db(); val peak = db.indices.maxByOrNull { db[it] }!!
+    eq(peak, 128, "spectrum peak at 1000 Hz (bin 128)")
+    val rs = Modems.Resampler12to8(); val x12 = FloatArray(12000) { Math.sin(2 * Math.PI * 1000 * it / 12000.0).toFloat() }
+    val y = FloatArray(9000); val ny = rs.process(x12, 12000, y)
+    eq(ny, 8000, "12 -> 8 kHz count"); check(Dsp.goertzel(y.copyOfRange(500, 8000), 7500, 1000.0, 8000.0) > 100 * Dsp.goertzel(y.copyOfRange(500, 8000), 7500, 1700.0, 8000.0), "12 -> 8 kHz keeps the tone")
+    eq(Modems.create("RTTY 45/170", 1500.0).label, "RTTY 45/170", "mode factory"); eq(Modems.create("BPSK63", 1000.0).label, "BPSK62", "mode factory PSK63 (62.5 Bd)")
+}
+
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

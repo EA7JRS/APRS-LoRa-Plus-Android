@@ -84,6 +84,9 @@ object AppState {
     val sigIdInfo = MutableStateFlow<SigIdDb.Info?>(null)                       // signal identification database
     val sigIdBusy = MutableStateFlow(false)
     val sigIdMessage = MutableStateFlow("")
+    val modem = MutableStateFlow(ModemRunner.State())                           // text modes (CW, RTTY, PSK)
+    val modemText = MutableStateFlow("")
+    val waterfallRow = MutableStateFlow<FloatArray?>(null)
     val dvStatus = MutableStateFlow("Off")                                       // digital voice decoder (dsd-fme)
     val dvLog = MutableStateFlow<List<String>>(emptyList())                               // SDR program / server under control
     val rbMessage = MutableStateFlow("")

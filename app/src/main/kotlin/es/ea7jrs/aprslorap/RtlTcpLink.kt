@@ -150,6 +150,7 @@ internal class RtlTcpLink(
                         val dv = DigitalVoiceRunner.active
                         if (dv && rx.discriminatorTap == null) rx.discriminatorTap = { x, k -> DigitalVoiceRunner.feed(x, k) }
                         else if (!dv && rx.discriminatorTap != null) rx.discriminatorTap = null
+                        if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) ModemRunner.feedReceiver12k(audio, m)
                         Dsp.toPcm16(audio, m, pcm)
                         if (!dv) track?.write(pcm, 0, m, AudioTrack.WRITE_NON_BLOCKING)   // if the phone's audio falls behind, samples are dropped, not the IQ
                         synchronized(this) {
