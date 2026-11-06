@@ -228,7 +228,7 @@ fun SensorsTab() {
             if (pw.batteryMa != null) Field("Battery current", fmt(pw.batteryMa, "%.0f", " mA"))
             if (pw.vbusV != null) Field("USB / external", fmt(pw.vbusV, "%.2f", " V"))
             if (pw.pmuTemperatureC != null) Field("PMU temperature", fmt(pw.pmuTemperatureC, "%.1f", " °C"))
-            if (pw.freeHeap != null) Field("Free memory", "${pw.freeHeap / 1024} kB")
+            pw.freeHeap?.let { Field("Free memory", "${it / 1024} kB") }
         }
 
         Section("NMEA")
