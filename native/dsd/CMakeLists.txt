@@ -1,0 +1,21 @@
+# Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later.
+# dsd-fme (lwvmobile) as a command-line program for the app: TCP input of FM discriminator audio, decoded voice on stdout.
+# Built against static mbelib, libsndfile and ncurses (see build.sh); PulseAudio replaced by a stub.
+cmake_minimum_required(VERSION 3.10)
+project(dsdfme_android C CXX)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
+set(DSD_SRC "" CACHE PATH "dsd-fme source tree")
+set(DEPS "" CACHE PATH "prefix with mbelib, sndfile, ncursesw")
+file(GLOB SRCS ${DSD_SRC}/src/*.c ${DSD_SRC}/src/*.cpp)
+list(REMOVE_ITEM SRCS ${DSD_SRC}/src/rtl_sdr_fm.cpp ${DSD_SRC}/src/rtl_sdr_tcp.c)
+set(GIT_TAG "android")
+configure_file(${DSD_SRC}/src/git_ver.c.in ${CMAKE_CURRENT_BINARY_DIR}/git_ver.c @ONLY)
+add_executable(dsd-fme ${SRCS} ${CMAKE_CURRENT_BINARY_DIR}/git_ver.c ${CMAKE_CURRENT_SOURCE_DIR}/pulse-stub/pulse_stub.c)
+target_include_directories(dsd-fme PRIVATE ${DSD_SRC}/include ${CMAKE_CURRENT_SOURCE_DIR}/pulse-stub $<$<BOOL:${ANDROID}>:${CMAKE_CURRENT_SOURCE_DIR}/compat> ${DEPS}/include ${DEPS}/include/ncursesw)
+target_compile_options(dsd-fme PRIVATE -w -O2)
+target_link_libraries(dsd-fme ${DEPS}/lib/libmbe.a ${DEPS}/lib/libsndfile.a ${DEPS}/lib/libncursesw.a m)
+if(NOT ANDROID)
+  find_package(Threads)
+  target_link_libraries(dsd-fme Threads::Threads)
+endif()
