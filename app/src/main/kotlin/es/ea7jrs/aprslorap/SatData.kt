@@ -106,7 +106,10 @@ class PhonePosition(private val ctx: Context) {
         if (running) return true
         var any = false
         try {
-            for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            // fused (Android 12+, no Google Play services needed): GNSS, WiFi, cells and sensors together; quicker and steadier
+            val names = if (android.os.Build.VERSION.SDK_INT >= 31 && LocationManager.FUSED_PROVIDER in lm.allProviders)
+                listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER) else listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            for (p in names) {
                 if (!lm.isProviderEnabled(p)) continue
                 lm.requestLocationUpdates(p, 5000L, 0f, listener, Looper.getMainLooper())
                 lm.getLastKnownLocation(p)?.let { if (System.currentTimeMillis() - it.time < 60_000) report(it) }

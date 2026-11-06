@@ -91,6 +91,7 @@ class Controller(
     private var aidWriting = false
     private var aidDeadlineMs = 0L
     private var aidDoneText = ""
+    private var aidCurrent: String? = null
     private var satListLoading = false
     private var phoneLat = 0.0
     private var phoneLon = 0.0
@@ -294,6 +295,7 @@ class Controller(
                 if (ev.command == "ota") FirmwareUpdater.onError(ev.message)
                 if (ev.command == "cfgset") onConfigFailed(ev.message)
                 if (ev.command == "satdata") onSatDataFailed(ev.message)
+                if (ev.command == "gpsaid" && ev.message == "busy") { onGpsAidBusy(); return }
                 if (ev.command == "gpsaid") onGpsAidFailed(ev.message)
                 if (ev.command == "cfgget") { AppState.configBusy.value = false; AppState.configMessage.value = ev.message }
                 AppState.error.value = "Tracker (${ev.command}): ${ev.message}"
@@ -484,6 +486,7 @@ class Controller(
 
     private fun gpsAidNextLine() {
         val line = aidLines.removeFirstOrNull()
+        aidCurrent = line
         if (line == null) {
             aidWriting = false
             AppState.gpsAidBusy.value = false
@@ -496,6 +499,14 @@ class Controller(
     }
 
     private fun onGpsAidStepDone() { if (aidWriting) gpsAidNextLine() }
+
+    /** The tracker's buffer for the GNSS port is full (slow UART, 9600 baud): the same piece again a bit later. */
+    private fun onGpsAidBusy() {
+        val line = aidCurrent ?: return
+        if (!aidWriting) return
+        aidDeadlineMs = System.currentTimeMillis() + 8000
+        exec.schedule({ safe { if (aidWriting && aidCurrent === line) { aidDeadlineMs = System.currentTimeMillis() + 8000; sendControlLine(line) } } }, 300, TimeUnit.MILLISECONDS)
+    }
 
     private fun onGpsAidFailed(message: String) {
         if (!aidWriting) return
