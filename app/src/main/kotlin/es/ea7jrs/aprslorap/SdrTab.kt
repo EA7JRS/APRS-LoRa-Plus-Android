@@ -68,6 +68,9 @@ fun SdrTab() {
     var biasT by remember { mutableStateOf(settings.sdrBiasTee) }
     var sql by remember { mutableStateOf(settings.sdrSquelchDb.toFloat()) }
     var driverMissing by remember { mutableStateOf(false) }
+    var dvMode by remember { mutableStateOf(settings.dvMode) }
+    val dvStatus by AppState.dvStatus.collectAsState()
+    val dvLog by AppState.dvLog.collectAsState()
     val local = host == "127.0.0.1" || host == "localhost"
 
     fun startLink() {
@@ -179,6 +182,30 @@ fun SdrTab() {
             var g by remember(st.gain) { mutableStateOf((st.gain ?: st.gainMin).toFloat()) }
             Slider(g, { g = it }, valueRange = st.gainMin.toFloat()..st.gainMax.toFloat(), steps = (st.gainMax - st.gainMin - 1).coerceAtLeast(0),
                 onValueChangeFinished = { if (kind == Sdr.Kind.RTLTCP) settings.sdrGainPercent = g.toInt(); SdrControl.gain(g.toInt()) }, enabled = st.connected)
+        }
+
+        // ---- digital voice
+        if (kind == Sdr.Kind.RTLTCP) {
+            Section("Digital voice (DMR, D-STAR, C4FM, P25...)")
+            if (!DigitalVoiceRunner.available(ctx)) Text("This build of the app has no decoder for this phone's processor.", fontSize = 12.sp)
+            else {
+                for (row in es.ea7jrs.aprslorap.core.DigitalVoice.MODES.keys.chunked(4)) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (m in row) {
+                        val go = { dvMode = m; settings.dvMode = m }
+                        if (m == dvMode) Button(onClick = go) { Text(m, fontSize = 10.sp) } else OutlinedButton(onClick = go) { Text(m, fontSize = 10.sp) }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        settings.sdrMode = "NFM"; settings.sdrBandwidth = 12_500; SdrControl.mode("NFM", 12_500)
+                        DigitalVoiceRunner.start(ctx, dvMode)
+                    }, enabled = st.connected) { Text(if (dvStatus.startsWith("Decoding")) "Restart" else "Decode") }
+                    OutlinedButton(onClick = { DigitalVoiceRunner.stop() }, enabled = dvStatus != "Off") { Text("Stop") }
+                }
+                Text(dvStatus, fontSize = 12.sp)
+                for (l in dvLog.takeLast(14).asReversed()) Text(l, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Text("dsd-fme (lwvmobile) with mbelib, inside the app; the analog audio is muted while it decodes. No keys are used: encrypted calls stay muted. mbelib implements vocoders that may be covered by patents: personal use.", fontSize = 11.sp)
+            }
         }
 
         // ---- follow the tracker

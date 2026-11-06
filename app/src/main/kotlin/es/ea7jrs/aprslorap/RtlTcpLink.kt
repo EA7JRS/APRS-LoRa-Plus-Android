@@ -147,8 +147,11 @@ internal class RtlTcpLink(
                         var n = 0
                         while (n < buf.size) { val r = inp.read(buf, n, buf.size - n); if (r < 0) throw java.io.EOFException(); n += r }
                         val m = rx.process(buf, n, audio)
+                        val dv = DigitalVoiceRunner.active
+                        if (dv && rx.discriminatorTap == null) rx.discriminatorTap = { x, k -> DigitalVoiceRunner.feed(x, k) }
+                        else if (!dv && rx.discriminatorTap != null) rx.discriminatorTap = null
                         Dsp.toPcm16(audio, m, pcm)
-                        track?.write(pcm, 0, m, AudioTrack.WRITE_NON_BLOCKING)       // if the phone's audio falls behind, samples are dropped, not the IQ
+                        if (!dv) track?.write(pcm, 0, m, AudioTrack.WRITE_NON_BLOCKING)   // if the phone's audio falls behind, samples are dropped, not the IQ
                         synchronized(this) {
                             val w = wav
                             if (w != null) {

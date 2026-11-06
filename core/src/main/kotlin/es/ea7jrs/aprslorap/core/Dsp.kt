@@ -131,6 +131,8 @@ object Dsp {
         var levelDb = -120.0
             private set
         val audioRate: Int get() = if (mode == "WFM") WIDE_AUDIO_RATE else NARROW_AUDIO_RATE
+        /** NFM only: the raw FM discriminator at 48 kHz (±5 kHz deviation = ±1), for digital voice decoders (DMR, D-STAR...). */
+        var discriminatorTap: ((FloatArray, Int) -> Unit)? = null
 
         private val nco = Nco(INPUT_RATE.toDouble())
         private val firA = CFir(lowPass(41, 80_000.0, INPUT_RATE.toDouble()), 5)
@@ -216,6 +218,7 @@ object Dsp {
                         lastRe = re; lastIm = im
                         r1[i] = d * (48_000f / (2 * PI.toFloat() * 5_000f))           // ±5 kHz deviation = ±1
                     }
+                    discriminatorTap?.invoke(r1, nb)
                     val m = audioNarrow.process(r1, nb, out)
                     val mute = levelDb < squelchDb
                     for (i in 0 until m) { dc += 0.002f * (out[i] - dc); out[i] = if (mute) 0f else ((out[i] - dc) * 0.8f).coerceIn(-1f, 1f) }

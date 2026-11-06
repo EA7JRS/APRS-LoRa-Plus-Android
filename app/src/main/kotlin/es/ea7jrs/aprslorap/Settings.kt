@@ -211,6 +211,10 @@ class Settings(ctx: Context) {
         get() = p.getLong("sdr_last_hz", 145_800_000L)
         set(v) { p.edit().putLong("sdr_last_hz", v).apply() }
 
+    var dvMode: String
+        get() = p.getString("dv_mode", "Auto")!!
+        set(v) { p.edit().putString("dv_mode", v).apply() }
+
     var sdrRecordPasses: Boolean
         get() = p.getBoolean("sdr_rec", false)
         set(v) { p.edit().putBoolean("sdr_rec", v).apply() }

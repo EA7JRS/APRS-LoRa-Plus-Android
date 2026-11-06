@@ -80,7 +80,9 @@ object AppState {
     val rotServerStatus = MutableStateFlow("Off")
     val rotServerLast = MutableStateFlow<Pair<Double, Double>?>(null)            // last az / el from Look4Sat, GPredict...
     val rbBusy = MutableStateFlow(false)
-    val sdr = MutableStateFlow(SdrControl.State())                               // SDR program / server under control
+    val sdr = MutableStateFlow(SdrControl.State())
+    val dvStatus = MutableStateFlow("Off")                                       // digital voice decoder (dsd-fme)
+    val dvLog = MutableStateFlow<List<String>>(emptyList())                               // SDR program / server under control
     val rbMessage = MutableStateFlow("")
     val rbResults = MutableStateFlow<List<es.ea7jrs.aprslorap.core.RepeaterBook.Repeater>>(emptyList())
     val phonePosition = MutableStateFlow("Off")                                  // what the app tells about the phone position it sends

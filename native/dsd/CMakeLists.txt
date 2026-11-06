@@ -14,6 +14,10 @@ configure_file(${DSD_SRC}/src/git_ver.c.in ${CMAKE_CURRENT_BINARY_DIR}/git_ver.c
 add_executable(dsd-fme ${SRCS} ${CMAKE_CURRENT_BINARY_DIR}/git_ver.c ${CMAKE_CURRENT_SOURCE_DIR}/pulse-stub/pulse_stub.c)
 target_include_directories(dsd-fme PRIVATE ${DSD_SRC}/include ${CMAKE_CURRENT_SOURCE_DIR}/pulse-stub $<$<BOOL:${ANDROID}>:${CMAKE_CURRENT_SOURCE_DIR}/compat> ${DEPS}/include ${DEPS}/include/ncursesw)
 target_compile_options(dsd-fme PRIVATE -w -O2)
+if(ANDROID)
+  # bionic declares bzero / bcopy in strings.h, which dsd-fme does not include; older C left to the compiler as warnings
+  target_compile_options(dsd-fme PRIVATE $<$<COMPILE_LANGUAGE:C>:-include strings.h -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=incompatible-function-pointer-types>)
+endif()
 target_link_libraries(dsd-fme ${DEPS}/lib/libmbe.a ${DEPS}/lib/libsndfile.a ${DEPS}/lib/libncursesw.a m)
 if(NOT ANDROID)
   find_package(Threads)

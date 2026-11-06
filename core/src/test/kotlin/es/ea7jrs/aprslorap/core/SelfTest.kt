@@ -648,6 +648,14 @@ private fun testDsp() {
     val wfm = synthIq(0.3) { t -> val ph = pi2 * off * t + 75.0 * Math.sin(pi2 * 1000 * t); Math.cos(ph) to Math.sin(ph) }
     val rxW = Dsp.Receiver(); rxW.setOffset(off); rxW.setMode("WFM", 0); eq(rxW.audioRate, 48000, "WFM audio rate")
     check(toneRatio(runRx(rxW, wfm), 48000, 1000.0, 3300.0) > 50, "WFM demodulates the 1 kHz tone")
+    // discriminator tap for digital voice: 48 kHz, a +3 kHz carrier gives about +0.6
+    val rxD = Dsp.Receiver(); rxD.setOffset(off); rxD.setMode("NFM", 0)
+    var tapN = 0; var tapSum = 0.0
+    rxD.discriminatorTap = { x, n -> for (i in 0 until n) { tapSum += x[i] }; tapN += n }
+    runRx(rxD, synthIq(0.2) { t -> val ph = pi2 * (off + 3000) * t; 0.5 * Math.cos(ph) to 0.5 * Math.sin(ph) })
+    check(tapN in 9000..9700 && Math.abs(tapSum / tapN - 0.6) < 0.05, "discriminator tap at 48 kHz (${tapN}, ${"%.2f".format(tapSum / tapN)})")
+    eq(DigitalVoice.flag("DMR"), "-fs", "DV DMR flag"); eq(DigitalVoice.channels("Auto"), 2, "DV auto is two slots"); eq(DigitalVoice.channels("D-STAR"), 1, "DV D-STAR mono")
+    eq(DigitalVoice.clean("\u001b[1;32m22:55:46 Sync: -DSTAR VOICE   SRC: ALBERTO\u001b[0m"), "22:55:46 Sync: -DSTAR VOICE   SRC: ALBERTO", "DV log line cleaned")
     // rtl_tcp
     eq(hex(Sdr.RtlTcp.cmd(Sdr.RtlTcp.SET_FREQ, 145_800_000)), "0108b0bb40", "rtl_tcp set frequency")
     eq(hex(Sdr.RtlTcp.cmd(Sdr.RtlTcp.SET_FREQ_CORRECTION, -3)), "05fffffffd", "rtl_tcp negative ppm")
