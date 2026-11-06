@@ -63,9 +63,6 @@ fun DigimodesTab() {
     val text by AppState.modemText.collectAsState()
     val row by AppState.waterfallRow.collectAsState()
     var mode by remember { mutableStateOf(st.mode) }
-    var rxHz by remember { mutableStateOf(st.rxHz.toString()) }
-    var tolHz by remember { mutableStateOf(st.tolHz) }
-    val startIt = { WsjtRunner.start(ctx, mode, source, rxHz.toIntOrNull()?.coerceIn(200, 4600) ?: es.ea7jrs.aprslorap.core.Wsjt.FST4W_RX_HZ, tolHz) }
     var source by remember { mutableStateOf(st.source) }
     val bmp = remember { Bitmap.createBitmap(WF_W, WF_H, Bitmap.Config.ARGB_8888) }
     var frame by remember { mutableStateOf(0) }
