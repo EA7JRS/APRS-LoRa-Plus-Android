@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later.
-     Plain HTTP only for the DAPNET API (www.hampager.de:8080 has no HTTPS); everything else stays encrypted. -->
+     Plain HTTP only for the DAPNET API (www.hampager.de:8080 has no HTTPS) and WSPRnet (wsprnet.org/post, as WSJT-X);
+     everything else stays encrypted. -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">hampager.de</domain>
+        <domain includeSubdomains="true">wsprnet.org</domain>
     </domain-config>
 </network-security-config>

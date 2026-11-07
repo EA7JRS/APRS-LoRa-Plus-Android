@@ -208,6 +208,8 @@ object Modems {
         private var noise = 1e-4; private var peak = 1e-3
         private var down = false
         val wpm: Int get() = decoder.speedWpm
+        /** Tone over the floor in the CW filter (dB), as a skimmer reports it. */
+        val snrDb: Double get() = 20 * kotlin.math.log10(peak / noise.coerceAtLeast(1e-9)).coerceIn(0.0, 60.0)
 
         override fun process(x: FloatArray, n: Int) {
             val m = dc.process(x, n, centerHz)

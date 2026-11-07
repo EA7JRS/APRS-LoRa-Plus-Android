@@ -70,6 +70,7 @@ import es.ea7jrs.aprslorap.core.Station
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Spotter.init(this)
         setContent { MaterialTheme { App() } }
     }
 

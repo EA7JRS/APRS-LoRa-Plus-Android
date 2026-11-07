@@ -42,6 +42,7 @@ class TrackerService : Service() {
             return START_NOT_STICKY
         }
         if (controller != null) return START_STICKY        // already running
+        Spotter.init(this)
         stopping = false
         val settings = Settings(this)
         val notifier = Notifier(this)

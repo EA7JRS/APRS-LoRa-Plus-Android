@@ -101,7 +101,7 @@ object WsjtRunner {
         val f = File(ctx.cacheDir, "slot_${mode.label}.wav")
         try {
             f.writeBytes(Wsjt.wav(samples))
-            val dial = if (source == ModemRunner.Source.RECEIVER) AppState.sdr.value.freqHz else null
+            val dial = if (source == ModemRunner.Source.RECEIVER) AppState.sdr.value.freqHz else Spotter.micDialHz()
             val st = AppState.wsjt.value
             val args = Wsjt.arguments(mode, binary(ctx, mode).absolutePath, f.absolutePath, dial, st.rxHz, st.tolHz, File(ctx.filesDir, "fst4w_state.txt").absolutePath)
             val p = ProcessBuilder(args).directory(ctx.filesDir).redirectErrorStream(false).start()     // WSPR keeps its hash table there
@@ -115,6 +115,7 @@ object WsjtRunner {
                 val l = AppState.wsjtDecodes.value
                 AppState.wsjtDecodes.value = (l + found).takeLast(300)
             }
+            Spotter.onWsjtSlot(mode, slotMs, found, dial)                      // PSK Reporter, WSPRnet, WSJT-X UDP
             val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(slotMs))
             set { it.copy(status = "${mode.label}: slot $t UTC, ${found.size} decoded", dialHz = dial) }
         } catch (e: Exception) {

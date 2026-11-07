@@ -240,4 +240,49 @@ class Settings(ctx: Context) {
     }
 
     val pathList: List<String> get() = path.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    // Spotting (Modes > Spotting): what the app decodes goes to PSK Reporter, WSPRnet, a WSJT-X UDP listener, a skimmer port
+    var spotPsk: Boolean
+        get() = p.getBoolean("spot_psk", false)
+        set(v) { p.edit().putBoolean("spot_psk", v).apply() }
+
+    var spotWsprnet: Boolean
+        get() = p.getBoolean("spot_wsprnet", false)
+        set(v) { p.edit().putBoolean("spot_wsprnet", v).apply() }
+
+    var spotUdp: Boolean
+        get() = p.getBoolean("spot_udp", false)
+        set(v) { p.edit().putBoolean("spot_udp", v).apply() }
+
+    /** Computer that listens to the WSJT-X UDP messages (GridTracker, JTAlert, RBN Aggregator...). */
+    var spotUdpHost: String
+        get() = p.getString("spot_udp_host", "")!!
+        set(v) { p.edit().putString("spot_udp_host", v.trim()).apply() }
+
+    var spotUdpPort: Int
+        get() = p.getInt("spot_udp_port", es.ea7jrs.aprslorap.core.Spots.WsjtxUdp.PORT)
+        set(v) { p.edit().putInt("spot_udp_port", v).apply() }
+
+    var spotTelnet: Boolean
+        get() = p.getBoolean("spot_telnet", false)
+        set(v) { p.edit().putBoolean("spot_telnet", v).apply() }
+
+    /** Port of the CW skimmer style telnet server (CW Skimmer uses 7300). */
+    var spotTelnetPort: Int
+        get() = p.getInt("spot_telnet_port", 7300)
+        set(v) { p.edit().putInt("spot_telnet_port", v).apply() }
+
+    /** Our locator set by hand; empty = from the tracker's GNSS or the phone. */
+    var spotLocator: String
+        get() = p.getString("spot_locator", "")!!
+        set(v) { p.edit().putString("spot_locator", v.trim()).apply() }
+
+    var spotAntenna: String
+        get() = p.getString("spot_antenna", "")!!
+        set(v) { p.edit().putString("spot_antenna", v.trim()).apply() }
+
+    /** Dial frequency (Hz, USB) of the radio whose audio goes into the microphone; 0 = unknown (no spots). */
+    var spotDialHz: Long
+        get() = p.getLong("spot_dial_hz", 0L)
+        set(v) { p.edit().putLong("spot_dial_hz", v).apply() }
 }

@@ -38,7 +38,10 @@ object ModemRunner {
         stop()
         val m = Modems.create(mode, centerHz)
         m.afc = AppState.modem.value.afc
-        m.onText = { t -> val cur = AppState.modemText.value; AppState.modemText.value = (cur + t).takeLast(6000) }
+        m.onText = { t ->
+            val cur = AppState.modemText.value; AppState.modemText.value = (cur + t).takeLast(6000)
+            if (m is Modems.Cw) Spotter.onPhoneCw(t, m.centerHz, m.snrDb, m.wpm, src)        // calls heard -> PSK Reporter, skimmer port
+        }
         modem = m; source = src; active = true; queue.clear()
         set { it.copy(running = true, mode = mode, source = src, centerHz = centerHz, info = "") }
         worker = Thread({ work() }, "modem").also { it.isDaemon = true; it.start() }

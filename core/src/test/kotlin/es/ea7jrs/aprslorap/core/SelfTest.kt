@@ -834,6 +834,71 @@ private fun testReceivers() {
     eq(Control.parse("{\"e\":\"cwrx\",\"on\":false,\"dbm\":-150,\"snr\":0,\"wpm\":0}"), ControlEvent.CwRx(false, null, -150.0, 0.0, 0), "cwrx end")
 }
 
+private fun u16(b: ByteArray, i: Int) = ((b[i].toInt() and 0xff) shl 8) or (b[i + 1].toInt() and 0xff)
+
+private fun testSpots() {
+    eq(Spots.locator(37.38, -5.98), "IM77aj", "locator Seville"); eq(Spots.locator(40.35, -74.66, 4), "FN20", "locator 4")
+    eq(Spots.locator(40.35, -74.66), "FN20qi", "locator 6"); eq(Spots.stationCall("ea7jrs-7"), "EA7JRS", "call without SSID")
+    eq(Spots.rfHz(14_074_000, "USB", 1500.0), 14_075_500L, "USB tone"); eq(Spots.rfHz(7_030_000, "CW", 900.0), 7_030_200L, "CW tone")
+    eq(Spots.rfHz(7_074_000, "LSB", 1000.0), 7_073_000L, "LSB tone"); eq(Spots.band(14_074_000), "20m", "band"); eq(Spots.band(15_000_000), null, "no band")
+    eq(Spots.deCallAndGrid("CQ EA7JRS IM77"), "EA7JRS" to "IM77", "CQ sender"); eq(Spots.deCallAndGrid("CQ DX EA7JRS IM77"), "EA7JRS" to "IM77", "CQ DX sender")
+    eq(Spots.deCallAndGrid("CQ POTA K1ABC FN42"), "K1ABC" to "FN42", "directional CQ"); eq(Spots.deCallAndGrid("EA7JRS K1JT FN20"), "K1JT" to "FN20", "reply sender")
+    eq(Spots.deCallAndGrid("K1JT EA7JRS R FN20")?.second, "FN20", "R grid"); eq(Spots.deCallAndGrid("K1JT <PJ4/K1ABC> -12")?.first, "PJ4/K1ABC", "hashed sender")
+    eq(Spots.deCallAndGrid("TNX 73 GL"), null, "free text")
+    val d = Wsjt.Decode(1_700_000_010_000, -12.0, 0.3, 1291, "CQ R7IW LN35")
+    eq(Spots.fromWsjt(d, Wsjt.Mode.FT8, 14_074_000, "EA7JRS-7", "IM77"), Spots.Spot("R7IW", "LN35", 14_075_291, "FT8", -12, 1_700_000_010_000), "FT8 spot")
+    eq(Spots.fromWsjt(d.copy(message = "EA7JRS R7IW -05"), Wsjt.Mode.FT8, 14_074_000, "EA7JRS", "IM77"), null, "report without locator: no spot")
+    eq(Spots.fromWsjt(d.copy(message = "CQ EA7JRS IM77"), Wsjt.Mode.FT8, 14_074_000, "EA7JRS", "IM77aj"), null, "no self spot")
+    eq(Spots.fromWsjt(d, Wsjt.Mode.FT8, null, "EA7JRS", "IM77"), null, "no spot without frequency")
+    eq(Spots.wsprFields("EA7JRS IM76 23"), Triple("EA7JRS", "IM76", 23), "WSPR type 1"); eq(Spots.wsprFields("PJ4/K1ABC 37"), Triple("PJ4/K1ABC", "", 37), "WSPR type 2")
+    eq(Spots.wsprFields("<EA7JRS> IM76AB"), Triple("EA7JRS", "IM76AB", null), "FST4W type 3"); eq(Spots.wsprFields("<...> IM76AB"), null, "unknown hash")
+    val w = Wsjt.Decode(1_762_473_720_000, -21.0, 0.3, 1493, "K1JT FN20 30", 14_097_093, -1)       // 2025-11-07 00:02 UTC
+    val body = Spots.WsprNet.spot(w, Wsjt.Mode.WSPR, "EA7JRS-7", "IM77aj", 14_095_600, "ALP 0.1.0")!!
+    eq(body, "function=wspr&date=251107&time=0002&sig=-21&dt=0.3&drift=-1&tqrg=14.097093&tcall=K1JT&tgrid=FN20&dbm=30&version=ALP+0.1.0&rcall=EA7JRS&rgrid=IM77aj&rqrg=14.095600&mode=2", "WSPRnet spot")
+    check(Spots.WsprNet.spot(w.copy(message = "<EA7JRS> IM76AB"), Wsjt.Mode.FST4W_300, "EA7JRS", "IM77", 14_095_600, "x")!!.contains("tcall=EA7JRS&tgrid=IM76AB&dbm=&"), "FST4W type 3 to WSPRnet")
+    eq(Spots.WsprNet.modeCode(Wsjt.Mode.FST4W_120), "3", "WSPRnet FST4W-120"); eq(Spots.WsprNet.modeCode(Wsjt.Mode.FST4W_1800), "30", "WSPRnet FST4W-1800")
+    check(Spots.WsprNet.status(Wsjt.Mode.WSPR, "EA7JRS", "IM77", 14_095_600, "x").startsWith("function=wsprstat&rcall=EA7JRS"), "WSPRnet status")
+    check(Spots.WsprNet.accepted("1 out of 1 spot(s) added"), "WSPRnet reply")
+    // IPFIX
+    val rx = Spots.Receiver("EA7JRS", "IM77aj", "APRS LoRa+ 0.1.0", "Dipole")
+    val sp = Spots.Spot("K1JT", "FN20", 14_075_291, "FT8", -12, 1_700_000_000_000)
+    val rec = Spots.Ipfix.record(sp)
+    eq(rec.size, 1 + 4 + 5 + 1 + 1 + 3 + 1 + 4 + 1 + 4, "IPFIX record size"); eq(rec[5].toInt(), 0, "frequency high byte")
+    eq(((rec[6].toLong() and 0xff) shl 24) or ((rec[7].toLong() and 0xff) shl 16) or ((rec[8].toLong() and 0xff) shl 8) or (rec[9].toLong() and 0xff), 14_075_291L, "frequency")
+    eq(rec[10].toInt(), -12, "SNR byte")
+    val pk = Spots.Ipfix.packets(rx, listOf(sp), true, 0, 0x12345678, 1_700_000_100)
+    eq(pk.size, 1, "one datagram"); val p0 = pk[0].first
+    eq(u16(p0, 0), 10, "IPFIX version"); eq(u16(p0, 2), p0.size, "IPFIX length"); eq(p0.size % 4, 0, "IPFIX padded")
+    var off = 16; val ids = ArrayList<Int>()
+    while (off < p0.size) { ids.add(u16(p0, off)); val l = u16(p0, off + 2); check(l % 4 == 0 && l > 0, "IPFIX set length"); off += l }
+    eq(off, p0.size, "IPFIX sets fill the message"); eq(ids, listOf(2, 3, 0x50e2, 0x50e3), "IPFIX sets")
+    val many = (1..60).map { sp.copy(call = "K${it}AB") }
+    val pks = Spots.Ipfix.packets(rx, many, false, 100, 1, 1)
+    check(pks.size > 1 && pks.all { it.first.size <= Spots.Ipfix.MAX_UDP_PAYLOAD }, "IPFIX split by size"); eq(pks.sumOf { it.second }, 60, "IPFIX all spots")
+    eq(((pks[1].first[8].toLong() and 0xff) shl 24) or ((pks[1].first[9].toLong() and 0xff) shl 16) or ((pks[1].first[10].toLong() and 0xff) shl 8) or (pks[1].first[11].toLong() and 0xff),
+        100L + pks[0].second, "IPFIX sequence counts spots")
+    val q = Spots.PskQueue(rx, 7)
+    check(q.add(sp, 0), "first spot queued"); check(!q.add(sp.copy(snr = -3), 60_000), "same call, band and mode: once per hour")
+    check(q.add(sp.copy(mode = "FT4"), 60_000), "other mode"); check(!q.add(sp.copy(call = "EA7JRS"), 0), "not ourselves")
+    eq(q.take(300_000).size, 1, "datagram with descriptors"); eq(q.size, 0, "queue emptied"); eq(q.take(600_000).size, 1, "descriptors again (3 times)")
+    q.take(900_000); eq(q.take(1_200_000).size, 0, "nothing to send")
+    // WSJT-X UDP
+    val hb = Spots.WsjtxUdp.heartbeat("ALP", "0.1.0")
+    eq(hb.toList().take(16).map { it.toInt() and 0xff }, listOf(0xad, 0xbc, 0xcb, 0xda, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 3), "UDP header and type")
+    eq(hb.size, 12 + 4 + 3 + 4 + 4 + 5 + 4, "heartbeat size")
+    val dec = Spots.WsjtxUdp.forDecode("ALP", d, Wsjt.Mode.FT8, 14_074_000)!!
+    eq(dec.size, 12 + 7 + 1 + 4 + 4 + 8 + 4 + 5 + 16 + 2, "decode size"); eq(dec[11].toInt(), 2, "decode type")
+    eq(((dec[20].toLong() and 0xff) shl 24) or ((dec[21].toLong() and 0xff) shl 16) or ((dec[22].toLong() and 0xff) shl 8) or (dec[23].toLong() and 0xff), 80_010_000L, "QTime ms of day")
+    eq(Spots.WsjtxUdp.forDecode("ALP", w, Wsjt.Mode.WSPR, 14_095_600)!![11].toInt(), 10, "WSPRDecode type")
+    eq(Spots.WsjtxUdp.marker(Wsjt.Mode.FST4W_120), "`", "FST4W marker"); eq(Spots.WsjtxUdp.status("ALP", 14_074_000, Wsjt.Mode.FT8, "EA7JRS", "IM77", true)[11].toInt(), 1, "status type")
+    // CW
+    val cw = Spots.CwSpotter("EA7JRS")
+    eq(cw.feed("CQ CQ DE K1JT K1JT K", 0), listOf(Spots.CwHit("K1JT", "CQ")), "CW CQ call"); eq(cw.feed(" CQ DE K1JT K1JT K ", 1000), emptyList<Spots.CwHit>(), "CW given once")
+    eq(cw.feed("VVV VVV DE DB0ABC DB0ABC ", 2000), listOf(Spots.CwHit("DB0ABC", "BEACON")), "CW beacon"); eq(cw.feed("CQ DE EA7JRS EA7JRS ", 3000), emptyList<Spots.CwHit>(), "CW not ourselves")
+    eq(cw.feed("5NN TU K1ABC ", 4000), emptyList<Spots.CwHit>(), "CW call once: nothing"); eq(cw.feed("CQ TEST DL1ABC ", 5000) + cw.feed("TEST DL1ABC ", 9000), listOf(Spots.CwHit("DL1ABC", "CQ")), "CW contest CQ")
+    eq(Spots.skimmerLine("EA7JRS-7", 14_025_100, "K1JT", 15, 22, "CQ", 1_762_473_720_000), "DX de EA7JRS-#:   14025.1  K1JT         CW    15 dB  22 WPM  CQ      0002Z", "skimmer line")
+}
+
 private fun testWsjt() {
     eq(Wsjt.slotStart(30_100, 15_000), 30_000L, "FT8 slot"); eq(Wsjt.slotStart(37_400, 7_500), 30_000L, "FT4 slot"); eq(Wsjt.slotStart(37_600, 7_500), 37_500L, "FT4 second slot")
     val d = Wsjt.parse("000000 +13.0 +1.60 1291 ~  CQ R7IW LN35", 30_000)!!
@@ -862,7 +927,7 @@ private fun testWsjt() {
 }
 
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

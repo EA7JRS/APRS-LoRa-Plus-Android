@@ -138,6 +138,7 @@ fun DigimodesTab() {
         }
         Text(text.ifEmpty { "—" }, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         WsjtSection(source)
+        SpottingSection()
         Text("CW, RTTY and BPSK receive in the manner of fldigi (varicode, Baudot and PSK timing from fldigi, GPL). More fldigi modes come in the next steps.", fontSize = 11.sp)
     }
 }
