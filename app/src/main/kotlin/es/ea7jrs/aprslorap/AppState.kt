@@ -89,6 +89,8 @@ object AppState {
     val rotorBusy = MutableStateFlow(false)
     val rotorMessage = MutableStateFlow("")
     val rotorFollowSent = MutableStateFlow("")
+    val rotorTrackerFollow = MutableStateFlow<es.ea7jrs.aprslorap.core.ControlEvent.Targets?>(null)   // tracker's rotor settings (sources 4 / 5)
+    val heardAtMs = MutableStateFlow(0L)                                          // when the tracker's heard list arrived
     val rbBusy = MutableStateFlow(false)
     val sdr = MutableStateFlow(SdrControl.State())
     val sigIdInfo = MutableStateFlow<SigIdDb.Info?>(null)                       // signal identification database

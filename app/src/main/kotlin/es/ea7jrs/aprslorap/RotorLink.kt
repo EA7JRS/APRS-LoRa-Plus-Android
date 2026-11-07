@@ -18,6 +18,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import es.ea7jrs.aprslorap.core.RotorFollow
 import es.ea7jrs.aprslorap.core.RotorPointing
 import es.ea7jrs.aprslorap.core.RotorProto
 import java.io.OutputStream
@@ -51,6 +52,7 @@ object RotorLink {
         disconnect()
         appCtx = ctx.applicationContext
         transport = RotorBle(ctx.applicationContext, address)
+        applyFollow(ctx)
     }
 
     @Synchronized
@@ -58,6 +60,7 @@ object RotorLink {
         disconnect()
         appCtx = ctx.applicationContext
         transport = RotorTcp(host, port)
+        applyFollow(ctx)
     }
 
     @Synchronized
@@ -170,7 +173,7 @@ object RotorLink {
         val ctx = appCtx ?: return
         if (transport == null) return
         val s = Settings(ctx)
-        if (!s.rotorFollow) return
+        if (!s.rotorFollow || s.rotorFollowMode != 0) return
         val info = AppState.rotorInfo.value ?: return
         if (info.pinRequired && !AppState.rotorAuthed.value) return
         val now = System.currentTimeMillis()
@@ -180,6 +183,78 @@ object RotorLink {
         send(RotorProto.pos(p.azDeg, el))
         AppState.rotorFollowSent.value = String.format(Locale.US, "Sent %.1f°%s%s", p.azDeg,
             if (el != null) String.format(Locale.US, " / %.1f°", el) else "", p.name?.let { " ($it)" } ?: "")
+    }
+
+    // ------------------------------------------------------------------ following an APRS station or a CW beacon from the app
+
+    @Volatile private var follower: Thread? = null
+    @Volatile private var lastHeardAsk = 0L
+
+    /** Starts / stops the follower of modes 1 (APRS station) and 2 (CW beacon) after a settings change. */
+    @Synchronized
+    fun applyFollow(ctx: Context) {
+        appCtx = ctx.applicationContext
+        val s = Settings(ctx)
+        val want = s.rotorFollow && s.rotorFollowMode != 0
+        if (want && follower == null) {
+            follower = Thread({ followLoop() }, "rotor-follow").also { it.isDaemon = true; it.start() }
+        } else if (!want) {
+            follower?.interrupt(); follower = null
+        }
+        lastAz = null; lastEl = null
+    }
+
+    private fun followLoop() {
+        while (!Thread.currentThread().isInterrupted) {
+            try { Thread.sleep(1000) } catch (_: InterruptedException) { break }
+            try { followStep() } catch (e: Exception) { AppState.rotorFollowSent.value = "Follow: ${e.message}" }
+        }
+    }
+
+    /** One second of following: where the target is now, seen from the tracker's GPS, and the order if it moved enough. */
+    private fun followStep() {
+        val ctx = appCtx ?: return
+        val s = Settings(ctx)
+        if (!s.rotorFollow || s.rotorFollowMode == 0) return
+        if (transport == null) return
+        val info = AppState.rotorInfo.value ?: return
+        if (info.pinRequired && !AppState.rotorAuthed.value) { AppState.rotorFollowSent.value = "Waiting for the rotor PIN"; return }
+        val g = AppState.gnss.value
+        val oLat = g?.lat; val oLon = g?.lon
+        if (oLat == null || oLon == null) { AppState.rotorFollowSent.value = "No tracker GPS position yet (tracker link and GNSS)"; return }
+        val oAlt = g.altitudeM ?: 0.0
+        val now = System.currentTimeMillis()
+        val target: Triple<String, Pair<Double, Double>, Double>          // name, position, altitude
+        if (s.rotorFollowMode == 1) {
+            // The tracker's heard list (LoRa and FSK, with course and speed also from Mic-E): refreshed every 10 s
+            if (now - lastHeardAsk >= 10_000 && AppState.controlReady.value) {
+                lastHeardAsk = now
+                AppState.controller?.control("heard", "cnt" to 12)
+            }
+            val since = if (AppState.heardAtMs.value > 0) (now - AppState.heardAtMs.value) / 1000.0 else 0.0
+            val aim = RotorFollow.aimAtStation(AppState.heard.value, s.rotorFollowCall, s.rotorFollowFilter, s.rotorFollowMaxMin,
+                s.rotorPredict, s.rotorPredictMaxS, since)
+            if (aim == null) {
+                AppState.rotorFollowSent.value = if (s.rotorFollowCall.isNotBlank()) "${s.rotorFollowCall}: not heard with position" else "No station with position that passes the filter"
+                return
+            }
+            target = Triple(aim.call + if (aim.estimated) "~" else "", aim.lat to aim.lon, aim.altM)
+        } else {
+            // Text of the tracker's CW listening and of the phone's CW decoder (Modes tab)
+            val b = RotorFollow.parseCwBeacon(AppState.cwRxText.value.takeLast(200)) ?: RotorFollow.parseCwBeacon(AppState.modemText.value.takeLast(200))
+            if (b == null) { AppState.rotorFollowSent.value = "No CW beacon with locator decoded yet"; return }
+            target = Triple((if (b.call.isNotEmpty()) b.call + " " else "") + b.locator, b.lat to b.lon, 0.0)
+        }
+        val lk = RotorFollow.look(oLat, oLon, oAlt, target.second.first, target.second.second, target.third)
+        val el = if (info.hasEl) lk.elDeg.coerceIn(maxOf(0.0, info.limits.minEl), info.limits.maxEl) else null
+        val text = String.format(Locale.US, "%s: %.1f°%s, %.1f km", target.first, lk.azDeg, if (el != null) String.format(Locale.US, " / %.1f°", el) else "", lk.km)
+        if (now - lastSentMs < 1000 || !RotorProto.worthSending(lastAz, lastEl, lk.azDeg, el, s.rotorStep)) {
+            AppState.rotorFollowSent.value = "Following $text"
+            return
+        }
+        lastAz = lk.azDeg; lastEl = el; lastSentMs = now
+        send(RotorProto.pos(lk.azDeg, el))
+        AppState.rotorFollowSent.value = "Sent $text"
     }
 }
 

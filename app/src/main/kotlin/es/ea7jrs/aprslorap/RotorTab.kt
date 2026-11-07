@@ -222,24 +222,8 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
             OutlinedButton(enabled = canControl && p?.ok == false, onClick = { RotorLink.command(RotorProto.clear()) }) { Text("Clear fault") }
         }
 
-        // ---------------------------------------------------------------- follow the tracker
-        Section("Follow the tracker")
-        var follow by remember { mutableStateOf(settings.rotorFollow) }
-        var step by rememberSaveable { mutableStateOf(String.format(Locale.US, "%.1f", settings.rotorStep)) }
-        val sent by AppState.rotorFollowSent.collectAsState()
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Send the tracker's pointing (SAT, GO TO, fixed targets) to this rotor", Modifier.weight(1f), fontSize = 14.sp)
-            Switch(follow, { on -> follow = on; settings.rotorFollow = on })
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(step, { step = it }, label = { Text("Minimum step °") }, singleLine = true, modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            OutlinedButton(onClick = { settings.rotorStep = step.replace(',', '.').toDoubleOrNull() ?: 2.0 }) { Text("Save") }
-        }
-        trackerRot?.let { Text(String.format(Locale.US, "Tracker points to %.1f° / %.1f°%s", it.azDeg, it.elDeg, it.name?.let { n -> " ($n)" } ?: ""), fontSize = 12.sp) }
-            ?: Text("No pointing from the tracker yet (needs the tracker link and \"Send the rot event\" on in its WebUI).", fontSize = 12.sp)
-        if (sent.isNotBlank()) Text(sent, fontSize = 12.sp)
-        Text("Do not let the tracker drive the same rotor at the same time by WiFi or SPP: choose one way.", fontSize = 11.sp)
+        // ---------------------------------------------------------------- follow
+        RotorFollowSection(settings, trackerRot)
 
         // ---------------------------------------------------------------- calibration
         if (i.canCalibrate) RotorCalibration(i, canControl)
@@ -375,4 +359,83 @@ private fun prettyJson(s: String): String {
         }
     }
     return sb.toString()
+}
+
+/**
+ * What the rotor box follows on its own from the app: the tracker's pointing (SAT, GO TO, fixed targets...), an APRS station
+ * from the tracker's heard list (aimed where it is now when it moves) or the last CW beacon with locator. Angles from the
+ * tracker's GPS.
+ */
+@Composable
+private fun RotorFollowSection(settings: Settings, trackerRot: es.ea7jrs.aprslorap.core.RotorPointing?) {
+    val ctx = LocalContext.current
+    var follow by remember { mutableStateOf(settings.rotorFollow) }
+    var mode by remember { mutableStateOf(settings.rotorFollowMode) }
+    var step by rememberSaveable { mutableStateOf(String.format(Locale.US, "%.1f", settings.rotorStep)) }
+    var call by rememberSaveable { mutableStateOf(settings.rotorFollowCall) }
+    var filter by rememberSaveable { mutableStateOf(settings.rotorFollowFilter) }
+    var maxMin by rememberSaveable { mutableStateOf(settings.rotorFollowMaxMin.toString()) }
+    var predict by remember { mutableStateOf(settings.rotorPredict) }
+    var predictS by rememberSaveable { mutableStateOf(settings.rotorPredictMaxS.toString()) }
+    val sent by AppState.rotorFollowSent.collectAsState()
+    val heard by AppState.heard.collectAsState()
+    val gnss by AppState.gnss.collectAsState()
+    fun save() {
+        settings.rotorStep = step.replace(',', '.').toDoubleOrNull() ?: 2.0
+        settings.rotorFollowCall = call
+        settings.rotorFollowFilter = filter
+        settings.rotorFollowMaxMin = maxMin.toIntOrNull() ?: 30
+        settings.rotorPredict = predict
+        settings.rotorPredictMaxS = predictS.toIntOrNull() ?: 300
+        RotorLink.applyFollow(ctx)
+    }
+
+    Section("Follow")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("The rotor box follows a target from this app", Modifier.weight(1f), fontSize = 14.sp)
+        Switch(follow, { on -> follow = on; settings.rotorFollow = on; RotorLink.applyFollow(ctx) })
+    }
+    val modes = listOf("Tracker's pointing", "APRS station", "CW beacon")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        modes.forEachIndexed { i, label ->
+            RadioButton(mode == i, { mode = i; settings.rotorFollowMode = i; RotorLink.applyFollow(ctx) })
+            Text(label, Modifier.clickable { mode = i; settings.rotorFollowMode = i; RotorLink.applyFollow(ctx) }, fontSize = 13.sp)
+        }
+    }
+    when (mode) {
+        0 -> {
+            trackerRot?.let { Text(String.format(Locale.US, "Tracker points to %.1f° / %.1f°%s", it.azDeg, it.elDeg, it.name?.let { n -> " ($n)" } ?: ""), fontSize = 12.sp) }
+                ?: Text("No pointing from the tracker yet (needs the tracker link and \"Send the rot event\" on in its WebUI).", fontSize = 12.sp)
+            Text("What the tracker itself follows (satellite, GO TO, fixed target, last heard, CW beacon) is chosen in the SAT tab > Rotor.", fontSize = 11.sp)
+        }
+        1 -> {
+            OutlinedTextField(call, { call = it.uppercase().trim() }, label = { Text("Station (empty = the last heard with position)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            val withPos = heard.filter { it.lat != null && it.lon != null }.take(8)
+            if (withPos.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (h in withPos.take(4)) OutlinedButton(onClick = { call = h.call; save() }) { Text(h.call, fontSize = 11.sp) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(filter, { filter = it.uppercase() }, label = { Text("Filter (EA7JRS, EA7*)") }, singleLine = true, modifier = Modifier.weight(2f))
+                OutlinedTextField(maxMin, { maxMin = it.filter(Char::isDigit).take(3) }, label = { Text("Max min") }, singleLine = true, modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Moving stations: aim where they are now (speed and course)", Modifier.weight(1f), fontSize = 13.sp)
+                Switch(predict, { predict = it; save() })
+            }
+            OutlinedTextField(predictS, { predictS = it.filter(Char::isDigit).take(4) }, label = { Text("Predict up to (s)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            Text("Stations heard by the tracker (APRS LoRa and FSK, Mic-E included); the list is asked again every 10 s while following. \"~\" = estimated position.", fontSize = 11.sp)
+        }
+        else -> Text("The last callsign + locator decoded in CW (\"VVV DE ED7YAA IM76HR\"): from the tracker's CW listening (Tracker tab, MORSE mode) or from the phone's CW decoder (Modes tab). The rotor points to the centre of the square.", fontSize = 11.sp)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(step, { step = it }, label = { Text("Minimum step °") }, singleLine = true, modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        OutlinedButton(onClick = { save() }) { Text("Save") }
+    }
+    if (mode != 0) Text(gnss?.let { g -> if (g.lat != null && g.lon != null) String.format(Locale.US, "From the tracker's GPS: %.5f, %.5f", g.lat, g.lon) else null }
+        ?: "No tracker GPS position yet: the angles are computed from it.", fontSize = 12.sp)
+    if (sent.isNotBlank()) Text(sent, fontSize = 12.sp)
+    Text("Do not let the tracker drive the same rotor at the same time by WiFi or SPP: choose one way.", fontSize = 11.sp)
 }

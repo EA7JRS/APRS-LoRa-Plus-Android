@@ -251,6 +251,7 @@ class Controller(
                 sendControlLine(Control.command("msgs", "cnt" to 20))
             }
             is ControlEvent.Heard -> {
+                if (ev.from == 0) AppState.heardAtMs.value = System.currentTimeMillis()
                 AppState.heardCounts.value = ev.total to ev.packets
                 AppState.heard.value = if (ev.from == 0) ev.items else AppState.heard.value + ev.items
             }
@@ -288,6 +289,7 @@ class Controller(
             is ControlEvent.Rotor -> { AppState.rotor.value = ev.pointing; RotctlLink.onPointing(ev.pointing); RotorLink.onPointing(ev.pointing) }
             is ControlEvent.Targets -> {
                 AppState.rotorTargets.value = ev.items; AppState.rotorTargetSel.value = ev.selected; AppState.rotorSource.value = ev.source
+                AppState.rotorTrackerFollow.value = ev
             }
             is ControlEvent.OtaProgress -> FirmwareUpdater.onProgress(ev.offset, ev.done)
             is ControlEvent.Ok -> when (ev.command) {

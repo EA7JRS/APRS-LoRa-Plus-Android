@@ -90,6 +90,7 @@ data class HeardStation(
     val call: String, val symbol: String, val kind: String, val lat: Double?, val lon: Double?, val altitudeM: Int?, val speedKmh: Int?, val course: Int?,
     val rssi: Int?, val snr: Double?, val ageS: Long, val packets: Int, val device: String?, val path: String?, val comment: String?, val status: String?,
     val wx: Map<String, Any?>?,
+    val posAgeS: Long? = null,                       // seconds since its last position (firmware with "pa")
 )
 
 /** Text of the tracker's screen (last page drawn). */
@@ -154,7 +155,11 @@ sealed class ControlEvent {
     data class Rotor(val pointing: RotorPointing) : ControlEvent()
     /** CW listening on RF (`cwrx`): [letter] is null for a level-only update; [on] false = the session ended. */
     data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?, val freqHz: Long? = null) : ControlEvent()
-    data class Targets(val selected: Int, val source: Int, val items: List<RotorTarget>) : ControlEvent()
+    data class Targets(
+        val selected: Int, val source: Int, val items: List<RotorTarget>,
+        // rotor following what the tracker hears (firmware with sources 4 / 5): callsign filter, max age, moving-station estimate
+        val filter: String = "", val maxAgeMin: Int = 30, val predict: Boolean = true, val predictMaxS: Int = 300,
+    ) : ControlEvent()
     data class Ok(val command: String, val id: Int?) : ControlEvent()
     data class Error(val command: String, val id: Int?, val message: String) : ControlEvent()
     data class Unknown(val raw: String) : ControlEvent()
@@ -251,6 +256,7 @@ object Control {
                 o.objList("items").mapNotNull { t ->
                     t.int("i")?.let { RotorTarget(it, t.str("n") ?: "", t.num("lat") ?: 0.0, t.num("lon") ?: 0.0, t.int("alt") ?: 0, t.long("f") ?: 0) }
                 },
+                o.str("ff") ?: "", o.int("fm") ?: 30, o.bool("pr") ?: true, o.int("pm") ?: 300,
             )
             "ok" -> ControlEvent.Ok(o.str("c") ?: "", o.int("id"))
             "err" -> ControlEvent.Error(o.str("c") ?: "", o.int("id"), o.str("msg") ?: "error")
@@ -268,7 +274,7 @@ object Control {
         val call = o.str("c") ?: return null
         return HeardStation(
             call, o.str("sym") ?: "", o.str("k") ?: "", o.num("lat"), o.num("lon"), o.int("alt"), o.int("spd"), o.int("crs"), o.int("rssi"), o.num("snr"),
-            o.long("age") ?: 0, o.int("n") ?: 0, o.str("dev"), o.str("path"), o.str("cmt"), o.str("sts"), o.obj("wx"),
+            o.long("age") ?: 0, o.int("n") ?: 0, o.str("dev"), o.str("path"), o.str("cmt"), o.str("sts"), o.obj("wx"), o.long("pa"),
         )
     }
 

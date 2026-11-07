@@ -594,6 +594,48 @@ private fun testRotorProto() {
     check(RotorProto.worthSending(100.0, 10.0, 100.0, 13.0, 2.0), "rotor elevation change")
 }
 
+private fun testRotorFollow() {
+    // Same cases as tools/rotor_follow/test_rotor_follow.cpp of the tracker firmware
+    val l = RotorFollow.locatorToLatLon("im76hr")!!
+    near(l.first, 36.729167, 1e-5, "locator 6 lat"); near(l.second, -5.375, 1e-5, "locator 6 lon")
+    val l8 = RotorFollow.locatorToLatLon("IM76HR45")!!
+    near(l8.first, 36.73125, 1e-4, "locator 8 lat"); near(l8.second, -5.37917, 1e-4, "locator 8 lon")
+    check(RotorFollow.locatorToLatLon("EA7JRS") == null && RotorFollow.locatorToLatLon("ZZ76") == null, "not locators")
+    eq(RotorFollow.parseCwBeacon("VVV VVV DE ED7YAA IM76HR "), RotorFollow.Beacon("ED7YAA", "IM76HR", l.first, l.second), "CW beacon with DE")
+    eq(RotorFollow.parseCwBeacon("OH2B KP20 OH2B KP20")?.call, "OH2B", "CW beacon without DE")
+    eq(RotorFollow.parseCwBeacon("BEACON IO91WM G3XXX")?.call, "G3XXX", "CW beacon call after the locator")
+    eq(RotorFollow.parseCwBeacon("DE ED7YAA IM76HR   DE EA1AAA IN73XL")?.call, "EA1AAA", "last CW beacon wins")
+    check(RotorFollow.parseCwBeacon("CQ CQ DE EA7JRS K") == null, "no locator, no beacon")
+    check(RotorFollow.callMatches("EA7JRS-9", "") && RotorFollow.callMatches("EA7JRS-9", "ea7jrs") && RotorFollow.callMatches("EA7ABC", "EA7*"), "call filter yes")
+    check(!RotorFollow.callMatches("EA7JRS-7", "EA7JRS-9") && !RotorFollow.callMatches("EA7JRSX", "EA7JRS"), "call filter no")
+    // Moving station: 60 km/h north for 60 s = 1 km
+    val p = RotorFollow.predict(37.0, -6.0, 60.0, 0.0, 60.0, 300.0)!!
+    near(p.first, 37.008993, 1e-5, "predict north"); near(p.second, -6.0, 1e-9, "predict north lon")
+    near(RotorFollow.predict(37.0, -6.0, 60.0, 0.0, 3600.0, 300.0)!!.first, 37.0 + 5.0 / 111.195, 1e-4, "predict capped at 300 s")
+    check(RotorFollow.predict(37.0, -6.0, 2.0, 0.0, 60.0, 300.0) == null, "stopped station not predicted")
+    check(RotorFollow.predict(0.0, 179.99, 100.0, 90.0, 60.0, 300.0)!!.second < -179.9, "predict across the antimeridian")
+    // Look angles: due east 10 km, same height -> az 90, slightly below the horizon (curvature)
+    val east = RotorFollow.predict(37.0, -6.0, 36.0, 90.0, 1000.0, 1000.0)!!
+    val lk = RotorFollow.look(37.0, -6.0, 0.0, east.first, east.second, 0.0)
+    near(lk.azDeg, 90.0, 0.1, "look az"); near(lk.km, 10.0, 0.01, "look range"); check(lk.elDeg < 0 && lk.elDeg > -0.1, "look elevation with curvature")
+    near(RotorFollow.look(37.0, -6.0, 0.0, 37.0 + 1 / 111.195, -6.0, 1000.0).elDeg, 45.0, 0.1, "look 1 km away 1 km up")
+    // Station to aim at from the tracker's heard list (newest first)
+    fun hs(c: String, lat: Double?, age: Long, spd: Int? = null, crs: Int? = null, pa: Long? = null) =
+        HeardStation(c, "", "", lat, if (lat != null) -6.0 else null, 100, spd, crs, null, null, age, 1, null, null, null, null, null, pa)
+    val list = listOf(hs("EA1AAA", null, 5), hs("EA7JRS-9", 37.0, 60, 60, 0, 60), hs("EA7XYZ", 37.5, 120))
+    val a = RotorFollow.aimAtStation(list, "", "", 30, true, 300, 0.0)!!
+    eq(a.call, "EA7JRS-9", "aim newest with position"); check(a.estimated, "aim estimated"); near(a.lat, 37.008993, 1e-5, "aim: 60 s since its position at 60 km/h")
+    eq(RotorFollow.aimAtStation(list, "", "EA7XYZ", 30, true, 300, 0.0)?.call, "EA7XYZ", "aim with filter")
+    eq(RotorFollow.aimAtStation(list, "", "EA7XYZ", 1, true, 300, 0.0), null, "aim too old")
+    eq(RotorFollow.aimAtStation(list, "ea7xyz", "", 1, true, 300, 0.0)?.estimated, false, "aim chosen station, stopped")
+    // Tracker events with the new fields
+    val tg = Control.parse("{\"e\":\"targets\",\"sel\":0,\"src\":4,\"ff\":\"EA7*\",\"fm\":20,\"pr\":false,\"pm\":120,\"items\":[]}") as ControlEvent.Targets
+    check(tg.source == 4 && tg.filter == "EA7*" && tg.maxAgeMin == 20 && !tg.predict && tg.predictMaxS == 120, "targets with follow settings")
+    val hd = Control.parse("{\"e\":\"heard\",\"tot\":1,\"pkts\":1,\"from\":0,\"items\":[{\"c\":\"EA7JRS-9\",\"lat\":37,\"lon\":-6,\"spd\":50,\"crs\":90,\"age\":5,\"pa\":40,\"n\":2}]}") as ControlEvent.Heard
+    eq(hd.items.single().posAgeS, 40L, "heard position age")
+    eq(Sat.rotorSource(5), "CW beacon", "rotor source name")
+}
+
 private fun testSdr() {
     eq(Sdr.dopplerRx(437_800_000L, -7.0), 437_810_222L, "Doppler approaching raises the frequency")
     eq(Sdr.dopplerRx(437_800_000L, 0.0), 437_800_000L, "no Doppler")
@@ -1031,7 +1073,7 @@ private fun testWsjt() {
 }
 
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

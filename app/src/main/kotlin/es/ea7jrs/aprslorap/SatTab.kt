@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import es.ea7jrs.aprslorap.core.Sat
+import es.ea7jrs.aprslorap.core.RotorFollow
 import es.ea7jrs.aprslorap.core.SatTransmitter
 import es.ea7jrs.aprslorap.core.TrackerMode
 import java.util.Locale
@@ -227,12 +228,13 @@ fun SatTab() {
                 if (r.actualAzDeg != null && r.actualElDeg != null) Field("Rotor reports", fmt(r.actualAzDeg, "%.1f", "° / ") + fmt(r.actualElDeg, "%.1f", "°"))
             }
             Text("Follow", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (src in 0..2) {
+            for (row in RotorFollow.TRACKER_SOURCES.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (src in row) {
                     if (source == src) Button(onClick = {}) { Text(Sat.rotorSource(src)) }
                     else OutlinedButton(onClick = { c?.control("tgt", "src" to src) }) { Text(Sat.rotorSource(src)) }
                 }
             }
+            TrackerRotorFollowSettings(c)
             Section("Fixed targets (repeaters, beacons)")
             if (targets.isEmpty()) Text("None stored.", fontSize = 13.sp)
         }
@@ -339,5 +341,32 @@ fun SatTab() {
             confirmButton = { TextButton(onClick = { c?.control("mode", "m" to TrackerMode.SAT); confirmMode = false }) { Text("Switch") } },
             dismissButton = { TextButton(onClick = { confirmMode = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** The tracker's own rotor settings for following what it hears (firmware with sources 4 / 5): filter, max age, estimate. */
+@Composable
+private fun TrackerRotorFollowSettings(c: Controller?) {
+    val cfg by AppState.rotorTrackerFollow.collectAsState()
+    var filter by rememberSaveable(cfg?.filter) { mutableStateOf(cfg?.filter ?: "") }
+    var maxMin by rememberSaveable(cfg?.maxAgeMin) { mutableStateOf((cfg?.maxAgeMin ?: 30).toString()) }
+    var predictS by rememberSaveable(cfg?.predictMaxS) { mutableStateOf((cfg?.predictMaxS ?: 300).toString()) }
+    val predict = cfg?.predict ?: true
+    Text("Last heard: stations with position heard by APRS LoRa or FSK. CW beacon: callsign + locator decoded in Listen CW (MORSE). Angles from the tracker's GPS.", fontSize = 11.sp)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(filter, { filter = it.uppercase() }, label = { Text("Callsigns (EA7JRS, EA7*)") }, singleLine = true, modifier = Modifier.weight(2f))
+        OutlinedTextField(maxMin, { maxMin = it.filter(Char::isDigit).take(3) }, label = { Text("Max min") }, singleLine = true, modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Moving stations: aim where they are now", Modifier.weight(1f), fontSize = 13.sp)
+        androidx.compose.material3.Switch(predict, { on -> c?.control("tgt", "pr" to on) })
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(predictS, { predictS = it.filter(Char::isDigit).take(4) }, label = { Text("Predict up to (s)") }, singleLine = true, modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+        OutlinedButton(onClick = {
+            c?.control("tgt", "ff" to filter.trim(), "fm" to (maxMin.toIntOrNull() ?: 30), "pm" to (predictS.toIntOrNull() ?: 300))
+        }) { Text("Save") }
     }
 }

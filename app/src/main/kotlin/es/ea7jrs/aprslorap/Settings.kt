@@ -170,6 +170,25 @@ class Settings(ctx: Context) {
     var rotorFollow: Boolean
         get() = p.getBoolean("rotor_follow", false)
         set(v) { p.edit().putBoolean("rotor_follow", v).apply() }
+    /** What the rotor box follows: 0 the tracker's pointing, 1 an APRS station (tracker's heard list), 2 a CW beacon with locator. */
+    var rotorFollowMode: Int
+        get() = p.getInt("rotor_follow_mode", 0)
+        set(v) { p.edit().putInt("rotor_follow_mode", v.coerceIn(0, 2)).apply() }
+    var rotorFollowCall: String                      // empty = the last station heard that passes the filter
+        get() = p.getString("rotor_follow_call", "")!!
+        set(v) { p.edit().putString("rotor_follow_call", v.trim().uppercase()).apply() }
+    var rotorFollowFilter: String
+        get() = p.getString("rotor_follow_filter", "")!!
+        set(v) { p.edit().putString("rotor_follow_filter", v.trim().uppercase()).apply() }
+    var rotorFollowMaxMin: Int
+        get() = p.getInt("rotor_follow_max_min", 30)
+        set(v) { p.edit().putInt("rotor_follow_max_min", v.coerceIn(1, 720)).apply() }
+    var rotorPredict: Boolean
+        get() = p.getBoolean("rotor_predict", true)
+        set(v) { p.edit().putBoolean("rotor_predict", v).apply() }
+    var rotorPredictMaxS: Int
+        get() = p.getInt("rotor_predict_max_s", 300)
+        set(v) { p.edit().putInt("rotor_predict_max_s", v.coerceIn(10, 1800)).apply() }
     var rotorStep: Double
         get() = p.getFloat("rotor_step", 2f).toDouble()
         set(v) { p.edit().putFloat("rotor_step", v.coerceIn(0.5, 20.0).toFloat()).apply() }
