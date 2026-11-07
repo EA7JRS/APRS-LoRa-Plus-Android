@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Spotter.init(this)
+        LogStore.init(this)
         setContent { MaterialTheme { App() } }
     }
 
@@ -95,7 +96,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App() {
-    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "SAT", "SDR", "Modes", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect")
+    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "SAT", "SDR", "Modes", "Log", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect")
     var tab by rememberSaveable { mutableStateOf(titles.size - 1) }
     val error by AppState.error.collectAsState()
     val notice by AppState.notice.collectAsState()
@@ -122,11 +123,12 @@ fun App() {
                 5 -> SatTab()
                 6 -> SdrTab()
                 7 -> DigimodesTab()
-                8 -> SigIdTab()
-                9 -> RemoteTab()
-                10 -> ConfigTab()
-                11 -> DapnetTab()
-                12 -> FirmwareTab()
+                8 -> LogTab()
+                9 -> SigIdTab()
+                10 -> RemoteTab()
+                11 -> ConfigTab()
+                12 -> DapnetTab()
+                13 -> FirmwareTab()
                 else -> ConnectTab()
             }
         }

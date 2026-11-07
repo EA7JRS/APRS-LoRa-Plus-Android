@@ -95,6 +95,9 @@ object Spotter {
         } catch (_: SecurityException) { "" }
     }
 
+    /** Frequency the tracker was last listening to CW on (event "cwrx"), or null. */
+    fun trackerCwFreqHz(): Long? = trackerCwHz
+
     /** Dial frequency of the radio when the audio comes from the microphone (set by hand), or null. */
     fun micDialHz(): Long? = settings?.spotDialHz?.takeIf { it > 0 }
 

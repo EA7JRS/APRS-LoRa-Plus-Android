@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later.
+     Files the app hands to other apps: the log as ADIF (Log tab). -->
+<paths>
+    <cache-path name="share" path="share/" />
+</paths>

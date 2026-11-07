@@ -366,6 +366,22 @@ object Spots {
 
         fun clear(id: String): ByteArray = Msg(3, id).bytes()
 
+        /** QDateTime (Qt 5.4 stream): Julian day, ms of the day, 1 = UTC. */
+        private fun Msg.dateTime(utcMs: Long) {
+            o.writeLong(Math.floorDiv(utcMs, 86_400_000L) + 2_440_588L); o.writeInt(msOfDay(utcMs).toInt()); o.writeByte(1)
+        }
+
+        /** "QSO Logged" (5), as WSJT-X sends it when a contact is logged. */
+        fun qsoLogged(id: String, offMs: Long, onMs: Long, dxCall: String, dxGrid: String, freqHz: Long, mode: String, rstSent: String,
+                      rstRcvd: String, txPwr: String, comment: String, name: String, myCall: String, myGrid: String): ByteArray =
+            Msg(5, id).apply {
+                dateTime(offMs); utf8(dxCall); utf8(dxGrid); u64(freqHz); utf8(mode); utf8(rstSent); utf8(rstRcvd); utf8(txPwr)
+                utf8(comment); utf8(name); dateTime(onMs); utf8(myCall); utf8(myCall); utf8(myGrid); utf8(""); utf8(""); utf8("")
+            }.bytes()
+
+        /** "Logged ADIF" (12): the contact as an ADIF text with header. */
+        fun loggedAdif(id: String, adif: String): ByteArray = Msg(12, id).apply { utf8(adif) }.bytes()
+
         /** The UDP message for one decode, as WSJT-X would send it (WSPR: WSPRDecode; FT8 / FT4 / FST4W: Decode). */
         fun forDecode(id: String, d: Wsjt.Decode, mode: Wsjt.Mode, dialHz: Long?): ByteArray? {
             if (mode == Wsjt.Mode.WSPR) {

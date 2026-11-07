@@ -285,4 +285,81 @@ class Settings(ctx: Context) {
     var spotDialHz: Long
         get() = p.getLong("spot_dial_hz", 0L)
         set(v) { p.edit().putLong("spot_dial_hz", v).apply() }
+
+    // Log (Log tab): QSL services
+    /** QRZ.com logbook API key (QRZ: logbook settings; needs the XML subscription). */
+    var qrzKey: String
+        get() = p.getString("qrz_key", "")!!
+        set(v) { p.edit().putString("qrz_key", v.trim()).apply() }
+
+    /** LoTW web account (to read the confirmations). */
+    var lotwUser: String
+        get() = p.getString("lotw_user", "")!!
+        set(v) { p.edit().putString("lotw_user", v.trim()).apply() }
+
+    var lotwPassword: String
+        get() = p.getString("lotw_pass", "")!!
+        set(v) { p.edit().putString("lotw_pass", v).apply() }
+
+    /** Password of the TrustedQSL certificate file (.p12), often empty. */
+    var lotwP12Password: String
+        get() = p.getString("lotw_p12_pass", "")!!
+        set(v) { p.edit().putString("lotw_p12_pass", v).apply() }
+
+    /** Station location for LoTW: CQ zone, ITU zone, IOTA (the DXCC comes from the certificate). */
+    var lotwCqz: String
+        get() = p.getString("lotw_cqz", "")!!
+        set(v) { p.edit().putString("lotw_cqz", v.trim()).apply() }
+
+    var lotwItuz: String
+        get() = p.getString("lotw_ituz", "")!!
+        set(v) { p.edit().putString("lotw_ituz", v.trim()).apply() }
+
+    var lotwIota: String
+        get() = p.getString("lotw_iota", "")!!
+        set(v) { p.edit().putString("lotw_iota", v.trim()).apply() }
+
+    /** eQSL.cc account and QTH nickname (empty = the default one). */
+    var eqslUser: String
+        get() = p.getString("eqsl_user", "")!!
+        set(v) { p.edit().putString("eqsl_user", v.trim()).apply() }
+
+    var eqslPassword: String
+        get() = p.getString("eqsl_pass", "")!!
+        set(v) { p.edit().putString("eqsl_pass", v).apply() }
+
+    var eqslNick: String
+        get() = p.getString("eqsl_nick", "")!!
+        set(v) { p.edit().putString("eqsl_nick", v.trim()).apply() }
+
+    /** Computer with the World Radio League app (WRL Integrations), which listens to WSJT-X UDP. */
+    var wrlHost: String
+        get() = p.getString("wrl_host", "")!!
+        set(v) { p.edit().putString("wrl_host", v.trim()).apply() }
+
+    /** Last confirmation dates asked for (yyyy-MM-dd / yyyyMMdd). */
+    var lotwSince: String
+        get() = p.getString("lotw_since", "")!!
+        set(v) { p.edit().putString("lotw_since", v.trim()).apply() }
+
+    var eqslSince: String
+        get() = p.getString("eqsl_since", "")!!
+        set(v) { p.edit().putString("eqsl_since", v.trim()).apply() }
+
+    var qrzSince: String
+        get() = p.getString("qrz_since", "")!!
+        set(v) { p.edit().putString("qrz_since", v.trim()).apply() }
+
+    var wrlUdp: Boolean
+        get() = p.getBoolean("wrl_udp", false)
+        set(v) { p.edit().putBoolean("wrl_udp", v).apply() }
+
+    var wrlPort: Int
+        get() = p.getInt("wrl_port", 2237)
+        set(v) { p.edit().putInt("wrl_port", v).apply() }
+
+    /** Power for the log (W), optional. */
+    var logPower: String
+        get() = p.getString("log_power", "")!!
+        set(v) { p.edit().putString("log_power", v.trim()).apply() }
 }

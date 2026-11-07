@@ -899,6 +899,68 @@ private fun testSpots() {
     eq(Spots.skimmerLine("EA7JRS-7", 14_025_100, "K1JT", 15, 22, "CQ", 1_762_473_720_000), "DX de EA7JRS-#:   14025.1  K1JT         CW    15 dB  22 WPM  CQ      0002Z", "skimmer line")
 }
 
+private fun testLogbook() {
+    val a = Adif.parse("Exported by qFT8\n<ADIF_VER:5>3.1.0 <PROGRAMID:4>qFT8 <EOH>\n<call:5>K1ABC <qso_date:8>20261107 <time_on:6>065500 <band:3>20m <freq:9>14.075291 <mode:3>FT8 <rst_sent:3>-10 <rst_rcvd:3>-12 <gridsquare:4>FN42 <eor>\n" +
+        "<CALL:6>DL1ABC <QSO_DATE:8>20261107 <TIME_ON:4>0710 <FREQ:6>14.025 <MODE:2>CW <EOR>")
+    eq(a.header["PROGRAMID"], "qFT8", "ADIF header"); eq(a.records.size, 2, "ADIF records"); eq(a.records[0]["CALL"], "K1ABC", "ADIF field upper case")
+    eq(Adif.parse("<CALL:4>EA1A<QSO_DATE:8>20260101<EOR>").records[0]["QSO_DATE"], "20260101", "ADIF without header")
+    eq(Adif.record(mapOf("CALL" to "EA7JRS", "NAME" to "")), "<CALL:6>EA7JRS <EOR>", "ADIF record"); eq(Adif.band(7_025_000), "40m", "ADIF band")
+    eq(Adif.band(432_100_000), "70cm", "ADIF band UHF"); eq(Adif.band(15_000_000), null, "outside bands")
+    val q = Qso.create("1", "dl1abc", 1_762_498_500_000, 7_025_000, "CW", "", "599", "579", "EA7JRS-7", "IM77aj", name = "Hans")
+    eq(q.date, "20251107", "QSO date"); eq(q.time, "065500", "QSO time"); eq(q.band, "40m", "QSO band"); eq(q["FREQ"], "7.025000", "QSO freq")
+    eq(q["STATION_CALLSIGN"], "EA7JRS", "station call"); check(!q.export().containsKey("APP_ALP_ID"), "internal fields not exported")
+    val lb = Logbook(listOf(q))
+    var n = 0
+    eq(lb.import("<CALL:6>DL1ABC <QSO_DATE:8>20251107 <TIME_ON:4>0656 <FREQ:5>7.025 <MODE:2>CW <GRIDSQUARE:6>JO62qm <EOR> <CALL:5>K1ABC <QSO_DATE:8>20251107 <TIME_ON:4>0700 <BAND:3>20m <MODE:4>MFSK <SUBMODE:3>FT4 <EOR>") { "n${++n}" }, 1 to 1, "import: one new, one merged")
+    eq(lb.qsos.first { it.call == "DL1ABC" }["GRIDSQUARE"], "JO62qm", "merged field"); eq(lb.qsos.first { it.call == "K1ABC" }.id, "n1", "new id")
+    eq(lb.confirm("<CALL:6>DL1ABC <QSO_DATE:8>20251107 <TIME_ON:4>0720 <BAND:3>40M <MODE:2>CW <QSL_RCVD:1>Y <QSLRDATE:8>20251110 <EOR>", Logbook.LOTW_CONFIRMED), 1, "LoTW confirmation")
+    check(lb.qsos.first { it.call == "DL1ABC" }.lotwConfirmed, "LoTW confirmed flag")
+    eq(lb.confirm("<CALL:6>DL1ABC <QSO_DATE:8>20251107 <TIME_ON:4>0900 <BAND:3>40M <MODE:2>CW <QSL_RCVD:1>Y <EOR>", Logbook.LOTW_CONFIRMED), 0, "too far in time")
+    eq(lb.confirm("<CALL:5>K1ABC <QSO_DATE:8>20251107 <TIME_ON:4>0700 <BAND:3>20m <MODE:3>FT4 <EOR>", Logbook.EQSL_CONFIRMED), 1, "FT4 as MFSK/FT4 or FT4")
+    eq(Logbook.load(lb.adif("APRS LoRa+", "0.1", true)).qsos.size, 2, "log saved and loaded")
+    // QRZ
+    check(QrzLog.insertBody("ABCD-1234", q).startsWith("KEY=ABCD-1234&ACTION=INSERT&ADIF=%3CCALL%3A6%3EDL1ABC"), "QRZ insert body")
+    eq(QrzLog.insertResult("RESULT=OK&LOGIDS=130877825&COUNT=1"), true to "Log id 130877825", "QRZ OK")
+    eq(QrzLog.insertResult("RESULT=FAIL&REASON=Unable to add QSO to database: duplicate&EXTENDED=").first, true, "QRZ duplicate = already there")
+    eq(QrzLog.insertResult("RESULT=AUTH").first, false, "QRZ auth")
+    eq(QrzLog.parse("RESULT=OK&COUNT=1&ADIF=&lt;call:5&gt;K1ABC &lt;app_qrzlog_status:1&gt;C &lt;eor&gt;")["ADIF"], "<call:5>K1ABC <app_qrzlog_status:1>C <eor>", "QRZ fetch ADIF")
+    check(QrzLog.fetchBody("K", "2026-11-01").endsWith("OPTION=MODSINCE%3A2026-11-01%3BSTATUS%3ACONFIRMED%3BTYPE%3AADIF"), "QRZ fetch body")
+    // eQSL
+    val eu = Eqsl.uploadUrl("EA7JRS", "pa ss", "Home", q)
+    check(eu.startsWith("https://www.eqsl.cc/qslcard/importADIF.cfm?ADIFData=APRSLoRaPlus%20%3CADIF_VER%3A4%3E1.00"), "eQSL upload URL")
+    check(eu.contains("%3CEQSL_PSWD%3A5%3Epa%20ss") && eu.contains("%3CTIME_ON%3A4%3E0655") && eu.contains("APP_EQSL_QTH_NICKNAME%3A4%3EHome"), "eQSL fields")
+    eq(Eqsl.uploadResult("Result: 1 out of 1 records added"), Eqsl.Result.ADDED, "eQSL added"); eq(Eqsl.uploadResult("Bad record: Duplicate"), Eqsl.Result.DUPLICATE, "eQSL duplicate")
+    eq(Eqsl.inboxLink("Your ADIF log file has been built <a href=\"downloadedfiles/abc123.adi\">.ADI file</a>"), "https://www.eqsl.cc/qslcard/downloadedfiles/abc123.adi", "eQSL inbox link")
+    eq(Eqsl.inboxError("You have no log entries"), null, "eQSL empty inbox")
+    // LoTW
+    eq(Lotw.tqslMode("SSB", "USB"), "SSB", "TQSL SSB"); eq(Lotw.tqslMode("MFSK", "FT4"), "FT4", "TQSL FT4"); eq(Lotw.tqslMode("FT8", ""), "FT8", "TQSL FT8")
+    eq(Lotw.tqslMode("PSK", "BPSK31"), "PSK31", "TQSL PSK31"); eq(Lotw.tqslMode("MFSK", "JS8"), "DATA", "TQSL JS8")
+    val st = Lotw.Station("EA7JRS", 281, "IM77aj", "14", "37")
+    eq(Lotw.stationSigndata(st), "14IM77AJ37", "station signdata (CQZ, GRIDSQUARE, ITUZ)")
+    val c = Lotw.contact(q)!!
+    eq(c, Lotw.Contact("DL1ABC", "40M", "CW", "7.025000", "2025-11-07", "06:55:00Z", "", ""), "LoTW contact")
+    eq(Lotw.contactSigndata("14IM77AJ37", c), "14IM77AJ3740MDL1ABC7.025000CW2025-11-0706:55:00Z", "contact signdata")
+    val kp = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(1024) }.generateKeyPair()
+    val (tq8, ids) = Lotw.sign(listOf(q, q.with("BAND" to "", "FREQ" to "")), st, kp.private, byteArrayOf(1, 2, 3), "APRS LoRa+ test")
+    eq(ids, listOf("1"), "contacts without band left out")
+    val text = java.util.zip.GZIPInputStream(tq8.inputStream()).readBytes().toString(Charsets.US_ASCII)
+    check(text.contains("<Rec_Type:5>tCERT\n<CERT_UID:1>1\n<CERTIFICATE:5>AQID\n<eor>"), "tq8 certificate")
+    check(text.contains("<CALL:6>EA7JRS\n<DXCC:3>281\n<GRIDSQUARE:6>IM77AJ\n<CQZ:2>14\n<ITUZ:2>37\n"), "tq8 station")
+    val sig = Regex("<SIGN_LOTW_V2.0:\\d+:6>([A-Za-z0-9+/=]+)<SIGNDATA:\\d+>(\\S+)\n").find(text)!!
+    eq(sig.groupValues[2], "14IM77AJ3740MDL1ABC7.025000CW2025-11-0706:55:00Z", "signed data in tq8")
+    check(java.security.Signature.getInstance("SHA1withRSA").run { initVerify(kp.public); update(sig.groupValues[2].toByteArray()); verify(java.util.Base64.getDecoder().decode(sig.groupValues[1])) }, "signature verifies")
+    eq(Lotw.uploadResult("<html><!-- .UPL. accepted --><!-- .UPLMESSAGE. Your log has been received --></html>"), true to "Your log has been received", "LoTW accepted")
+    eq(Lotw.uploadResult("<!-- .UPL.  rejected --><!-- .UPLMESSAGE. Bad signature -->").first, false, "LoTW rejected")
+    check(Lotw.reportUrl("ea7jrs", "p&w", "2026-01-01", "EA7JRS").contains("password=p%26w&qso_query=1&qso_qsl=yes&qso_qslsince=2026-01-01"), "LoTW report URL")
+    eq(Lotw.dnField("CN=Manuel,1.3.6.1.4.1.12348.1.4=#130332383" + "1,1.3.6.1.4.1.12348.1.1=#1306454137" + "4a5253", Lotw.OID_DXCC), "281", "DXCC in certificate")
+    eq(Lotw.dnField("1.3.6.1.4.1.12348.1.1=#13064541374a5253,CN=X", Lotw.OID_CALL), "EA7JRS", "call in certificate")
+    // WSJT-X logged
+    val ql = Spots.WsjtxUdp.qsoLogged("ALP", 1_762_498_560_000, 1_762_498_500_000, "DL1ABC", "", 7_025_000, "CW", "599", "579", "", "", "Hans", "EA7JRS", "IM77")
+    eq(ql[11].toInt(), 5, "QSO logged type")
+    eq(java.nio.ByteBuffer.wrap(ql, 19, 8).long, 2_460_987L, "QDateTime Julian day (2025-11-07)")
+    eq(Spots.WsjtxUdp.loggedAdif("ALP", "<EOH>")[11].toInt(), 12, "logged ADIF type")
+}
+
 private fun testWsjt() {
     eq(Wsjt.slotStart(30_100, 15_000), 30_000L, "FT8 slot"); eq(Wsjt.slotStart(37_400, 7_500), 30_000L, "FT4 slot"); eq(Wsjt.slotStart(37_600, 7_500), 37_500L, "FT4 second slot")
     val d = Wsjt.parse("000000 +13.0 +1.60 1291 ~  CQ R7IW LN35", 30_000)!!
@@ -927,7 +989,7 @@ private fun testWsjt() {
 }
 
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
