@@ -76,7 +76,8 @@ object RotCtl {
                 "stop", "reset" -> rprt(out, 0)
                 "park" -> rprt(out, if (rot.park()) 0 else E_REJECTED)
                 "get_info" -> out.append(rot.info()).append('\n')
-                "dump_state" -> out.append("1\n0\n0.000000\n360.000000\n0.000000\n90.000000\n0\n6\n")
+                // Protocol 1 of Hamlib 4.x (tests/rotctl_parse.c): version, model, "key=value" lines and "done", which netrotctl waits for
+                "dump_state" -> out.append("1\n2\nmin_az=0.000000\nmax_az=360.000000\nmin_el=0.000000\nmax_el=90.000000\nsouth_zero=0\nrot_type=AzEl\ndone\n")
                 "quit" -> { rprt(out, 0); return true }
                 else -> rprt(out, E_NIMPL)
             }

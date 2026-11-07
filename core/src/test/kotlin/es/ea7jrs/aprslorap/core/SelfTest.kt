@@ -519,7 +519,7 @@ private fun testRotator() {
     out.setLength(0); s.feed("p\r\n", out); eq(out.toString(), "123.500000\n45.250000\n", "rotctld p")
     out.setLength(0); s.feed("\\set_pos -90 30\n", out); eq(lastSet, 270.0 to 30.0, "rotctld \\set_pos"); eq(out.toString(), "RPRT 0\n", "rotctld long form reply")
     out.setLength(0); s.feed("P abc 3\n", out); eq(out.toString(), "RPRT -1\n", "rotctld bad number")
-    out.setLength(0); s.feed("\\dump_state\n", out); check(out.startsWith("1\n0\n0.000000\n360.000000"), "rotctld dump_state")
+    out.setLength(0); s.feed("\\dump_state\n", out); eq(out.toString(), "1\n2\nmin_az=0.000000\nmax_az=360.000000\nmin_el=0.000000\nmax_el=90.000000\nsouth_zero=0\nrot_type=AzEl\ndone\n", "rotctld dump_state (Hamlib 4 protocol 1)")
     out.setLength(0); s.feed("_\nX\n", out); eq(out.toString(), "APRS LoRa+ app\nRPRT -4\n", "rotctld info and unknown")
     out.setLength(0); s.feed("P 10 ", out); eq(out.toString(), "", "rotctld waits for the end of line"); s.feed("20\n", out); eq(lastSet, 10.0 to 20.0, "rotctld split line")
     out.setLength(0); check(s.feed("q\n", out), "rotctld quit closes")
@@ -550,6 +550,48 @@ private fun testRotator() {
 
     check(Control.parse("{\"e\":\"rot\",\"az\":10,\"el\":5,\"aaz\":9.5,\"ael\":4}").let { it is ControlEvent.Rotor && it.pointing.actualAzDeg == 9.5 && it.pointing.actualElDeg == 4.0 }, "rot actual position")
     check(Control.parse("{\"e\":\"info\",\"caps\":{\"rotor\":true}}").let { it is ControlEvent.Info && it.info.hasRotor }, "caps.rotor")
+}
+
+private fun testRotorProto() {
+    // Commands as the rotor box expects them (firmware/lib/RotorCore/src/rc_api.h of APRS-LoRa-Plus-Rotor)
+    eq(RotorProto.auth("123456"), "{\"c\":\"auth\",\"pin\":\"123456\"}\n", "rotor auth")
+    eq(RotorProto.pos(123.456, 45.0), "{\"c\":\"pos\",\"az\":123.5,\"el\":45}\n", "rotor pos")
+    eq(RotorProto.pos(10.0, null), "{\"c\":\"pos\",\"az\":10}\n", "rotor pos az only")
+    eq(RotorProto.move(RotorProto.Move.CCW, 30), "{\"c\":\"move\",\"d\":\"ccw\",\"s\":30}\n", "rotor move")
+    eq(RotorProto.subscribe(500), "{\"c\":\"sub\",\"ms\":500}\n", "rotor sub")
+    // Events
+    val info = RotorProto.parse("{\"e\":\"info\",\"api\":1,\"lim\":{\"minAz\":0,\"maxAz\":450,\"minEl\":0,\"maxEl\":180},\"hasEl\":true,\"pin\":true," +
+        "\"dev\":\"APRS LoRa+ Rotor\",\"ver\":\"0.1.0\",\"board\":\"esp32s3\",\"chip\":\"ESP32-S3\",\"name\":\"APRS-Rotor\",\"drv\":\"direct (relays)\"," +
+        "\"call\":\"EA7JRS-12\",\"caps\":{\"wifi\":true,\"ble\":true,\"spp\":false,\"lora\":false,\"cal\":true,\"move\":true},\"ip\":\"192.168.1.50\",\"rotctld\":4533,\"up\":60}")
+    check(info is RotorProto.Event.InfoEv && info.info.limits.maxAz == 450.0 && info.info.canCalibrate && info.info.pinRequired && info.info.rotctldPort == 4533, "rotor info event")
+    val pos = RotorProto.parse("{\"e\":\"pos\",\"az\":123.4,\"el\":45,\"st\":22,\"mv\":true,\"f\":\"OK\",\"maz\":483.4,\"taz\":125,\"tel\":45,\"aprs\":\"EA7JRS-9: P 125 45 -> GO\"}")
+    check(pos is RotorProto.Event.Pos && pos.pos.azDeg == 123.4 && pos.pos.elDeg == 45.0 && pos.pos.mechAzDeg == 483.4 && pos.pos.targetAzDeg == 125.0 && pos.pos.ok, "rotor pos event")
+    if (pos is RotorProto.Event.Pos) eq(RotorProto.statusText(pos.pos.status), "moving · CW", "rotor status text")
+    eq(RotorProto.parse("{\"e\":\"err\",\"c\":\"pos\",\"m\":\"auth required\"}"), RotorProto.Event.Err("pos", "auth required"), "rotor err event")
+    eq(RotorProto.parse("{\"e\":\"ok\",\"c\":\"cfgset\",\"i\":2,\"done\":true}"), RotorProto.Event.Ok("cfgset", 2, true), "rotor ok event")
+    check(RotorProto.parse("not json") == null && RotorProto.parse("{\"e\":\"pos\"}") == null, "rotor bad events")
+    // Lines split across BLE notifications
+    val la = RotorProto.LineAssembler()
+    eq(la.feed("{\"e\":\"ok\",".toByteArray()), emptyList<String>(), "rotor line part 1")
+    eq(la.feed("\"c\":\"stop\"}\n{\"e\"".toByteArray()), listOf("{\"e\":\"ok\",\"c\":\"stop\"}"), "rotor line part 2")
+    // Configuration: split for cfgset and joined again from cfg events
+    val cfg = "{\"name\":\"" + "x".repeat(400) + "\"}"
+    val lines = RotorProto.configSet(cfg)
+    eq(lines.size, 3, "rotor cfgset pieces")
+    val ca = RotorProto.ConfigAssembler()
+    var whole: String? = null
+    for (l in lines) {
+        val o = Json.parseObject(l.trim())!!
+        check(l.length < 244, "rotor cfgset piece fits a BLE write")
+        whole = ca.add(RotorProto.Event.ConfigPiece(o.int("i")!!, o.int("n")!!, o.str("d")!!)) ?: whole
+    }
+    eq(whole, cfg, "rotor config round trip")
+    eq(ca.add(RotorProto.Event.ConfigPiece(1, 3, "x")), null, "rotor config out of order")
+    // Follow the tracker: only real changes
+    check(RotorProto.worthSending(null, null, 10.0, 0.0, 2.0), "rotor first pointing")
+    check(!RotorProto.worthSending(359.5, 10.0, 0.5, 10.5, 2.0), "rotor small change across north")
+    check(RotorProto.worthSending(359.0, 10.0, 2.0, 10.0, 2.0), "rotor 3 degrees across north")
+    check(RotorProto.worthSending(100.0, 10.0, 100.0, 13.0, 2.0), "rotor elevation change")
 }
 
 private fun testSdr() {
@@ -989,7 +1031,7 @@ private fun testWsjt() {
 }
 
 fun main() {
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

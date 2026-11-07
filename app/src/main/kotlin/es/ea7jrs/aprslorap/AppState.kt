@@ -79,6 +79,16 @@ object AppState {
     val rotClientActual = MutableStateFlow<Pair<Double, Double>?>(null)          // what the network rotor reports
     val rotServerStatus = MutableStateFlow("Off")
     val rotServerLast = MutableStateFlow<Pair<Double, Double>?>(null)            // last az / el from Look4Sat, GPredict...
+    // APRS LoRa+ Rotor box (Rotor tab)
+    val rotorLinkStatus = MutableStateFlow("Off")
+    val rotorInfo = MutableStateFlow<es.ea7jrs.aprslorap.core.RotorProto.Info?>(null)
+    val rotorPos = MutableStateFlow<es.ea7jrs.aprslorap.core.RotorProto.Position?>(null)
+    val rotorRaw = MutableStateFlow<es.ea7jrs.aprslorap.core.RotorProto.Event.Raw?>(null)
+    val rotorAuthed = MutableStateFlow(false)
+    val rotorConfig = MutableStateFlow<String?>(null)                             // configuration as read from the box
+    val rotorBusy = MutableStateFlow(false)
+    val rotorMessage = MutableStateFlow("")
+    val rotorFollowSent = MutableStateFlow("")
     val rbBusy = MutableStateFlow(false)
     val sdr = MutableStateFlow(SdrControl.State())
     val sigIdInfo = MutableStateFlow<SigIdDb.Info?>(null)                       // signal identification database

@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App() {
-    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "SAT", "SDR", "Modes", "Log", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect")
+    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "SAT", "Rotor", "SDR", "Modes", "Log", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect")
     var tab by rememberSaveable { mutableStateOf(titles.size - 1) }
     val error by AppState.error.collectAsState()
     val notice by AppState.notice.collectAsState()
@@ -121,14 +121,15 @@ fun App() {
                 3 -> SensorsTab()
                 4 -> HeardTab()
                 5 -> SatTab()
-                6 -> SdrTab()
-                7 -> DigimodesTab()
-                8 -> LogTab()
-                9 -> SigIdTab()
-                10 -> RemoteTab()
-                11 -> ConfigTab()
-                12 -> DapnetTab()
-                13 -> FirmwareTab()
+                6 -> RotorTab()
+                7 -> SdrTab()
+                8 -> DigimodesTab()
+                9 -> LogTab()
+                10 -> SigIdTab()
+                11 -> RemoteTab()
+                12 -> ConfigTab()
+                13 -> DapnetTab()
+                14 -> FirmwareTab()
                 else -> ConnectTab()
             }
         }
@@ -233,7 +234,7 @@ fun MessagesTab() {
     }
 }
 
-private fun requiredPermissions(): Array<String> {
+internal fun requiredPermissions(): Array<String> {
     val l = ArrayList<String>()
     if (Build.VERSION.SDK_INT >= 31) {
         l.add(Manifest.permission.BLUETOOTH_SCAN)
@@ -246,7 +247,7 @@ private fun requiredPermissions(): Array<String> {
 }
 
 /** Only the Bluetooth permissions are essential; without notification permission the app works but shows no alerts. */
-private fun bluetoothGranted(ctx: Context): Boolean = requiredPermissions()
+internal fun bluetoothGranted(ctx: Context): Boolean = requiredPermissions()
     .filter { it != Manifest.permission.POST_NOTIFICATIONS }
     .all { ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED }
 

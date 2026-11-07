@@ -40,8 +40,8 @@ object TrackerUuids {
     val CONTROL_FIRMWARE: UUID = UUID.fromString(es.ea7jrs.aprslorap.core.ControlUuids.FIRMWARE)
 }
 
-/** Looks for trackers that offer the KISS service. */
-class BleScanner(ctx: Context) {
+/** Looks for devices that offer [service]: trackers (KISS service) by default, or rotor boxes. */
+class BleScanner(ctx: Context, private val service: UUID = TrackerUuids.SERVICE) {
     private val adapter: BluetoothAdapter? = ctx.getSystemService(BluetoothManager::class.java)?.adapter
     private var callback: ScanCallback? = null
 
@@ -59,7 +59,7 @@ class BleScanner(ctx: Context) {
             }
         }
         callback = cb
-        val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(TrackerUuids.SERVICE)).build()
+        val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(service)).build()
         scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), cb)
         return true
     }

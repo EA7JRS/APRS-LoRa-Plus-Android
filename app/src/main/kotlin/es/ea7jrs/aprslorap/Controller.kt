@@ -285,7 +285,7 @@ class Controller(
                 AppState.cwRxLevel.value = if (ev.on) String.format(java.util.Locale.US, "%.0f dBm, SNR %.0f dB, %d wpm", ev.dbm ?: -150.0, ev.snr ?: 0.0, ev.wpm ?: 0) else "Stopped"
                 Spotter.onTrackerCw(ev.on, ev.letter, ev.snr, ev.wpm, ev.freqHz)
             }
-            is ControlEvent.Rotor -> { AppState.rotor.value = ev.pointing; RotctlLink.onPointing(ev.pointing) }
+            is ControlEvent.Rotor -> { AppState.rotor.value = ev.pointing; RotctlLink.onPointing(ev.pointing); RotorLink.onPointing(ev.pointing) }
             is ControlEvent.Targets -> {
                 AppState.rotorTargets.value = ev.items; AppState.rotorTargetSel.value = ev.selected; AppState.rotorSource.value = ev.source
             }

@@ -148,6 +148,32 @@ class Settings(ctx: Context) {
     var rotClientStep: Double
         get() = p.getFloat("rot_client_step", 1f).toDouble()
         set(v) { p.edit().putFloat("rot_client_step", v.coerceIn(0.1, 20.0).toFloat()).apply() }
+    // APRS LoRa+ Rotor box (Rotor tab): link, PIN, following the tracker's pointing
+    var rotorTransport: Int                          // 0 BLE, 1 TCP (WiFi)
+        get() = p.getInt("rotor_transport", 0)
+        set(v) { p.edit().putInt("rotor_transport", v).apply() }
+    var rotorAddress: String
+        get() = p.getString("rotor_address", "")!!
+        set(v) { p.edit().putString("rotor_address", v).apply() }
+    var rotorName: String
+        get() = p.getString("rotor_name", "")!!
+        set(v) { p.edit().putString("rotor_name", v).apply() }
+    var rotorHost: String
+        get() = p.getString("rotor_host", "")!!
+        set(v) { p.edit().putString("rotor_host", v.trim()).apply() }
+    var rotorPort: Int
+        get() = p.getInt("rotor_port", es.ea7jrs.aprslorap.core.RotorProto.DEFAULT_TCP_PORT)
+        set(v) { p.edit().putInt("rotor_port", v.coerceIn(1, 65535)).apply() }
+    var rotorPin: String
+        get() = p.getString("rotor_pin", "123456")!!
+        set(v) { p.edit().putString("rotor_pin", v.trim()).apply() }
+    var rotorFollow: Boolean
+        get() = p.getBoolean("rotor_follow", false)
+        set(v) { p.edit().putBoolean("rotor_follow", v).apply() }
+    var rotorStep: Double
+        get() = p.getFloat("rotor_step", 2f).toDouble()
+        set(v) { p.edit().putFloat("rotor_step", v.coerceIn(0.5, 20.0).toFloat()).apply() }
+
     var rotServer: Boolean
         get() = p.getBoolean("rot_server", false)
         set(v) { p.edit().putBoolean("rot_server", v).apply() }
