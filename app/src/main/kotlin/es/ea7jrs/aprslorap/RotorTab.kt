@@ -11,6 +11,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -222,6 +223,9 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
             OutlinedButton(enabled = canControl && p?.ok == false, onClick = { RotorLink.command(RotorProto.clear()) }) { Text("Clear fault") }
         }
 
+        // ---------------------------------------------------------------- radio (CAT)
+        if (i.cat) RotorCatSection(canControl, settings)
+
         // ---------------------------------------------------------------- follow
         RotorFollowSection(settings, trackerRot)
 
@@ -240,6 +244,7 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
         if (i.callsign.isNotEmpty()) Field("APRS callsign", i.callsign)
         if (i.ip.isNotEmpty()) Field("IP", i.ip)
         Field("rotctld (Hamlib)", if (i.rotctldPort > 0) "port ${i.rotctldPort}" else "off")
+        if (i.cat) Field("rigctld (Hamlib, radio)", if (i.rigctldPort > 0) "port ${i.rigctldPort}" else "off")
         Field("Range", String.format(Locale.US, "az %.0f–%.0f°%s", i.limits.minAz, i.limits.maxAz,
             if (i.hasEl) String.format(Locale.US, ", el %.0f–%.0f°", i.limits.minEl, i.limits.maxEl) else ""))
         Field("Links", listOfNotNull("WiFi".takeIf { i.wifi }, "BLE".takeIf { i.ble }, "SPP".takeIf { i.spp }, "LoRa APRS".takeIf { i.lora }).joinToString(", "))
@@ -438,4 +443,119 @@ private fun RotorFollowSection(settings: Settings, trackerRot: es.ea7jrs.aprslor
         ?: "No tracker GPS position yet: the angles are computed from it.", fontSize = 12.sp)
     if (sent.isNotBlank()) Text(sent, fontSize = 12.sp)
     Text("Do not let the tracker drive the same rotor at the same time by WiFi or SPP: choose one way.", fontSize = 11.sp)
+}
+
+/** Radio or SDR receiver attached to the rotor box (CAT): frequency, mode, VFO, S-meter, PTT and satellite Doppler. */
+@Composable
+private fun RotorCatSection(canControl: Boolean, settings: Settings) {
+    val cat by AppState.rotorCat.collectAsState()
+    val txs by AppState.satTransmitters.collectAsState()
+    val sat by AppState.satState.collectAsState()
+    var step by remember { mutableStateOf(settings.rotorCatStep) }
+    var track by remember { mutableStateOf(settings.rotorCatTrack) }
+    var txSel by remember { mutableStateOf(settings.rotorCatTx) }
+    var uplink by remember { mutableStateOf(settings.rotorCatUplink) }
+    var typed by rememberSaveable { mutableStateOf("") }
+    var sentHz by remember { mutableStateOf(0L) }
+    var sentAt by remember { mutableStateOf(0L) }
+    // Asked once a second while the section is on screen (the subscription also sends it)
+    LaunchedEffect(Unit) { while (true) { RotorLink.send(RotorProto.cat()); delay(1000) } }
+
+    Section("Radio (CAT)")
+    val c = cat
+    if (c == null) { Text("Waiting for the radio state...", fontSize = 12.sp); return }
+    Text(c.rig, fontSize = 12.sp)
+    if (!c.link) Text("No link with the radio (cable, baud rate, CI-V address or the SDR program on the network).", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+    Text(RotorProto.freq(c.freqHz), fontFamily = FontFamily.Monospace, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+    Text(listOfNotNull(RotorProto.modeName(c.mode), "VFO ${c.vfo}", c.txFreqHz?.takeIf { c.split }?.let { "TX ${RotorProto.freq(it)}" }, c.sText,
+        "TX".takeIf { c.ptt }).joinToString(" · "), fontSize = 14.sp)
+    LinearProgressIndicator(progress = { (c.smeter.coerceAtLeast(0) / 15f) }, modifier = Modifier.fillMaxWidth())
+
+    fun tune(hz: Long) {
+        if (hz <= 0) return
+        if (RotorLink.command(RotorProto.catFreq(hz))) { sentHz = hz; sentAt = System.currentTimeMillis() }
+    }
+    fun base(): Long = if (System.currentTimeMillis() - sentAt < 1500 && sentHz > 0) sentHz else c.freqHz
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(enabled = canControl && c.link, onClick = { tune(base() - step) }) { Text("−") }
+        OutlinedTextField(typed, { typed = it }, label = { Text("MHz") }, singleLine = true, modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        Button(enabled = canControl && c.link, onClick = {
+            val mhz = typed.replace(',', '.').toDoubleOrNull()
+            if (mhz == null || mhz <= 0) AppState.error.value = "Type the frequency in MHz" else tune(Math.round(mhz * 1e6))
+        }) { Text("Set") }
+        OutlinedButton(enabled = canControl && c.link, onClick = { tune(base() + step) }) { Text("+") }
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (st in RotorProto.CAT_STEPS) {
+            val label = if (st >= 1000) "${st / 1000.0}".removeSuffix(".0") + " k" else "$st"
+            if (st == step) Button(onClick = {}) { Text(label, fontSize = 12.sp) }
+            else OutlinedButton(onClick = { step = st; settings.rotorCatStep = st }) { Text(label, fontSize = 12.sp) }
+        }
+    }
+    for (row in RotorProto.CAT_MODES.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (m in row) {
+            val on = c.mode == m
+            if (on) Button(onClick = {}, modifier = Modifier.weight(1f)) { Text(RotorProto.modeName(m)) }
+            else OutlinedButton(enabled = canControl && c.link, onClick = { RotorLink.command(RotorProto.catMode(m)) }, modifier = Modifier.weight(1f)) { Text(RotorProto.modeName(m)) }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(enabled = canControl && c.link, onClick = { RotorLink.command(RotorProto.catVfo("swap")) }) { Text("A / B") }
+        Text("Split", fontSize = 14.sp)
+        Switch(c.split, { RotorLink.command(RotorProto.catSplit(it)) }, enabled = canControl && c.link)
+    }
+    if (c.pttAllowed) {
+        val red = MaterialTheme.colorScheme.error
+        Box(
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).border(2.dp, red, RoundedCornerShape(26.dp))
+                .pointerInput(canControl) {
+                    if (!canControl) return@pointerInput
+                    detectTapGestures(onPress = {
+                        RotorLink.command(RotorProto.catPtt(true))
+                        try { tryAwaitRelease() } finally { RotorLink.send(RotorProto.catPtt(false)) }
+                    })
+                },
+            contentAlignment = Alignment.Center,
+        ) { Text(if (c.ptt) "ON AIR" else "PTT (hold)", color = red, fontWeight = FontWeight.Bold) }
+    } else Text("PTT: off (receiver, or not allowed in the rotor box configuration: cat.ptt).", fontSize = 11.sp)
+
+    // ---- satellite Doppler from the tracker
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Doppler of the tracker's satellite (SAT mode)", Modifier.weight(1f), fontSize = 14.sp)
+        Switch(track, { on ->
+            track = on; settings.rotorCatTrack = on
+            RotorLink.command(RotorProto.catTrackOn(on))
+        })
+    }
+    if (track) {
+        val withDown = txs.filter { it.downHz > 0 }
+        if (withDown.isEmpty()) Text("No transmitters yet: choose the satellite in the SAT tab.", fontSize = 12.sp)
+        RadioRowLine(txSel == -1, "Same as the SAT receiver") { txSel = -1; settings.rotorCatTx = -1 }
+        for (t in withDown.take(8)) {
+            val label = "${t.description.ifBlank { t.mode }} · ↓ ${RotorProto.freq(t.downHz)}" + (if (t.upHz > 0) " · ↑ ${RotorProto.freq(t.upHz)}" else "")
+            RadioRowLine(txSel == t.index, label) { txSel = t.index; settings.rotorCatTx = t.index }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Also the uplink (radio in split)", Modifier.weight(1f), fontSize = 13.sp)
+            Switch(uplink, { uplink = it; settings.rotorCatUplink = it })
+        }
+        val tr = c.tracking
+        Text(when {
+            tr == null -> "The rotor box does not report tracking."
+            !tr.enabled -> "Tracking paused in the rotor box."
+            tr.active -> String.format(Locale.US, "%s: Doppler %+.1f kHz", tr.name, tr.dopplerHz / 1000.0)
+            sat?.ok == true -> "Waiting for the satellite to rise (${sat?.name ?: ""})."
+            else -> "No satellite data: tracker in SAT mode and the tracker link up."
+        }, fontSize = 12.sp)
+        Text("The phone sends the nominal frequencies and the range rate of the tracker's `sat` event; the rotor box corrects and tunes the radio. GPredict can also use the box's rigctld.", fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun RadioRowLine(selected: Boolean, label: String, onClick: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onClick)) {
+        RadioButton(selected, onClick)
+        Text(label, fontSize = 12.sp)
+    }
 }

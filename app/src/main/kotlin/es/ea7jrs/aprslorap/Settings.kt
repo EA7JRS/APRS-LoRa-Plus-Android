@@ -189,6 +189,19 @@ class Settings(ctx: Context) {
     var rotorPredictMaxS: Int
         get() = p.getInt("rotor_predict_max_s", 300)
         set(v) { p.edit().putInt("rotor_predict_max_s", v.coerceIn(10, 1800)).apply() }
+    /** CAT on the rotor box: send the tracker's satellite Doppler (event `sat`) with `cattrack`. */
+    var rotorCatTrack: Boolean
+        get() = p.getBoolean("rotor_cat_track", false)
+        set(v) { p.edit().putBoolean("rotor_cat_track", v).apply() }
+    var rotorCatTx: Int                              // transmitter index of the satellite, -1 = the SAT receiver's or the first with downlink
+        get() = p.getInt("rotor_cat_tx", -1)
+        set(v) { p.edit().putInt("rotor_cat_tx", v).apply() }
+    var rotorCatUplink: Boolean                      // also the uplink (split on the radio)
+        get() = p.getBoolean("rotor_cat_uplink", false)
+        set(v) { p.edit().putBoolean("rotor_cat_uplink", v).apply() }
+    var rotorCatStep: Long
+        get() = p.getLong("rotor_cat_step", 1000L)
+        set(v) { p.edit().putLong("rotor_cat_step", v).apply() }
     var rotorStep: Double
         get() = p.getFloat("rotor_step", 2f).toDouble()
         set(v) { p.edit().putFloat("rotor_step", v.coerceIn(0.5, 20.0).toFloat()).apply() }

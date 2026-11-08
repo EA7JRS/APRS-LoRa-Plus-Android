@@ -76,6 +76,7 @@ object RotorLink {
         AppState.rotorInfo.value = null
         AppState.rotorAuthed.value = false
         AppState.rotorBusy.value = false
+        AppState.rotorCat.value = null
         lastAz = null; lastEl = null
     }
 
@@ -108,7 +109,8 @@ object RotorLink {
 
     private fun onLine(line: String) {
         when (val ev = RotorProto.parse(line)) {
-            is RotorProto.Event.InfoEv -> AppState.rotorInfo.value = ev.info
+            is RotorProto.Event.InfoEv -> { AppState.rotorInfo.value = ev.info; if (ev.info.cat) send(RotorProto.cat()) }
+            is RotorProto.Event.Cat -> AppState.rotorCat.value = ev.state
             is RotorProto.Event.Pos -> AppState.rotorPos.value = ev.pos
             is RotorProto.Event.Raw -> AppState.rotorRaw.value = ev
             is RotorProto.Event.ConfigPiece -> cfg.add(ev)?.let { text ->
@@ -135,6 +137,7 @@ object RotorLink {
                 if (ev.command == "cfgset") { AppState.rotorBusy.value = false; pendingConfig = emptyList() }
                 AppState.rotorMessage.value = when (ev.message) {
                     "auth required" -> "The rotor box needs its PIN (type it and press Send PIN)"
+                    "ptt not allowed" -> "PTT is off in the rotor box (configuration cat.ptt)"
                     "bad pin" -> "Wrong PIN"
                     else -> "${ev.command.ifEmpty { "rotor" }}: ${ev.message}"
                 }
@@ -183,6 +186,30 @@ object RotorLink {
         send(RotorProto.pos(p.azDeg, el))
         AppState.rotorFollowSent.value = String.format(Locale.US, "Sent %.1f°%s%s", p.azDeg,
             if (el != null) String.format(Locale.US, " / %.1f°", el) else "", p.name?.let { " ($it)" } ?: "")
+    }
+
+    // ------------------------------------------------------------------ CAT: satellite Doppler from the tracker
+
+    @Volatile private var lastCatTrackMs = 0L
+
+    /** New `sat` event of the tracker (every 2 s in SAT mode): downlink / uplink and range rate to the rotor box's radio. */
+    fun onSat(st: es.ea7jrs.aprslorap.core.SatState) {
+        val ctx = appCtx ?: return
+        if (transport == null) return
+        val info = AppState.rotorInfo.value ?: return
+        if (!info.cat || (info.pinRequired && !AppState.rotorAuthed.value)) return
+        val s = Settings(ctx)
+        if (!s.rotorCatTrack) return
+        val rr = st.rangeRateKmS ?: return
+        if (!st.ok || (st.elDeg ?: -1.0) < -2.0) return                // only while the satellite is (almost) in view
+        val now = System.currentTimeMillis()
+        if (now - lastCatTrackMs < 1500) return
+        val txs = AppState.satTransmitters.value
+        val t = txs.firstOrNull { it.index == s.rotorCatTx }
+            ?: AppState.satReceiver.value?.tx?.let { i -> txs.firstOrNull { it.index == i } }
+            ?: txs.firstOrNull { it.downHz > 0 } ?: return
+        lastCatTrackMs = now
+        send(RotorProto.catTrack(st.name ?: "SAT", maxOf(0L, t.downHz), if (s.rotorCatUplink) maxOf(0L, t.upHz) else 0L, rr))
     }
 
     // ------------------------------------------------------------------ following an APRS station or a CW beacon from the app

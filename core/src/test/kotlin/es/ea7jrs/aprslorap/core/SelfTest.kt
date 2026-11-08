@@ -592,6 +592,22 @@ private fun testRotorProto() {
     check(!RotorProto.worthSending(359.5, 10.0, 0.5, 10.5, 2.0), "rotor small change across north")
     check(RotorProto.worthSending(359.0, 10.0, 2.0, 10.0, 2.0), "rotor 3 degrees across north")
     check(RotorProto.worthSending(100.0, 10.0, 100.0, 13.0, 2.0), "rotor elevation change")
+    // CAT of the radio on the rotor box (rc_api.h: cat, catset, cattrack, event "cat")
+    eq(RotorProto.catFreq(145825000L), "{\"c\":\"catset\",\"f\":145825000}\n", "rotor catset f")
+    eq(RotorProto.catVfo("swap"), "{\"c\":\"catset\",\"vfo\":\"swap\"}\n", "rotor catset vfo")
+    eq(RotorProto.catPtt(false), "{\"c\":\"catset\",\"ptt\":false}\n", "rotor catset ptt")
+    eq(RotorProto.catTrack("SO-50", 436795000L, 145850000L, -3.21456), "{\"c\":\"cattrack\",\"name\":\"SO-50\",\"dl\":436795000,\"ul\":145850000,\"rr\":-3.215}\n", "rotor cattrack")
+    val cat = RotorProto.parse("{\"e\":\"cat\",\"rig\":\"IC-9700 · CI-V A2 · 19200\",\"l\":true,\"f\":436800000,\"m\":\"PKTUSB\",\"tf\":145850000,\"sp\":true,\"v\":\"A\"," +
+        "\"ptt\":false,\"sm\":11,\"pa\":true,\"tr\":{\"en\":true,\"on\":true,\"n\":\"SO-50\",\"dop\":-4210}}")
+    check(cat is RotorProto.Event.Cat && cat.state.freqHz == 436800000L && cat.state.txFreqHz == 145850000L && cat.state.split && cat.state.pttAllowed &&
+        cat.state.tracking?.dopplerHz == -4210L && cat.state.sText == "S9+20", "rotor cat event")
+    val cat2 = RotorProto.parse("{\"e\":\"cat\",\"rig\":\"RSPdx-R2 · SDRconnect\",\"l\":false,\"f\":7074000,\"m\":\"USB\",\"sp\":false,\"v\":\"A\",\"ptt\":false,\"sm\":-1,\"pa\":false}")
+    check(cat2 is RotorProto.Event.Cat && cat2.state.txFreqHz == null && cat2.state.tracking == null && cat2.state.sText == "—", "rotor cat event receiver")
+    eq(RotorProto.freq(145825000L), "145.825.000", "rotor cat freq text")
+    eq(RotorProto.freq(10489550000L), "10489.550.000", "rotor cat freq QO-100")
+    eq(RotorProto.modeName("PKTUSB"), "DIG-U", "rotor cat mode name")
+    val infoCat = RotorProto.parse("{\"e\":\"info\",\"lim\":{},\"caps\":{\"cat\":true},\"rigctld\":4532,\"cat\":true}")
+    check(infoCat is RotorProto.Event.InfoEv && infoCat.info.cat && infoCat.info.rigctldPort == 4532, "rotor info cat")
 }
 
 private fun testRotorFollow() {

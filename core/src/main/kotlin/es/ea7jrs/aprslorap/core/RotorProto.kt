@@ -53,6 +53,21 @@ object RotorProto {
     fun configGet() = line("c" to "cfgget")
     fun reboot() = line("c" to "reboot")
 
+    // CAT of the radio / SDR receiver attached to the rotor box (docs/CAT.md of the rotor)
+    val CAT_MODES = listOf("LSB", "USB", "CW", "FM", "AM", "PKTUSB")
+    val CAT_STEPS = listOf(10L, 100L, 1000L, 5000L, 12500L, 25000L, 100000L)
+    fun cat() = line("c" to "cat")
+    fun catFreq(hz: Long) = line("c" to "catset", "f" to hz)
+    fun catMode(mode: String) = line("c" to "catset", "m" to mode)
+    fun catTxFreq(hz: Long) = line("c" to "catset", "txf" to hz)
+    fun catSplit(on: Boolean) = line("c" to "catset", "split" to on)
+    fun catVfo(v: String) = line("c" to "catset", "vfo" to v)            // "A", "B" or "swap"
+    fun catPtt(on: Boolean) = line("c" to "catset", "ptt" to on)
+    fun catTrackOn(on: Boolean) = line("c" to "cattrack", "on" to on)
+    /** Doppler: nominal downlink / uplink (Hz, 0 = none) and range rate (km/s, + = going away); the box corrects and tunes. */
+    fun catTrack(name: String, downHz: Long, upHz: Long, rangeRateKmS: Double) =
+        line("c" to "cattrack", "name" to name, "dl" to downHz, "ul" to upHz, "rr" to Math.round(rangeRateKmS * 1000) / 1000.0)
+
     /** The whole configuration (compact JSON) as the "cfgset" lines, in order. */
     fun configSet(json: String): List<String> {
         val n = maxOf(1, (json.length + CFG_CHUNK - 1) / CFG_CHUNK)
@@ -67,8 +82,22 @@ object RotorProto {
         val device: String, val version: String, val board: String, val chip: String, val name: String, val driver: String,
         val callsign: String, val limits: Limits, val hasEl: Boolean, val pinRequired: Boolean, val ip: String, val rotctldPort: Int,
         val wifi: Boolean, val ble: Boolean, val spp: Boolean, val lora: Boolean, val canCalibrate: Boolean, val canMove: Boolean,
-        val uptimeS: Long, val hamlib: String?,
+        val uptimeS: Long, val hamlib: String?, val cat: Boolean = false, val rigctldPort: Int = 0,
     )
+
+    data class CatTracking(val enabled: Boolean, val active: Boolean, val name: String, val dopplerHz: Long)
+
+    /** State of the radio (event `cat`, every second while subscribed). [smeter] 0-15 (S0-S9+60), -1 unknown. */
+    data class CatState(
+        val rig: String, val link: Boolean, val freqHz: Long, val mode: String, val txFreqHz: Long?, val split: Boolean,
+        val vfo: String, val ptt: Boolean, val smeter: Int, val pttAllowed: Boolean, val tracking: CatTracking?,
+    ) {
+        val sText: String get() = when {
+            smeter < 0 -> "—"
+            smeter <= 9 -> "S$smeter"
+            else -> "S9+${(smeter - 9) * 10}"
+        }
+    }
 
     data class Position(
         val azDeg: Double, val elDeg: Double?, val status: Int, val moving: Boolean, val fault: String,
@@ -85,6 +114,7 @@ object RotorProto {
         data class Ok(val command: String, val index: Int?, val done: Boolean) : Event()
         data class Err(val command: String, val message: String) : Event()
         data class Hello(val device: String) : Event()
+        data class Cat(val state: CatState) : Event()
     }
 
     fun parse(line: String): Event? {
@@ -100,6 +130,7 @@ object RotorProto {
                     o.bool("hasEl") ?: true, o.bool("pin") ?: false, o.str("ip") ?: "", o.int("rotctld") ?: 0,
                     caps.bool("wifi") ?: false, caps.bool("ble") ?: false, caps.bool("spp") ?: false, caps.bool("lora") ?: false,
                     caps.bool("cal") ?: false, caps.bool("move") ?: true, o.long("up") ?: 0L, o.str("hamlib"),
+                    o.bool("cat") ?: caps.bool("cat") ?: false, o.int("rigctld") ?: 0,
                 ))
             }
             "pos" -> {
@@ -112,6 +143,14 @@ object RotorProto {
             "ok" -> Event.Ok(o.str("c") ?: "", o.int("i"), o.bool("done") ?: false)
             "err" -> Event.Err(o.str("c") ?: "", o.str("m") ?: "")
             "hello" -> Event.Hello(o.str("dev") ?: "")
+            "cat" -> {
+                val tr = o.obj("tr")
+                Event.Cat(CatState(
+                    o.str("rig") ?: "", o.bool("l") ?: false, o.num("f")?.toLong() ?: 0L, o.str("m") ?: "", o.num("tf")?.toLong(),
+                    o.bool("sp") ?: false, o.str("v") ?: "A", o.bool("ptt") ?: false, o.int("sm") ?: -1, o.bool("pa") ?: false,
+                    tr?.let { CatTracking(it.bool("en") ?: false, it.bool("on") ?: false, it.str("n") ?: "", it.num("dop")?.toLong() ?: 0L) },
+                ))
+            }
             else -> null
         }
     }
@@ -150,6 +189,16 @@ object RotorProto {
         if (el != null && (lastEl == null || Math.abs(el - lastEl) >= stepDeg)) return true
         return false
     }
+
+    /** 145.825.000 style (MHz.kHz.Hz). */
+    fun freq(hz: Long): String {
+        if (hz <= 0) return "—"
+        val mhz = hz / 1_000_000; val khz = (hz / 1000) % 1000; val h = hz % 1000
+        return String.format(Locale.US, "%d.%03d.%03d", mhz, khz, h)
+    }
+
+    /** Readable mode (PKTUSB -> DIG-U). */
+    fun modeName(m: String): String = when (m) { "PKTUSB" -> "DIG-U"; "PKTLSB" -> "DIG-L"; "PKTFM" -> "DIG-FM"; "CWR" -> "CW-R"; "" -> "—"; else -> m }
 
     fun deg(v: Double?): String = if (v == null) "—" else String.format(Locale.US, "%.1f°", v)
 }

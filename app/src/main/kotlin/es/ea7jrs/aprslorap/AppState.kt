@@ -89,6 +89,7 @@ object AppState {
     val rotorBusy = MutableStateFlow(false)
     val rotorMessage = MutableStateFlow("")
     val rotorFollowSent = MutableStateFlow("")
+    val rotorCat = MutableStateFlow<es.ea7jrs.aprslorap.core.RotorProto.CatState?>(null)   // radio on the rotor box (event `cat`)
     val rotorTrackerFollow = MutableStateFlow<es.ea7jrs.aprslorap.core.ControlEvent.Targets?>(null)   // tracker's rotor settings (sources 4 / 5)
     val heardAtMs = MutableStateFlow(0L)                                          // when the tracker's heard list arrived
     val rbBusy = MutableStateFlow(false)
