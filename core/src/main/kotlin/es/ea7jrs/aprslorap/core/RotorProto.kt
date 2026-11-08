@@ -63,6 +63,27 @@ object RotorProto {
     fun catSplit(on: Boolean) = line("c" to "catset", "split" to on)
     fun catVfo(v: String) = line("c" to "catset", "vfo" to v)            // "A", "B" or "swap"
     fun catPtt(on: Boolean) = line("c" to "catset", "ptt" to on)
+    /** CTCSS of the transmission (uplink of FM satellites), Hz; 0 = off. */
+    fun catTone(hz: Double) = line("c" to "catset", "tone" to Math.round(hz * 10) / 10.0)
+
+    /** Standard CTCSS tones (Hz). */
+    val CTCSS = doubleArrayOf(67.0, 69.3, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8, 97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8,
+        123.0, 127.3, 131.8, 136.5, 141.3, 146.2, 151.4, 156.7, 159.8, 162.2, 165.5, 167.9, 171.3, 173.8, 177.3, 179.9, 183.5, 186.2, 189.9,
+        192.8, 196.6, 199.5, 203.5, 206.5, 210.7, 218.1, 225.7, 229.1, 233.6, 241.8, 250.3, 254.1)
+
+    /** The nearest standard tone within 1 Hz, or null. */
+    fun ctcss(hz: Double): Double? = CTCSS.minByOrNull { Math.abs(it - hz) }?.takeIf { Math.abs(it - hz) <= 1.0 }
+
+    private val toneRe = Regex("""(?i)(?:(?:ctcss|pl|tone|tono|sub-?tone)\s*:?\s*(\d{2,3}(?:[.,]\d)?)(?!\d))|(?:(?<![\d.])(\d{2,3}(?:[.,]\d)?)\s*hz(?:\s*(?:ctcss|pl|tone))?)""")
+
+    /** CTCSS tone of a satellite transmitter from its description ("FM voice, 67 Hz CTCSS", "PL 74.4"), or null. */
+    fun satTone(description: String): Double? {
+        for (m in toneRe.findAll(description)) {
+            val v = (m.groupValues[1].ifEmpty { m.groupValues[2] }).replace(',', '.').toDoubleOrNull() ?: continue
+            if (v in 60.0..260.0) ctcss(v)?.let { return it }
+        }
+        return null
+    }
     fun catTrackOn(on: Boolean) = line("c" to "cattrack", "on" to on)
     /** Doppler: nominal downlink / uplink (Hz, 0 = none) and range rate (km/s, + = going away); the box corrects and tunes. */
     fun catTrack(name: String, downHz: Long, upHz: Long, rangeRateKmS: Double) =
@@ -90,7 +111,7 @@ object RotorProto {
     /** State of the radio (event `cat`, every second while subscribed). [smeter] 0-15 (S0-S9+60), -1 unknown. */
     data class CatState(
         val rig: String, val link: Boolean, val freqHz: Long, val mode: String, val txFreqHz: Long?, val split: Boolean,
-        val vfo: String, val ptt: Boolean, val smeter: Int, val pttAllowed: Boolean, val tracking: CatTracking?,
+        val vfo: String, val ptt: Boolean, val smeter: Int, val pttAllowed: Boolean, val tracking: CatTracking?, val toneHz: Double? = null,
     ) {
         val sText: String get() = when {
             smeter < 0 -> "—"
@@ -149,6 +170,7 @@ object RotorProto {
                     o.str("rig") ?: "", o.bool("l") ?: false, o.num("f")?.toLong() ?: 0L, o.str("m") ?: "", o.num("tf")?.toLong(),
                     o.bool("sp") ?: false, o.str("v") ?: "A", o.bool("ptt") ?: false, o.int("sm") ?: -1, o.bool("pa") ?: false,
                     tr?.let { CatTracking(it.bool("en") ?: false, it.bool("on") ?: false, it.str("n") ?: "", it.num("dop")?.toLong() ?: 0L) },
+                    o.num("tn")?.takeIf { it > 0 },
                 ))
             }
             else -> null
@@ -188,6 +210,22 @@ object RotorProto {
         if (Math.abs(RotCtl.angleDiff(lastAz, az)) >= stepDeg) return true
         if (el != null && (lastEl == null || Math.abs(el - lastEl) >= stepDeg)) return true
         return false
+    }
+
+    /** Radio mode for a satellite transmitter mode (SatNOGS names: FM, AFSK, USB, CW, BPSK, GMSK...); null = leave it. */
+    fun satMode(mode: String): String? {
+        val m = mode.uppercase(Locale.US)
+        return when {
+            m.startsWith("LORA") -> null
+            m == "USB" || m == "SSB" || m.contains("LINEAR") -> "USB"
+            m == "LSB" -> "LSB"
+            m.startsWith("CW") -> "CW"
+            m.startsWith("AM") -> "AM"
+            m.startsWith("FM") || m == "NFM" || m == "SSTV" || m == "APT" -> "FM"
+            m.startsWith("AFSK") || m.contains("PACKET") || m.startsWith("AX.25") -> "PKTFM"
+            m.contains("FSK") || m.contains("BPSK") || m.contains("QPSK") || m.contains("PSK") || m.contains("GMSK") || m.contains("OQPSK") -> "PKTUSB"
+            else -> null
+        }
     }
 
     /** 145.825.000 style (MHz.kHz.Hz). */

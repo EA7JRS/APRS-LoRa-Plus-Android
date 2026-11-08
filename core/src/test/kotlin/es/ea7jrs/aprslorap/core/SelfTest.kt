@@ -606,6 +606,13 @@ private fun testRotorProto() {
     eq(RotorProto.freq(145825000L), "145.825.000", "rotor cat freq text")
     eq(RotorProto.freq(10489550000L), "10489.550.000", "rotor cat freq QO-100")
     eq(RotorProto.modeName("PKTUSB"), "DIG-U", "rotor cat mode name")
+    eq(RotorProto.catTone(67.0), "{\"c\":\"catset\",\"tone\":67}\n", "rotor cat tone")
+    eq(listOf("Mode V/U FM - Voice, 67 Hz CTCSS", "FM uplink PL 74.4", "Uplink 145.850 MHz, tone 67.0Hz", "9600bps GMSK", "FM 1200 Hz AFSK", "CTCSS: 88,5").map { RotorProto.satTone(it) },
+        listOf(67.0, 74.4, 67.0, null, null, 88.5), "rotor cat satellite tone")
+    val catTn = RotorProto.parse("{\"e\":\"cat\",\"f\":145850000,\"tn\":67}")
+    check(catTn is RotorProto.Event.Cat && catTn.state.toneHz == 67.0, "rotor cat tone event")
+    eq(listOf("FM", "AFSK", "USB", "CW", "GMSK", "BPSK", "LoRa", "FMN").map { RotorProto.satMode(it) },
+        listOf("FM", "PKTFM", "USB", "CW", "PKTUSB", "PKTUSB", null, "FM"), "rotor cat satellite modes")
     val infoCat = RotorProto.parse("{\"e\":\"info\",\"lim\":{},\"caps\":{\"cat\":true},\"rigctld\":4532,\"cat\":true}")
     check(infoCat is RotorProto.Event.InfoEv && infoCat.info.cat && infoCat.info.rigctldPort == 4532, "rotor info cat")
 }

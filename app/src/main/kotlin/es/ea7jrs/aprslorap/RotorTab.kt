@@ -456,6 +456,7 @@ private fun RotorCatSection(canControl: Boolean, settings: Settings) {
     var txSel by remember { mutableStateOf(settings.rotorCatTx) }
     var uplink by remember { mutableStateOf(settings.rotorCatUplink) }
     var typed by rememberSaveable { mutableStateOf("") }
+    var toneText by rememberSaveable { mutableStateOf(if (settings.rotorCatTone > 0) String.format(Locale.US, "%.1f", settings.rotorCatTone) else "") }
     var sentHz by remember { mutableStateOf(0L) }
     var sentAt by remember { mutableStateOf(0L) }
     // Asked once a second while the section is on screen (the subscription also sends it)
@@ -467,7 +468,8 @@ private fun RotorCatSection(canControl: Boolean, settings: Settings) {
     Text(c.rig, fontSize = 12.sp)
     if (!c.link) Text("No link with the radio (cable, baud rate, CI-V address or the SDR program on the network).", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
     Text(RotorProto.freq(c.freqHz), fontFamily = FontFamily.Monospace, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-    Text(listOfNotNull(RotorProto.modeName(c.mode), "VFO ${c.vfo}", c.txFreqHz?.takeIf { c.split }?.let { "TX ${RotorProto.freq(it)}" }, c.sText,
+    Text(listOfNotNull(RotorProto.modeName(c.mode), "VFO ${c.vfo}", c.txFreqHz?.takeIf { c.split }?.let { "TX ${RotorProto.freq(it)}" },
+        c.toneHz?.let { String.format(Locale.US, "CTCSS %.1f", it) }, c.sText,
         "TX".takeIf { c.ptt }).joinToString(" · "), fontSize = 14.sp)
     LinearProgressIndicator(progress = { (c.smeter.coerceAtLeast(0) / 15f) }, modifier = Modifier.fillMaxWidth())
 
@@ -504,6 +506,16 @@ private fun RotorCatSection(canControl: Boolean, settings: Settings) {
         OutlinedButton(enabled = canControl && c.link, onClick = { RotorLink.command(RotorProto.catVfo("swap")) }) { Text("A / B") }
         Text("Split", fontSize = 14.sp)
         Switch(c.split, { RotorLink.command(RotorProto.catSplit(it)) }, enabled = canControl && c.link)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(toneText, { toneText = it }, label = { Text("CTCSS Hz (empty = off / from the satellite)") }, singleLine = true, modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        Button(enabled = canControl && c.link, onClick = {
+            val hz = toneText.replace(',', '.').toDoubleOrNull() ?: 0.0
+            val std = if (hz > 0) RotorProto.ctcss(hz) else 0.0
+            if (std == null) AppState.error.value = "Not a standard CTCSS tone"
+            else { settings.rotorCatTone = std; RotorLink.command(RotorProto.catTone(std)) }
+        }) { Text("Tone") }
     }
     if (c.pttAllowed) {
         val red = MaterialTheme.colorScheme.error
@@ -548,7 +560,7 @@ private fun RotorCatSection(canControl: Boolean, settings: Settings) {
             sat?.ok == true -> "Waiting for the satellite to rise (${sat?.name ?: ""})."
             else -> "No satellite data: tracker in SAT mode and the tracker link up."
         }, fontSize = 12.sp)
-        Text("The phone sends the nominal frequencies and the range rate of the tracker's `sat` event; the rotor box corrects and tunes the radio. GPredict can also use the box's rigctld.", fontSize = 11.sp)
+        Text("When the satellite or the transmitter changes, the radio gets its mode (FM, USB, CW, data), split and, with uplink, the CTCSS tone (the one typed above, or the one in the transmitter's description). Then the phone sends the nominal frequencies and the range rate of the tracker's `sat` event; the rotor box corrects and tunes the radio. GPredict can also use the box's rigctld.", fontSize = 11.sp)
     }
 }
 

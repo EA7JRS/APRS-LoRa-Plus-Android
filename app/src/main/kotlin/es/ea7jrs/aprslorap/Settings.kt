@@ -199,6 +199,9 @@ class Settings(ctx: Context) {
     var rotorCatUplink: Boolean                      // also the uplink (split on the radio)
         get() = p.getBoolean("rotor_cat_uplink", false)
         set(v) { p.edit().putBoolean("rotor_cat_uplink", v).apply() }
+    var rotorCatTone: Double                         // CTCSS for the uplink while following a satellite; 0 = from the transmitter's description
+        get() = p.getFloat("rotor_cat_tone", 0f).toDouble()
+        set(v) { p.edit().putFloat("rotor_cat_tone", v.coerceIn(0.0, 260.0).toFloat()).apply() }
     var rotorCatStep: Long
         get() = p.getLong("rotor_cat_step", 1000L)
         set(v) { p.edit().putLong("rotor_cat_step", v).apply() }

@@ -77,6 +77,7 @@ object RotorLink {
         AppState.rotorAuthed.value = false
         AppState.rotorBusy.value = false
         AppState.rotorCat.value = null
+        catSetupKey = ""
         lastAz = null; lastEl = null
     }
 
@@ -191,6 +192,7 @@ object RotorLink {
     // ------------------------------------------------------------------ CAT: satellite Doppler from the tracker
 
     @Volatile private var lastCatTrackMs = 0L
+    @Volatile private var catSetupKey = ""
 
     /** New `sat` event of the tracker (every 2 s in SAT mode): downlink / uplink and range rate to the rotor box's radio. */
     fun onSat(st: es.ea7jrs.aprslorap.core.SatState) {
@@ -209,6 +211,16 @@ object RotorLink {
             ?: AppState.satReceiver.value?.tx?.let { i -> txs.firstOrNull { it.index == i } }
             ?: txs.firstOrNull { it.downHz > 0 } ?: return
         lastCatTrackMs = now
+        // New satellite / transmitter: the radio's mode and split as the transmitter needs (once)
+        val up = s.rotorCatUplink && t.upHz > 0
+        val key = "${st.name}/${t.index}/$up"
+        if (key != catSetupKey) {
+            catSetupKey = key
+            RotorProto.satMode(t.mode)?.let { send(RotorProto.catMode(it)) }
+            if (AppState.rotorCat.value?.split != up) send(RotorProto.catSplit(up))
+            // CTCSS of the uplink: the one chosen in the app or the one in the transmitter's description (SO-50, AO-91...)
+            if (up) (s.rotorCatTone.takeIf { it > 0 } ?: RotorProto.satTone(t.description))?.let { send(RotorProto.catTone(it)) }
+        }
         send(RotorProto.catTrack(st.name ?: "SAT", maxOf(0L, t.downHz), if (s.rotorCatUplink) maxOf(0L, t.upHz) else 0L, rr))
     }
 
