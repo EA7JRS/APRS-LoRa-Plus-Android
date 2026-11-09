@@ -39,6 +39,12 @@ object TrackerMode {
     }
 
     fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK || m == M17 || m == FM
+
+    /** Modulation of a mode, for firmware that does not send `mod` in `status` ([sa868]: LilyGO T-TWR, APRS in AFSK 1200). */
+    fun modulation(m: Int, sa868: Boolean = false): String = when (m) {
+        APRS_LORA -> if (sa868) "AFSK" else "LoRa"; APRS_FSK -> "FSK"; MORSE -> "CW"; DAPNET -> "POCSAG"; M17 -> "M17"; FM -> "FM"
+        WSPR -> "WSPR"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; LRFHSS -> "LR-FHSS"; SAT -> "SAT"; AIS -> "AIS"; else -> "?"
+    }
 }
 
 data class ModeOption(val mode: Int, val name: String)
@@ -91,6 +97,8 @@ data class Sa868Info(
 data class TrackerStatus(
     val mode: Int, val profile: Int, val lora: Int, val digi: Boolean, val smartBeacon: Boolean, val sos: Boolean,
     val batteryV: Double?, val uptimeS: Long, val bleKiss: Boolean,
+    /** Frequency (Hz) and modulation of the radio in the current mode ("LoRa", "CW", "POCSAG"...); null with older firmware. */
+    val freqHz: Long? = null, val modulation: String? = null,
 )
 
 data class Sensors(
@@ -230,6 +238,7 @@ object Control {
                 TrackerStatus(
                     o.int("mode") ?: 0, o.int("profile") ?: 0, o.int("lora") ?: 0, o.bool("digi") ?: false, o.bool("smart") ?: false,
                     o.bool("sos") ?: false, o.num("batt"), o.long("up") ?: 0, o.bool("bleKiss") ?: true,
+                    o.long("f")?.takeIf { it > 0 }, o.str("mod")?.ifEmpty { null },
                 ),
             )
             "sensors" -> ControlEvent.SensorData(

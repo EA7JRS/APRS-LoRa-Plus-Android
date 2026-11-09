@@ -1212,7 +1212,7 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1327,4 +1327,12 @@ private fun testGnssSky() {
     eq(d, Triple(2.0, 1.0, 1.6), "DOP from GSA")
     eq(GnssSky.dopText(sky, null), "2.0/1.0/1.6", "DOP text")
     eq(GnssSky.dopText(SkyView(emptyList()), 0.9), "0.9", "only HDOP")
+}
+
+private fun testStatusRadio() {
+    val st = (Control.parse("""{"e":"status","mode":2,"profile":0,"lora":0,"digi":false,"smart":true,"sos":false,"up":60,"bleKiss":true,"f":432050000,"mod":"CW"}""") as ControlEvent.Status).status
+    eq(st.freqHz, 432_050_000L, "radio frequency of the mode"); eq(st.modulation, "CW", "modulation")
+    val old = (Control.parse("""{"e":"status","mode":2,"profile":0,"lora":0,"up":60}""") as ControlEvent.Status).status
+    eq(old.freqHz, null, "older firmware: no frequency"); eq(TrackerMode.modulation(old.mode), "CW", "fallback modulation")
+    eq(TrackerMode.modulation(TrackerMode.APRS_LORA, sa868 = true), "AFSK", "T-TWR APRS")
 }

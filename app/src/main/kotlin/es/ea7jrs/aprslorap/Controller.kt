@@ -325,6 +325,7 @@ class Controller(
             }
             is ControlEvent.CwRx -> {
                 AppState.cwRxOn.value = ev.on
+                AppState.cwRxDbm.value = if (ev.on) ev.dbm ?: AppState.cwRxDbm.value else null
                 ev.letter?.let { AppState.cwRxText.value = (AppState.cwRxText.value + it).takeLast(2000) }
                 AppState.cwRxLevel.value = if (ev.on) String.format(java.util.Locale.US, "%.0f dBm, SNR %.0f dB, %d wpm", ev.dbm ?: -150.0, ev.snr ?: 0.0, ev.wpm ?: 0) else "Stopped"
                 Spotter.onTrackerCw(ev.on, ev.letter, ev.snr, ev.wpm, ev.freqHz)

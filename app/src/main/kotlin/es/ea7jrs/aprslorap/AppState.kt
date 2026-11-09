@@ -127,6 +127,7 @@ object AppState {
     val cwRxOn = MutableStateFlow(false)                                          // tracker's CW listening on RF
     val cwRxText = MutableStateFlow("")
     val cwRxLevel = MutableStateFlow("")
+    val cwRxDbm = MutableStateFlow<Double?>(null)                                  // level of the tracker's CW listening (S-meter of band A)
     val packetStatus = MutableStateFlow("Off")                                   // packet FSK (G3RUH) from the app receiver
     val packetLog = MutableStateFlow<List<String>>(emptyList())
     val dvStatus = MutableStateFlow("Off")                                       // digital voice decoder (dsd-fme)

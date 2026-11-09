@@ -47,6 +47,7 @@ import es.ea7jrs.aprslorap.core.HeardStation
 import es.ea7jrs.aprslorap.core.RotorProto
 import es.ea7jrs.aprslorap.core.SMeter
 import es.ea7jrs.aprslorap.core.Spots
+import es.ea7jrs.aprslorap.core.TrackerMode
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -55,9 +56,11 @@ import java.util.Locale
 fun KeepHeardFresh(periodMs: Long = 15_000) {
     val control by AppState.controlReady.collectAsState()
     LaunchedEffect(control) {
+        var n = 0
         while (control) {
+            if (n++ % 2 == 0) AppState.controller?.control("status")      // the dial follows the mode / profile in use
             AppState.controller?.control("heard", "cnt" to 12)
-            delay(periodMs)
+            delay(periodMs / 2)
         }
     }
 }
@@ -77,9 +80,35 @@ private fun BandA(nav: Navigator, big: Boolean) {
     val ble by AppState.bleStatus.collectAsState()
     val running by AppState.running.collectAsState()
     val heardAt by AppState.heardAtMs.collectAsState()
+    val cwOn by AppState.cwRxOn.collectAsState()
+    val cwDbm by AppState.cwRxDbm.collectAsState()
     val lora = info?.loras?.getOrNull(status?.lora ?: -1)
-    val modeName = info?.modes?.firstOrNull { it.mode == status?.mode }?.name ?: "APRS"
+    val mode = status?.mode ?: TrackerMode.APRS_LORA
+    val modeName = info?.modes?.firstOrNull { it.mode == mode }?.name ?: TrackerMode.name(mode)
+    val sa868 = info?.radio == "sa868"
+    // modulation and frequency of the mode in use: from the status event; older firmware: the LoRa profile only in the APRS modes
+    val mod = status?.modulation ?: if (mode == TrackerMode.APRS_LORA && lora?.fsk == true) "FSK" else TrackerMode.modulation(mode, sa868)
+    val aprsLike = mode == TrackerMode.APRS_LORA || mode == TrackerMode.APRS_FSK
+    val hz: Long? = status?.freqHz ?: if (aprsLike) lora?.freqHz else null
     val last = lastHeardWithSignal(heard)
+    val detail = when (mod) {
+        "LoRa" -> lora?.let { "SF${it.sf} · CR4/${it.cr}" } ?: "LoRa"
+        "FSK" -> "G3RUH 9600"
+        "AFSK" -> "AFSK 1200"
+        else -> modeName
+    }
+    // signal: APRS modes = last station the tracker heard; MORSE = the tracker's CW listening
+    val reading = when {
+        mode == TrackerMode.MORSE -> cwDbm?.takeIf { cwOn }?.let { SMeter.fromDbm(it, hz ?: trackerFreqHz()) }
+        TrackerMode.isAprs(mode) -> last?.rssi?.let { SMeter.fromDbm(it.toDouble(), hz ?: trackerFreqHz()) }
+        else -> null
+    }
+    val readingText = when {
+        mode == TrackerMode.MORSE -> if (cwOn) cwDbm?.let { String.format(Locale.US, "%.0f dBm · CW listening", it) } else "CW listening off"
+        TrackerMode.isAprs(mode) -> last?.let { listOfNotNull(it.rssi?.let { r -> "$r dBm" }, it.snr?.let { s -> String.format(Locale.US, "SNR %.1f", s) }).joinToString(" · ") }
+        else -> null
+    }
+    val modColor = when (mod) { "CW" -> Alp.Amber; "POCSAG", "SAT", "AIS" -> Alp.Green; else -> Alp.Cyan }
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Alp.Panel).clickable { nav.tool(if (running) Tool.TRACKER else Tool.CONNECT) }) {
         Box(Modifier.padding(top = 14.dp).width(5.dp).height(if (big) 140.dp else 40.dp).clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)).background(Alp.Green))
         Column(Modifier.padding(start = 20.dp, end = 14.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -88,30 +117,33 @@ private fun BandA(nav: Navigator, big: Boolean) {
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Green).padding(horizontal = 7.dp))
                 Text("TRACKER", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Alp.Muted)
                 Spacer(Modifier.weight(1f))
-                Text(if (lora?.fsk == true) "FSK APRS" else "LoRa $modeName", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                    color = Alp.Cyan, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg).padding(horizontal = 6.dp))
+                Text(if (status == null) "—" else "$mod · ${modeName.uppercase(Locale.US)}", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                    color = modColor, maxLines = 1, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg).padding(horizontal = 6.dp))
             }
-            if (lora == null) {
+            if (status == null) {
                 Text(if (running) ble else "Tracker not connected · touch to connect", fontSize = 15.sp, color = Alp.Muted)
                 if (!big) return@Column
             } else {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(Fmt.mhz(lora.freqHz), fontFamily = TechMono, fontSize = if (big) 46.sp else 36.sp, color = Alp.Text, lineHeight = 48.sp)
-                    Text(Fmt.subKhz(lora.freqHz), fontFamily = TechMono, fontSize = if (big) 22.sp else 18.sp, color = Alp.Muted, modifier = Modifier.padding(bottom = 6.dp, start = 2.dp))
+                    if (hz != null) {
+                        Text(Fmt.mhz(hz), fontFamily = TechMono, fontSize = if (big) 46.sp else 36.sp, color = Alp.Text, lineHeight = 48.sp)
+                        Text(Fmt.subKhz(hz), fontFamily = TechMono, fontSize = if (big) 22.sp else 18.sp, color = Alp.Muted, modifier = Modifier.padding(bottom = 6.dp, start = 2.dp))
+                    } else {
+                        Text("---.---", fontFamily = TechMono, fontSize = if (big) 46.sp else 36.sp, color = Alp.Off, lineHeight = 48.sp)
+                    }
                     Spacer(Modifier.weight(1f))
                     if (big) Column(horizontalAlignment = Alignment.End) {
-                        Text(if (lora.fsk) "G3RUH 9600" else "SF${lora.sf} · CR4/${lora.cr}", fontFamily = BarlowCondensed, fontSize = 15.sp, color = Alp.SubText)
-                        Text(listOfNotNull(info?.profiles?.getOrNull(status?.profile ?: -1)?.label, if (status?.digi == true) "DIGI" else null).joinToString(" · "),
+                        Text(detail, fontFamily = BarlowCondensed, fontSize = 15.sp, color = Alp.SubText)
+                        Text(listOfNotNull(if (TrackerMode.isAprs(mode)) info?.profiles?.getOrNull(status?.profile ?: -1)?.label else null,
+                            if (status?.digi == true && TrackerMode.isAprs(mode)) "DIGI" else null).joinToString(" · "),
                             fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Muted)
                     }
                 }
+                if (hz == null && big) Text("This tracker firmware does not report the frequency of this mode: update it (Firmware).", fontSize = 12.sp, color = Alp.Muted)
             }
             if (!big) return@Column
-            SMeterBar(
-                last?.rssi?.let { SMeter.fromDbm(it.toDouble(), lora?.freqHz ?: 433_775_000L) },
-                extra = last?.let { listOfNotNull(it.rssi?.let { r -> "$r dBm" }, it.snr?.let { s -> String.format(Locale.US, "SNR %.1f", s) }).joinToString(" · ") },
-            )
-            if (last != null) {
+            SMeterBar(reading, extra = readingText)
+            if (last != null && TrackerMode.isAprs(mode)) {
                 val pos = Own.to(last.lat, last.lon)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.clickable { nav.go("STATION:" + last.call) }) {
