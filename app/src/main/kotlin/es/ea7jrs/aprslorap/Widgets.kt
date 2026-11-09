@@ -199,17 +199,28 @@ fun ScreenHeader(title: String, onBack: () -> Unit, trailing: @Composable RowSco
 
 // ------------------------------------------------------------------ S-meter
 
-/** Bar of 9 S segments and 6 above S9, with the reading in S units ("S7", "S9+20") next to it. */
+/** Colour of an S-meter segment by intensity: S1-S3 red (weak), S4-S6 amber, S7-S9 green, above S9 cyan (strong). */
+fun sMeterColor(segment: Int): Color = when {
+    segment <= 3 -> Alp.Red
+    segment <= 6 -> Alp.Amber
+    segment <= 9 -> Alp.Green
+    else -> Alp.Cyan
+}
+
+/**
+ * Bar of 9 S segments and 6 above S9, coloured by intensity, with the reading in S units ("S7", "S9+20") next to it.
+ * Unlit segments keep a faint tint of their zone so the scale is always visible.
+ */
 @Composable
 fun SMeterBar(reading: SMeter.Reading?, modifier: Modifier = Modifier, extra: String? = null) {
+    val lit = reading?.segments ?: 0
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                val lit = reading?.segments ?: 0
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
                 for (i in 1..SMeter.SEGMENTS) {
-                    val on = i <= lit
-                    val c = if (!on) Alp.KeyBorder else if (i <= 9) Alp.Green else Alp.Amber
-                    Box(Modifier.weight(1f).height(if (i <= 9) 10.dp else 12.dp).clip(RoundedCornerShape(2.dp)).background(c))
+                    val zone = sMeterColor(i)
+                    Box(Modifier.weight(1f).height(if (i <= 9) 10.dp else 12.dp).clip(RoundedCornerShape(2.dp))
+                        .background(if (i <= lit) zone else zone.copy(alpha = 0.16f)))
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 1.dp)) {
@@ -219,7 +230,7 @@ fun SMeterBar(reading: SMeter.Reading?, modifier: Modifier = Modifier, extra: St
             }
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(reading?.label ?: "S—", fontFamily = TechMono, fontSize = 18.sp, color = if (reading == null) Alp.Off else if ((reading.overDb) > 0) Alp.Amber else Alp.Green)
+            Text(reading?.label ?: "S—", fontFamily = TechMono, fontSize = 18.sp, color = if (reading == null || lit == 0) Alp.Off else sMeterColor(lit))
             if (extra != null) Text(extra, fontFamily = BarlowCondensed, fontSize = 12.sp, color = Alp.Muted)
         }
     }
