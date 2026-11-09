@@ -45,6 +45,8 @@ object AppState {
     val trackerStatus = MutableStateFlow<TrackerStatus?>(null)
     val sensors = MutableStateFlow<Sensors?>(null)
     val gnss = MutableStateFlow<Gnss?>(null)
+    val sky = MutableStateFlow<es.ea7jrs.aprslorap.core.SkyView?>(null)            // satellites of the tracker's receiver (event `sky`)
+    val phoneGnss = MutableStateFlow(PhoneGnss.State())                            // the phone's own GNSS and sensors (DISP > GPS)
     val pages = MutableStateFlow<List<ReceivedPage>>(emptyList())        // DAPNET, newest first
     val sentPages = MutableStateFlow<List<String>>(emptyList())          // DAPNET pages sent from the phone (log lines)
     // What the tracker itself holds: its message log, stations heard, screen and menu options, configuration file

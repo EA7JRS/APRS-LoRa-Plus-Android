@@ -52,7 +52,7 @@ class Controller(
         const val STATUS_EVERY_MS = 15_000L
         const val MAX_PAGES = 100
         /** Commands that only read: allowed without a validated callsign. */
-        val QUERIES = setOf("info", "status", "sensors", "gnss", "dapnet", "sub", "msgs", "heard", "actlist", "screen", "cfgget",
+        val QUERIES = setOf("info", "status", "sensors", "gnss", "sky", "dapnet", "sub", "msgs", "heard", "actlist", "screen", "cfgget",
             // the firmware update does not transmit: allowed too
             "ota", "ota_abort",
             // SAT mode: reading, listening and telling the tracker where the phone is do not transmit (sattx, satdata and tgt are not here)
@@ -256,6 +256,7 @@ class Controller(
             is ControlEvent.Status -> AppState.trackerStatus.value = ev.status
             is ControlEvent.SensorData -> AppState.sensors.value = ev.sensors
             is ControlEvent.Position -> onGnss(ev.gnss)
+            is ControlEvent.Sky -> AppState.sky.value = ev.sky
             is ControlEvent.DapnetHistory -> ev.pages.forEach { addPage(it, notify = false) }
             is ControlEvent.NewPage -> addPage(ev.page, notify = true)
             is ControlEvent.Messages -> {

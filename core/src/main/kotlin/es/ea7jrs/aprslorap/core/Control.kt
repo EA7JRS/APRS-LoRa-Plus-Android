@@ -174,6 +174,8 @@ sealed class ControlEvent {
     data class Status(val status: TrackerStatus) : ControlEvent()
     data class SensorData(val sensors: Sensors) : ControlEvent()
     data class Position(val gnss: Gnss) : ControlEvent()
+    /** Satellites in view of the tracker's receiver (firmware with the `sky` command). */
+    data class Sky(val sky: SkyView) : ControlEvent()
     data class DapnetHistory(val pages: List<Page>) : ControlEvent()
     data class NewPage(val page: Page) : ControlEvent()
     data class OtaProgress(val offset: Long, val done: Boolean) : ControlEvent()
@@ -245,6 +247,7 @@ object Control {
                     o.long("age"), o.str("utc"),
                 ),
             )
+            "sky" -> ControlEvent.Sky(GnssSky.parse(o))
             "dapnet" -> ControlEvent.DapnetHistory(o.objList("items").map { page(it) })
             "page" -> ControlEvent.NewPage(page(o))
             "ota" -> ControlEvent.OtaProgress(o.long("off") ?: 0, o.bool("done") ?: false)

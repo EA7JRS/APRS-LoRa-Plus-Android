@@ -260,7 +260,7 @@ fun DispScreen(nav: Navigator, openDrawer: () -> Unit) {
         }
         when (page) {
             0 -> CompassPage(nav)
-            1 -> GpsPage()
+            1 -> GpsStatusPage()
             2 -> AltitudePage()
             else -> ClockPage()
         }
@@ -321,38 +321,6 @@ private fun CompassPage(nav: Navigator) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         DataTile("TEMP", sensors?.temperatureC?.let { String.format(Locale.US, "%.1f", it) } ?: "—", Modifier.weight(1f), unit = "°C")
         DataTile("QNH", sensors?.qnhHpa?.let { String.format(Locale.US, "%.0f", it) } ?: "—", Modifier.weight(1f), unit = "hPa")
-    }
-}
-
-@Composable
-private fun GpsPage() {
-    val g by AppState.gnss.collectAsState()
-    Panel(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Lamp(g?.fix == true)
-            Text(if (g == null) "No GNSS data from the tracker" else if (g!!.fix) "3D FIX" else "NO FIX", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold,
-                fontSize = 20.sp, color = if (g?.fix == true) Alp.Green else Alp.Amber)
-            Spacer(Modifier.weight(1f))
-            Text("tracker GNSS", fontSize = 13.sp, color = Alp.Muted)
-        }
-        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(vertical = 10.dp)) {
-            Text("${g?.satellites ?: 0}", fontFamily = TechMono, fontSize = 64.sp, color = Alp.Text)
-            Text(" satellites", fontSize = 16.sp, color = Alp.Muted, modifier = Modifier.padding(bottom = 14.dp))
-            Spacer(Modifier.weight(1f))
-            Column(horizontalAlignment = Alignment.End) {
-                SectionLabel("HDOP")
-                val h = g?.hdop
-                Text(h?.let { String.format(Locale.US, "%.1f", it) } ?: "—", fontFamily = TechMono, fontSize = 28.sp,
-                    color = when { h == null -> Alp.Muted; h <= 1.5 -> Alp.Green; h <= 3 -> Alp.Amber; else -> Alp.RedSoft })
-            }
-        }
-        val lat = g?.lat; val lon = g?.lon
-        InfoRow("LAT", lat?.let { Fmt.latLon(it, true) } ?: "—")
-        InfoRow("LON", lon?.let { Fmt.latLon(it, false) } ?: "—")
-        InfoRow("LOCATOR", if (lat != null && lon != null) Spots.locator(lat, lon, 8) else "—")
-        InfoRow("ALTITUDE", g?.altitudeM?.let { String.format(Locale.US, "%.0f m", it) } ?: "—")
-        InfoRow("UTC", g?.utc ?: "—")
-        InfoRow("AGE", g?.ageMs?.let { if (it < 2000) "now" else "${it / 1000} s" } ?: "—")
     }
 }
 

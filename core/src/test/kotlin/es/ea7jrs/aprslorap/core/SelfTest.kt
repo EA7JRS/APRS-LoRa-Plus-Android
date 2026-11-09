@@ -1212,7 +1212,7 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1308,4 +1308,23 @@ Mauritius:                39:  53:  AF:  -20.35:   -57.50:    -4.0:  3B8:
     check(p.shortDeg in 25..35, "JA short path near 30 deg (${p.shortDeg})"); eq(p.longDeg, (p.shortDeg + 180) % 360, "long path opposite")
     check(p.shortKm in 10500..11500, "JA distance (${p.shortKm})")
     eq(Cty.path(cty, "JA1ABC", null, null), null, "no own position")
+}
+
+private fun testGnssSky() {
+    val ev = Control.parse("""{"e":"sky","pd":2.0,"hd":1.0,"vd":1.6,"used":8,"s":[["G",5,45,310,38,1],["E",16,55,330,42,1],["C",13,-1,-1,-1,0],["R",73,15,100,25,0]]}""")
+    val sky = (ev as ControlEvent.Sky).sky
+    eq(sky.inView, 4, "4 satellites in view"); eq(sky.used, 8, "used from GGA"); near(sky.pdop ?: 0.0, 2.0, 1e-9, "PDOP")
+    eq(sky.sats[2].elevationDeg, null, "unknown elevation"); eq(sky.sats[2].snr, null, "no signal")
+    eq(GnssSky.label(sky.sats[1]), "e16", "Galileo label"); eq(GnssSky.label(sky.sats[3]), "r9", "GLONASS slot from NMEA 73")
+    eq(GnssSky.label(sky.sats[0]), "5", "GPS label")
+    eq(GnssSky.fromAndroid(6), 'E', "Android Galileo"); eq(GnssSky.fromAndroid(5), 'C', "Android BeiDou")
+    val p = GnssSky.plot(0, 90); near(p.first, 1.0, 1e-9, "east on the horizon: right"); near(p.second, 0.0, 1e-9, "east: middle")
+    val z = GnssSky.plot(90, 200); near(z.first, 0.0, 1e-9, "zenith in the centre")
+    val up = GnssSky.plot(0, 335, 335.0); near(up.second, -1.0, 1e-9, "heading up: satellite ahead at the top")
+    eq(GnssSky.strength(38), 2, "strong"); eq(GnssSky.strength(22), 1, "medium"); eq(GnssSky.strength(null), -1, "none")
+    eq(GnssSky.sorted(sky.sats).map { it.system }, listOf('G', 'E', 'C', 'R'), "bars order")
+    val d = GnssSky.gsaDops(Nmea.sentence("GNGSA,A,3,05,15,23,24,,,,,,,,,2.0,1.0,1.6,1").trim())
+    eq(d, Triple(2.0, 1.0, 1.6), "DOP from GSA")
+    eq(GnssSky.dopText(sky, null), "2.0/1.0/1.6", "DOP text")
+    eq(GnssSky.dopText(SkyView(emptyList()), 0.9), "0.9", "only HDOP")
 }
