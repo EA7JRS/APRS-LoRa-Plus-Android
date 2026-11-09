@@ -199,33 +199,47 @@ fun ScreenHeader(title: String, onBack: () -> Unit, trailing: @Composable RowSco
 
 // ------------------------------------------------------------------ S-meter
 
-/** Colour of an S-meter segment by intensity: S1-S3 red (weak), S4-S6 amber, S7-S9 green, above S9 cyan (strong). */
-fun sMeterColor(segment: Int): Color = when {
-    segment <= 3 -> Alp.Red
-    segment <= 6 -> Alp.Amber
-    segment <= 9 -> Alp.Green
-    else -> Alp.Cyan
-}
+/**
+ * Colour of an S-meter segment (IARU scale, as on current Yaesu / Icom radios): S1-S5 light green to blue-green (weak
+ * signals, band noise), S6-S8 yellow (good, readable), S9 orange (the reference), S9+10 ... +60 dB bright red (very strong).
+ * A smooth gradient inside each zone.
+ */
+private val S_COLORS = listOf(
+    0xFF4FC3E0, 0xFF52D4C0, 0xFF5BDFA0, 0xFF72E688, 0xFF96EA74,   // S1-S5
+    0xFFD4E650, 0xFFF2DE3E, 0xFFFFCF33,                           // S6-S8
+    0xFFFF9A2E,                                                   // S9
+    0xFFFF5A3C, 0xFFFF4636, 0xFFFF3A33, 0xFFFF3030, 0xFFFF2A2A, 0xFFFF2424,   // +10 ... +60
+).map { Color(it) }
+
+fun sMeterColor(segment: Int): Color = S_COLORS[(segment - 1).coerceIn(0, S_COLORS.size - 1)]
 
 /**
- * Bar of 9 S segments and 6 above S9, coloured by intensity, with the reading in S units ("S7", "S9+20") next to it.
- * Unlit segments keep a faint tint of their zone so the scale is always visible.
+ * Bar of 9 S segments and 6 above S9, coloured by intensity, with the reading in S units ("S7", "S9+20") next to it. A gap
+ * and a white tick mark the step from S9 to the dB above it; unlit segments keep a faint tint so the scale is always seen.
  */
 @Composable
 fun SMeterBar(reading: SMeter.Reading?, modifier: Modifier = Modifier, extra: String? = null) {
     val lit = reading?.segments ?: 0
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
-                for (i in 1..SMeter.SEGMENTS) {
-                    val zone = sMeterColor(i)
-                    Box(Modifier.weight(1f).height(if (i <= 9) 10.dp else 12.dp).clip(RoundedCornerShape(2.dp))
-                        .background(if (i <= lit) zone else zone.copy(alpha = 0.16f)))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Row(Modifier.weight(9f), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
+                    for (i in 1..9) SMeterSegment(i, lit, Modifier.weight(1f))
+                }
+                Box(Modifier.padding(horizontal = 3.dp).width(2.dp).height(16.dp).clip(RoundedCornerShape(1.dp)).background(Alp.Text.copy(alpha = 0.8f)))
+                Row(Modifier.weight(6f), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
+                    for (i in 10..SMeter.SEGMENTS) SMeterSegment(i, lit, Modifier.weight(1f))
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 1.dp)) {
-                for (t in listOf("1", "3", "5", "7", "9", "+20", "+40", "+60")) {
-                    Text(t, Modifier.weight(if (t.startsWith("+")) 1.33f else 1f), fontFamily = BarlowCondensed, fontSize = 10.sp, color = Alp.Faint)
+                Row(Modifier.weight(9f)) {
+                    for (t in listOf("1", "3", "5", "7", "9")) Text(t, Modifier.weight(if (t == "9") 1f else 2f), fontFamily = BarlowCondensed, fontSize = 10.sp,
+                        color = if (t == "9") sMeterColor(9) else Alp.Faint)
+                }
+                Spacer(Modifier.width(8.dp))
+                Row(Modifier.weight(6f)) {
+                    for (t in listOf("+20", "+40", "+60")) Text(t, Modifier.weight(1f), fontFamily = BarlowCondensed, fontSize = 10.sp, color = Alp.Faint,
+                        textAlign = TextAlign.End)
                 }
             }
         }
@@ -234,6 +248,12 @@ fun SMeterBar(reading: SMeter.Reading?, modifier: Modifier = Modifier, extra: St
             if (extra != null) Text(extra, fontFamily = BarlowCondensed, fontSize = 12.sp, color = Alp.Muted)
         }
     }
+}
+
+@Composable
+private fun SMeterSegment(i: Int, lit: Int, modifier: Modifier) {
+    val c = sMeterColor(i)
+    Box(modifier.height(if (i <= 9) 10.dp else 13.dp).clip(RoundedCornerShape(2.dp)).background(if (i <= lit) c else c.copy(alpha = 0.15f)))
 }
 
 // ------------------------------------------------------------------ compass
