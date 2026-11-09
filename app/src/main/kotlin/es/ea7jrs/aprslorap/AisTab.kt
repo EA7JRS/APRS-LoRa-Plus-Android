@@ -92,8 +92,9 @@ fun AisTab() {
                     Text("Last heard ${v.ageS} s ago" + (if (v.channel.isNotBlank()) " on ${v.channel}" else "") + if (v.messages > 0) " · ${v.messages} messages" else "", fontSize = 11.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (v.lat != null) OutlinedButton(onClick = { c?.control("aisset", "goto" to v.mmsi) }) { Text("Tracker GO TO") }
-                        if (v.lat != null && v.lon != null) OutlinedButton(onClick = {
-                            val maps = Intent(Intent.ACTION_VIEW, Uri.parse(Nav.geoUri(v.lat, v.lon, v.title)))
+                        val la = v.lat; val lo = v.lon
+                        if (la != null && lo != null) OutlinedButton(onClick = {
+                            val maps = Intent(Intent.ACTION_VIEW, Uri.parse(Nav.geoUri(la, lo, v.title)))
                             try { ctx.startActivity(maps) } catch (_: ActivityNotFoundException) { AppState.error.value = "No maps app found" }
                         }) { Text("Map") }
                     }
