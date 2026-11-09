@@ -95,6 +95,14 @@ object MapLayers {
         else -> TileSourceFactory.MAPNIK
     }
 
+    /** Night map: OpenStreetMap with the colours inverted and dimmed (no extra tile server). */
+    val NIGHT = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix(floatArrayOf(
+        -0.75f, 0f, 0f, 0f, 220f,
+        0f, -0.75f, 0f, 0f, 225f,
+        0f, 0f, -0.75f, 0f, 235f,
+        0f, 0f, 0f, 1f, 0f,
+    )))
+
     val SEAMARKS: ITileSource = XYTileSource("OpenSeaMap", 0, 18, 256, ".png", arrayOf("https://tiles.openseamap.org/seamark/"))
 
     private var configured = false
@@ -210,7 +218,7 @@ fun MapScreen(nav: Navigator) {
             val effLayer = if (layer == "esri" && key.isBlank()) "osm" else layer
             if (holder.layerId != effLayer || holder.esriKey != key) {
                 map.setTileSource(MapLayers.source(effLayer, key))
-                map.overlayManager.tilesOverlay.setColorFilter(if (effLayer == "dark") TilesOverlay.INVERTED_COLORS else null)
+                map.overlayManager.tilesOverlay.setColorFilter(if (effLayer == "dark") MapLayers.NIGHT else null)
                 holder.layerId = effLayer; holder.esriKey = key
             }
             val oldSea = holder.seamarks
