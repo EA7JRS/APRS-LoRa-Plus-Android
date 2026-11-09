@@ -31,10 +31,11 @@ object TrackerMode {
     const val SAT = 9
     const val M17 = 10                          // LilyGO T-TWR only: APRS in M17 APRS packets; M17 SMS and voice-call callsigns / GNSS heard
     const val FM = 11                           // LilyGO T-TWR only: FM voice radio (APRS beacons on the APRS frequency during voice)
+    const val AIS = 12                          // LilyGO T-TWR (VHF module) only: AIS receiver (marine VHF, receive only)
 
     fun name(m: Int): String = when (m) {
         APRS_LORA -> "APRS LoRa"; APRS_FSK -> "APRS FSK"; MORSE -> "Morse / CW"; WSPR -> "WSPR"; LRFHSS -> "LR-FHSS"
-        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; M17 -> "M17"; FM -> "FM voice"; else -> "Mode $m"
+        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; M17 -> "M17"; FM -> "FM voice"; AIS -> "AIS receiver"; else -> "Mode $m"
     }
 
     fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK || m == M17 || m == FM
@@ -67,6 +68,7 @@ data class TrackerInfo(
     val hasSatFav: Boolean = false,             // favorites and categories ("satfav", "satcat")
     val hasSatFm: Boolean = false,              // T-TWR: the FM VFO follows the satellite ("satrx" / "sattx" also in FM mode, "sattx pos")
     val hasWxNet: Boolean = false,              // weather from the internet for the TELEMETRY page ("wxnet")
+    val hasAis: Boolean = false,                // AIS receiver: "ais" / "aislist" events, "aisin", "aisset"
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -75,6 +77,7 @@ data class Sa868Info(
     val revision: Int, val firmware: String, val band: String, val ok: Boolean,
     val modem: String = "", val rxHz: Long = 0, val txHz: Long = 0, val m17Hz: Long = 0,
     val dapnetHz: Long = 0, val speakerFromEsp: Boolean = false,
+    val txUnlocked: Boolean = false, val txUnlockable: Boolean = false, val mac: String = "",   // TX range unlocked with this device's code
 ) {
     val uhf: Boolean get() = band.equals("UHF", ignoreCase = true)
     val text: String get() = if (!ok) "SA868 not answering" else String.format(java.util.Locale.US, "SA868 %s, Rev%.1f, %s firmware", band, revision / 10.0, firmware)
@@ -189,6 +192,8 @@ sealed class ControlEvent {
     /** CW listening on RF (`cwrx`): [letter] is null for a level-only update; [on] false = the session ended. */
     /** The tracker asks the app to download something with the phone's internet: "wx" (TELEMETRY weather) or "sat" (satellite file). */
     data class NetRequest(val what: String) : ControlEvent()
+    data class Ais(val vessel: AisVessel) : ControlEvent()
+    data class AisList(val total: Int, val from: Int, val messages: Int, val source: String, val channel: String, val items: List<AisVessel>) : ControlEvent()
     data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?, val freqHz: Long? = null) : ControlEvent()
     data class Targets(
         val selected: Int, val source: Int, val items: List<RotorTarget>,
@@ -298,6 +303,9 @@ object Control {
                 ),
             )
             "netreq" -> ControlEvent.NetRequest(o.str("what") ?: "")
+            "ais" -> AisVessel.parse(o, System.currentTimeMillis())?.let { ControlEvent.Ais(it) } ?: ControlEvent.Unknown(line)
+            "aislist" -> ControlEvent.AisList(o.int("tot") ?: 0, o.int("from") ?: 0, o.int("msgs") ?: 0, o.str("src") ?: "", o.str("ch") ?: "",
+                o.objList("items").mapNotNull { AisVessel.parse(it, System.currentTimeMillis()) })
             "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"), o.long("f"))
             "targets" -> ControlEvent.Targets(
                 o.int("sel") ?: 0, o.int("src") ?: 0,
@@ -381,7 +389,7 @@ object Control {
             o.obj("sa868")?.let {
                 Sa868Info(it.int("rev") ?: 0, it.str("fw") ?: "?", it.str("band") ?: "?", it.bool("ok") ?: false,
                           it.str("modem") ?: "", it.long("rx") ?: 0, it.long("tx") ?: 0, it.long("m17") ?: 0,
-                          it.long("dapnet") ?: 0, it.bool("spkEsp") ?: false)
+                          it.long("dapnet") ?: 0, it.bool("spkEsp") ?: false, it.bool("txul") ?: false, it.bool("txulav") ?: false, it.str("mac") ?: "")
             },
             caps.bool("m17") ?: false,
             caps.bool("fm") ?: false,
@@ -390,6 +398,7 @@ object Control {
             caps.bool("satFav") ?: false,
             caps.bool("satFm") ?: false,
             caps.bool("wxnet") ?: false,
+            caps.bool("ais") ?: false,
         )
     }
 }

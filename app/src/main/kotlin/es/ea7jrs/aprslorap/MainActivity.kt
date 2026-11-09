@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App() {
-    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "SAT", "Rotor", "SDR", "Modes", "Log", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect", "About")
+    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "AIS", "SAT", "Rotor", "SDR", "Modes", "Log", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect", "About")
     var tab by rememberSaveable { mutableStateOf(titles.indexOf("Connect")) }
     val error by AppState.error.collectAsState()
     val notice by AppState.notice.collectAsState()
@@ -120,23 +120,24 @@ fun App() {
             notice?.let {
                 Text(it, modifier = Modifier.fillMaxWidth().clickable { AppState.notice.value = null }.padding(8.dp))
             }
-            when (tab) {
-                0 -> StationsTab()
-                1 -> MessagesTab()
-                2 -> TrackerTab()
-                3 -> SensorsTab()
-                4 -> HeardTab()
-                5 -> SatTab()
-                6 -> RotorTab()
-                7 -> SdrTab()
-                8 -> DigimodesTab()
-                9 -> LogTab()
-                10 -> SigIdTab()
-                11 -> RemoteTab()
-                12 -> ConfigTab()
-                13 -> DapnetTab()
-                14 -> FirmwareTab()
-                15 -> ConnectTab()
+            when (titles.getOrNull(tab)) {
+                "Stations" -> StationsTab()
+                "Messages" -> MessagesTab()
+                "Tracker" -> TrackerTab()
+                "Sensors" -> SensorsTab()
+                "Heard" -> HeardTab()
+                "AIS" -> AisTab()
+                "SAT" -> SatTab()
+                "Rotor" -> RotorTab()
+                "SDR" -> SdrTab()
+                "Modes" -> DigimodesTab()
+                "Log" -> LogTab()
+                "SigID" -> SigIdTab()
+                "Remote" -> RemoteTab()
+                "Config" -> ConfigTab()
+                "DAPNET" -> DapnetTab()
+                "Firmware" -> FirmwareTab()
+                "Connect" -> ConnectTab()
                 else -> AboutTab()
             }
         }

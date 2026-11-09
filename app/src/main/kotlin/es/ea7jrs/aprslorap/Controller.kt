@@ -64,7 +64,9 @@ class Controller(
             // broadcast receiver (receive only) and the state of the T-TWR FM radio (tuning it is not here: it transmits)
             "bcast", "bcastset", "fm",
             // weather from the internet for the TELEMETRY page: shown only, not transmitted
-            "wxnet")
+            "wxnet",
+            // AIS receiver: list, settings and the phone's own decoded frames (nothing is transmitted)
+            "aislist", "aisset", "aisin")
         const val SAT_LIST_PAGE = 40
         const val SAT_LIST_MAX = 3000             // the T-TWR keeps up to 3000 satellites (complete file)
     }
@@ -292,6 +294,20 @@ class Controller(
                 AppState.satTxSent.value = ev.count
                 AppState.notice.value = if (ev.ok) "Transmitted to the satellite on ${"%.4f".format(java.util.Locale.US, ev.freqHz / 1e6)} MHz (${ev.count} so far)"
                                         else "The tracker did not transmit"
+            }
+            is ControlEvent.Ais -> {
+                val m = AppState.aisVessels.value.toMutableMap()
+                m[ev.vessel.mmsi] = es.ea7jrs.aprslorap.core.Ais.merge(m[ev.vessel.mmsi], ev.vessel)
+                AppState.aisVessels.value = m
+            }
+            is ControlEvent.AisList -> {
+                val m = AppState.aisVessels.value.toMutableMap()
+                if (ev.from == 0) m.keys.retainAll(ev.items.map { it.mmsi }.toSet() + m.filterValues { System.currentTimeMillis() - it.receivedAtMs < 60_000 }.keys)
+                for (v in ev.items) m[v.mmsi] = es.ea7jrs.aprslorap.core.Ais.merge(m[v.mmsi], v)
+                AppState.aisVessels.value = m
+                AppState.aisSource.value = ev.source + if (ev.channel.isNotBlank()) " (channel ${ev.channel})" else ""
+                AppState.aisMessages.value = ev.messages
+                if (ev.from + ev.items.size < ev.total && ev.items.isNotEmpty()) sendControlLine(Control.command("aislist", "from" to ev.from + ev.items.size, "cnt" to 15))
             }
             is ControlEvent.NetRequest -> {                  // the tracker asks (its menu): weather or satellite file with the phone's internet
                 val ctx = AppState.appContext

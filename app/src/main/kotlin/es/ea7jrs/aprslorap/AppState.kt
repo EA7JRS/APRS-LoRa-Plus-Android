@@ -66,6 +66,10 @@ object AppState {
     /** Weather from the internet (OpenWeatherMap / IQAir) for the tracker's TELEMETRY page, and the last message of the download. */
     val netWx = MutableStateFlow<es.ea7jrs.aprslorap.core.NetWeather.Data?>(null)
     val netWxMessage = MutableStateFlow("")
+    /** AIS vessels received by the tracker (by MMSI) and the state of its receiver. */
+    val aisVessels = MutableStateFlow<Map<Long, es.ea7jrs.aprslorap.core.AisVessel>>(emptyMap())
+    val aisSource = MutableStateFlow("")
+    val aisMessages = MutableStateFlow(0)
     val satList = MutableStateFlow<List<SatEntry>>(emptyList())
     val satSelected = MutableStateFlow(-1)                                       // index in the tracker's list
     val satListTotal = MutableStateFlow(0)

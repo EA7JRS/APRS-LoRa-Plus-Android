@@ -1176,6 +1176,17 @@ private fun testNetWeather() {
     eq(NetWeather.usAqiName(42), "Good", "US AQI band"); eq(NetWeather.owmAqiName(5), "Very poor", "OWM AQI name")
     check(NetWeather.summary(i2).contains("US AQI 42 (Good)"), "net weather summary")
     eq(Control.parse("""{"e":"netreq","what":"wx"}"""), ControlEvent.NetRequest("wx"), "netreq event")
+    // AIS
+    val ae = Control.parse("""{"e":"ais","m":351759000,"cl":"A","n":"EVER DIADEM","c":"3FOF8","t":70,"st":0,"lat":36.5,"lon":-6.3,"pa":12,"sog":10.2,"cog":185.0,"hdg":184,"age":5,"nm":2.3,"brg":210,"cpa":0.4,"tcpa":8.5,"dng":true,"ds":"NEW YORK","len":295,"bm":32,"dr":12.2,"eta":"05-15 14:00","imo":9134270,"ch":"A","msgs":7}""") as ControlEvent.Ais
+    val av = ae.vessel
+    check(av.mmsi == 351759000L && av.title == "EVER DIADEM" && av.lengthM == 295 && av.danger && av.cpaNm == 0.4 && av.destination == "NEW YORK" && av.imo == 9134270L, "ais event")
+    eq(Ais.shipTypeName(av.shipType), "Cargo", "AIS ship type"); eq(Ais.statusName(5), "Moored", "AIS status")
+    val al = Control.parse("""{"e":"aislist","tot":2,"from":0,"msgs":120,"src":"SA868 A","ch":"A","items":[{"m":351759000,"cl":"A","sog":9.0,"age":2},{"m":970123456,"cl":"T","age":1}]}""") as ControlEvent.AisList
+    check(al.total == 2 && al.items.size == 2 && al.items[1].title == "AIS-SART" && al.source == "SA868 A", "aislist event")
+    val mg = Ais.merge(av, al.items[0])
+    check(mg.name == "EVER DIADEM" && mg.sogKn == 9.0 && mg.lengthM == 295, "AIS merge keeps static data")
+    eq(Ais.settings(channel = 2, cpaNm = 0.5, alarm = true), "{\"c\":\"aisset\",\"ch\":2,\"cpa\":5,\"alarm\":true}\n", "aisset command")
+    eq(TrackerMode.name(TrackerMode.AIS), "AIS receiver", "AIS mode name")
 }
 
 fun main() {

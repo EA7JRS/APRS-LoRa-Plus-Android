@@ -155,6 +155,7 @@ fun TrackerTab() {
                 OutlinedButton(onClick = { c?.control("carrier", "s" to "start") }) { Text("Tune carrier") }
                 OutlinedButton(onClick = { c?.control("carrier", "s" to "stop") }) { Text("Stop") }
             }
+            TxRangeSection(i.sa868)
         }
 
         if (mode == TrackerMode.M17 && i.hasM17) {
@@ -400,4 +401,27 @@ private fun NetWeatherSection(settings: Settings, trackerTakesIt: Boolean) {
     if (msg.isNotBlank()) Text(msg, fontSize = 12.sp)
     Text("At the tracker's GNSS position (or the phone's last one). OpenWeatherMap gives weather and air pollution (AQI 1–5, PM2.5, PM10); IQAir the US AQI and the main pollutant (and the weather, without an OpenWeatherMap key). " +
          "Free plans: OpenWeatherMap 1000 calls a day, IQAir 10 000 a month; 15 minutes keeps you well inside. The tracker shows it marked NET and does not put it in APRS weather reports.", fontSize = 11.sp)
+}
+
+
+/** T-TWR: transmit range (amateur bands of the IARU region by GPS, fixed in the firmware) and its unlock code for this device. */
+@Composable
+private fun TxRangeSection(sa: es.ea7jrs.aprslorap.core.Sa868Info?) {
+    val c = AppState.controller
+    var code by rememberSaveable { mutableStateOf("") }
+    Section("Transmit range")
+    Text("Receives 136–174 / 400–480 MHz; transmits only in the amateur bands of the IARU region where it is (GPS; without a position 144–146 and 430–440 MHz). Fixed in the firmware.", fontSize = 12.sp)
+    if (sa == null) return
+    when {
+        sa.txUnlocked -> {
+            Text("UNLOCKED: the whole band of the module (your licence).", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            OutlinedButton(onClick = { c?.control("txunlock", "lock" to true); c?.control("info") }) { Text("Lock again") }
+        }
+        !sa.txUnlockable -> Text("This firmware cannot be unlocked.", fontSize = 12.sp)
+        else -> {
+            Text("Device ${sa.mac}: the unlock code is made for this device by the author of the firmware.", fontSize = 12.sp)
+            OutlinedTextField(code, { code = it.filter { ch -> ch.isLetterOrDigit() || ch == ' ' }.take(200) }, label = { Text("Unlock code (128 hex digits)") }, modifier = Modifier.fillMaxWidth())
+            Button(enabled = code.count { it.isLetterOrDigit() } == 128, onClick = { c?.control("txunlock", "code" to code.filter { it.isLetterOrDigit() }); code = ""; c?.control("info") }) { Text("Unlock TX range") }
+        }
+    }
 }
