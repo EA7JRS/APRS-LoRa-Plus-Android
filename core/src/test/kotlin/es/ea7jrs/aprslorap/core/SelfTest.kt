@@ -146,6 +146,17 @@ private fun testMessaging() {
     check(e5.onMessage("EA1ABC", inc5) != null, "message shown without sending an ack")
     check(e5.onMessage("EA1ABC", inc5) == null, "repeat still removed")
     check(sent5.isEmpty(), "no ack sent when the tracker sends it")
+    // TxCLR: stop the retries
+    val sent6 = ArrayList<String>()
+    var t6 = 0L
+    val e6 = MessageEngine("EA7JRS-7", { sent6.add(it) }, { t6 })
+    e6.sendMessage("N0CALL", "a"); e6.sendMessage("EA1ABC", "b")
+    eq(e6.cancelPending("EA1ABC").size, 1, "only that peer stopped")
+    t6 += 30_000; e6.tick()
+    eq(sent6.size, 3, "N0CALL still retried, EA1ABC not")
+    eq(e6.cancelPending().size, 1, "the rest stopped")
+    t6 += 120_000; check(e6.tick().isEmpty(), "nothing left to send")
+    eq(e6.all().count { it.status == MessageStatus.FAILED }, 2, "both end as failed")
 }
 
 private fun testIGate() {
@@ -1201,7 +1212,100 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
+}
+
+private fun testRadioUi() {
+    // S-meter, IARU R.1: S9 = -93 dBm from 30 MHz, -73 dBm below; 6 dB per S unit
+    eq(SMeter.fromDbm(-93.0, 433_775_000).label, "S9", "S9 at UHF")
+    eq(SMeter.fromDbm(-99.0, 433_775_000).label, "S8", "S8 at UHF")
+    eq(SMeter.fromDbm(-94.0, 433_775_000).label, "S8", "just below S9 is S8")
+    eq(SMeter.fromDbm(-141.0, 433_775_000).label, "S1", "S1 at UHF")
+    eq(SMeter.fromDbm(-150.0, 433_775_000).label, "S0", "below S1")
+    eq(SMeter.fromDbm(-73.0, 433_775_000).label, "S9+20", "S9+20 at UHF")
+    eq(SMeter.fromDbm(-73.0, 14_025_000).label, "S9", "S9 at HF")
+    eq(SMeter.fromDbm(-121.0, 7_074_000).label, "S1", "S1 at HF")
+    eq(SMeter.fromDbm(-60.0, 433_775_000).segments, 13, "+33 dB lights 4 over segments")
+    eq(SMeter.fromDbm(-30.0, 433_775_000).segments, 15, "bar full at +63 dB")
+    eq(SMeter.fromDbm(-80.0, 433_775_000).segments, 11, "+13 dB lights 2 over segments")
+    eq(SMeter.fromCat(7)?.label, "S7", "CAT S7")
+    eq(SMeter.fromCat(11)?.label, "S9+20", "CAT 11 = S9+20")
+    eq(SMeter.fromCat(-1), null, "CAT unknown")
+
+    // aprs.fi sprites: 16 columns, '!' first
+    eq(AprsSymbols.of('/', '>'), AprsSymbols.Symbol(AprsSymbols.Cell(0, 13, 1), null), "car /> in the primary sheet")
+    eq(AprsSymbols.of('\\', '!')?.base, AprsSymbols.Cell(1, 0, 0), "emergency in the alternate sheet")
+    eq(AprsSymbols.of("L&"), AprsSymbols.Symbol(AprsSymbols.Cell(1, 5, 0), AprsSymbols.Cell(2, 11, 2)), "LoRa iGate: & with overlay L")
+    eq(AprsSymbols.of("/_")?.base, AprsSymbols.Cell(0, 14, 3), "weather station")
+    eq(AprsSymbols.of("/"), null, "too short")
+    eq(AprsSymbols.describe('L', '&'), "LoRa iGate", "LoRa iGate name")
+    eq(AprsSymbols.describe('/', '['), "Human / jogger", "jogger name")
+
+    val x = AprsExtra.parse("088/036/A=001234 QRV 433.775")
+    eq(x.courseDeg, 88, "course"); near(x.speedKmh ?: 0.0, 66.672, 0.01, "speed km/h"); near(x.altitudeM ?: 0.0, 376.1, 0.1, "altitude m")
+    eq(AprsExtra.cleanComment("088/036/A=001234 QRV 433.775"), "QRV 433.775", "clean comment")
+    eq(AprsExtra.parse("LoRa tracker").courseDeg, null, "no course")
+}
+
+private fun testDxCluster() {
+    val a = DxCluster.parse("DX de EA7DEF:     18075.0  3B8ABC       TNX QSO                        1830Z", "EA7JRS-7", 1L)!!
+    eq(a.spotter, "EA7DEF", "spotter"); eq(a.dx, "3B8ABC", "dx"); near(a.freqKhz, 18075.0, 1e-9, "freq"); eq(a.utc, "1830", "utc")
+    eq(a.mode, "CW", "18075 CW by band plan"); eq(a.origin, DxCluster.Origin.HUMAN, "human spot"); eq(a.band, "17m", "17m")
+    val b = DxCluster.parse("DX de EA5ABC-#:  14025.0  JA1ABC       CW    22 dB  28 WPM  CQ      1832Z", "EA7JRS", 1L)!!
+    eq(b.origin, DxCluster.Origin.RBN_CW, "RBN CW"); eq(b.comment, "CW    22 dB  28 WPM  CQ", "comment kept")
+    val c = DxCluster.parse("DX de W3LPL-#:    7074.0  EA7JRS       FT8   -12 dB  CQ             1500Z FN20", "EA7JRS", 1L)!!
+    eq(c.origin, DxCluster.Origin.RBN_DIG, "RBN digital"); eq(c.mode, "FT8", "FT8 word"); eq(c.spotterLocator, "FN20", "spotter grid")
+    val d = DxCluster.parse("DX de EA7JRS-#:  28020.0  VK2ABC       CW 14 dB 24 WPM CQ   1819Z", "EA7JRS-7", 1L)!!
+    eq(d.origin, DxCluster.Origin.MINE, "own skimmer")
+    val sh = DxCluster.parse("  14025.0  JA1ABC       9-Nov-2026 1832Z CW 22 dB 28 WPM CQ          <EA5ABC-#>", "EA7JRS", 1L)
+    eq(sh?.dx, "JA1ABC", "sh/dx line"); eq(sh?.spotter, "EA5ABC-#", "sh/dx spotter"); eq(sh?.utc, "1832", "sh/dx time"); eq(sh?.origin, DxCluster.Origin.RBN_CW, "sh/dx RBN")
+    eq(DxCluster.parse("EA4URE-2 de EA7JRS 9-Nov-2026 1845Z dxspider >", "EA7JRS", 1L), null, "prompt is not a spot")
+    eq(DxCluster.modeOf(21074.0, "-12 dB"), "FT8", "FT8 frequency")
+    eq(DxCluster.modeOf(14080.0, ""), "FT4", "FT4 frequency")
+    eq(DxCluster.modeOf(7144.0, "park 59"), "SSB", "phone segment")
+    eq(DxCluster.modeOf(144300.0, "IL18 tropo 59"), "SSB", "2 m SSB")
+    eq(DxCluster.modeOf(14200.0, "usb"), "SSB", "USB word")
+    eq(DxCluster.groupOf("FT8"), DxCluster.Group.DIGITAL, "FT8 digital")
+    eq(DxCluster.tags("POTA EA-0123"), listOf("POTA"), "POTA")
+    eq(DxCluster.tags("IOTA EU-012 QRV"), listOf("IOTA"), "IOTA")
+    eq(DxCluster.tags("EAFF-0123"), listOf("WWFF"), "WWFF")
+    eq(DxCluster.tags("EA7/SE-012 summit"), listOf("SOTA"), "SOTA")
+    eq(DxCluster.tags("DME 41091 Sevilla"), listOf("DME"), "DME")
+    eq(DxCluster.rigMode(a), "CW", "rig CW")
+    val ssb = DxCluster.parse("DX de EA3JKL:      7144.0  9A1ABC       park 59                        1827Z", "", 1L)!!
+    eq(DxCluster.rigMode(ssb), "LSB", "LSB below 10 MHz")
+    check(DxCluster.Filter(band = "40m", group = DxCluster.Group.PHONE).passes(ssb), "filter 40 m phone")
+    check(!DxCluster.Filter(band = "HF", origins = setOf(DxCluster.Origin.RBN_CW)).passes(ssb), "origin filter")
+    check(DxCluster.isLoginPrompt("Please enter your call: "), "login prompt")
+    check(DxCluster.isLoginPrompt("login: "), "login prompt 2")
+    eq(DxCluster.spotCommand(14025.0, "ja1abc", "CQ 599"), "DX 14025.0 JA1ABC CQ 599", "spot command")
+    eq(DxCluster.formatKhz(144300.0), "144 300.0", "freq text")
+
+    val cty = Cty.parse("""Spain:                    14:  37:  EU:   40.32:     3.43:    -1.0:  EA:
+    AM,AN,AO,EA,EB,EC,ED,EE,EF,EG,EH;
+Canary Islands:           33:  36:  AF:   28.32:    15.85:     0.0:  EA8:
+    AM8,AN8,AO8,EA8,EB8,EC8,ED8,EE8,EF8,EG8,EH8,=EA4XYZ/P;
+Japan:                    25:  45:  AS:   36.40:  -138.38:    -9.0:  JA:
+    7J,7K,JA,JE,JR,
+    JA6(24)[45]<32.0/-131.0>;
+Mauritius:                39:  53:  AF:  -20.35:   -57.50:    -4.0:  3B8:
+    3B8;
+""")
+    eq(cty.entities, 4, "4 entities")
+    eq(cty.lookup("EA7JRS")?.name, "Spain", "Spain")
+    eq(cty.lookup("EA8ABC")?.name, "Canary Islands", "longest prefix wins")
+    eq(cty.lookup("EA4XYZ/P")?.name, "Canary Islands", "exact call")
+    eq(cty.lookup("EA8/DL1ABC")?.name, "Canary Islands", "portable prefix")
+    eq(cty.lookup("JA1ABC")?.name, "Japan", "Japan")
+    eq(cty.lookup("JA6ABC")?.cqz, 24, "zone override")
+    near(cty.lookup("JA6ABC")?.lon ?: 0.0, 131.0, 1e-9, "position override, east positive")
+    near(cty.lookup("3B8ABC")?.lon ?: 0.0, 57.5, 1e-9, "east-positive longitude")
+    eq(Cty.homeCall("DL1ABC/P"), "DL1ABC", "suffix /P")
+    eq(cty.lookup("ZZ9ZZZ"), null, "unknown prefix")
+    val p = Cty.path(cty, "JA1ABC", 37.39, -5.99)!!
+    check(p.shortDeg in 25..35, "JA short path near 30 deg (${p.shortDeg})"); eq(p.longDeg, (p.shortDeg + 180) % 360, "long path opposite")
+    check(p.shortKm in 10500..11500, "JA distance (${p.shortKm})")
+    eq(Cty.path(cty, "JA1ABC", null, null), null, "no own position")
 }

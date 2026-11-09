@@ -53,4 +53,5 @@ dependencies {
     // 3.10.0, not 3.11.0: 3.11.0 brings androidx.annotation 1.10.0 and kotlin-stdlib 2.2, which Kotlin 2.0.21 cannot read
     implementation("com.github.mik3y:usb-serial-for-android:3.10.0")       // serial key adapters (FTDI, CP210x, CH34x, PL2303, CDC)
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")               // TrustedQSL .p12 files (old RC2 / 3DES encryption) for LoTW
+    implementation("org.osmdroid:osmdroid-android:6.1.20")                 // map: OpenStreetMap, IGN, OpenSeaMap, Esri tiles (Apache 2.0)
 }

@@ -47,6 +47,11 @@ private val CREDITS = listOf(
     Triple("TrustedQSL / TaffyQSL (LoTW signing format)", "ARRL; TaffyQSL GPL-3.0", "https://lotw.arrl.org/"),
     Triple("usb-serial-for-android", "mik3y, MIT", "https://github.com/mik3y/usb-serial-for-android"),
     Triple("Bouncy Castle", "Legion of the Bouncy Castle, MIT", "https://www.bouncycastle.org/"),
+    Triple("aprs.fi APRS symbol set", "Heikki Hannikainen OH7LZB and the authors in its COPYRIGHT file (based on WA8LMF, G4IDE, KH4G)", "https://github.com/hessu/aprs-symbols"),
+    Triple("osmdroid (map)", "osmdroid team, Apache-2.0", "https://github.com/osmdroid/osmdroid"),
+    Triple("Map data and tiles", "© OpenStreetMap contributors (ODbL); IGN Spain (CC BY 4.0); OpenSeaMap (CC BY-SA); Esri (with your ArcGIS key)", "https://www.openstreetmap.org/copyright"),
+    Triple("Country files (cty.dat)", "Jim Reisert AD1C", "https://www.country-files.com/"),
+    Triple("Barlow and Share Tech Mono fonts", "Jeremy Tribby (Barlow), Carrois Type Design (Share Tech); SIL Open Font License 1.1", "https://fonts.google.com/"),
 )
 
 private fun openUrl(ctx: Context, url: String) {

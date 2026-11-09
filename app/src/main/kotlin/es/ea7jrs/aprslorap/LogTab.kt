@@ -56,6 +56,8 @@ fun LogTab() {
     var services by remember { mutableStateOf(false) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { LogStore.import(ctx, it) } }
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri -> uri?.let { LogStore.saveTo(ctx, it) } }
+    val draft by AppState.logDraft.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(draft) { draft?.let { editing = it; AppState.logDraft.value = null } }
 
     LazyColumn(Modifier.fillMaxSize().padding(8.dp)) {
         item {

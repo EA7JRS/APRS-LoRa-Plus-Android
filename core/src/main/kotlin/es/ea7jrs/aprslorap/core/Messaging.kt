@@ -116,6 +116,17 @@ class MessageEngine(
         return changed
     }
 
+    /** Stops the retries of the messages still waiting for an ack (all, or those to [peer]); they end as FAILED. */
+    fun cancelPending(peer: String? = null): List<ChatMessage> {
+        val changed = ArrayList<ChatMessage>()
+        for (p in pending.toList()) {
+            if (peer != null && p.msg.peer != peer.uppercase()) continue
+            val failed = p.msg.copy(status = MessageStatus.FAILED)
+            replace(p.msg, failed); pending.remove(p); changed.add(failed)
+        }
+        return changed
+    }
+
     private fun replace(old: ChatMessage, new: ChatMessage) {
         val i = messages.indexOfFirst { it.id == old.id }
         if (i >= 0) messages[i] = new

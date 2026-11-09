@@ -442,4 +442,74 @@ class Settings(ctx: Context) {
     var logPower: String
         get() = p.getString("log_power", "")!!
         set(v) { p.edit().putString("log_power", v.trim()).apply() }
+
+    // ---- user interface (radio-style screens)
+
+    /** The four touch keys next to [F], as screen / key ids (see Shell.kt). */
+    var uiKeys: List<String>
+        get() = p.getString("ui_keys", "BCN,MSG,SLIST,MAP")!!.split(',').filter { it.isNotEmpty() }.let { if (it.size == 4) it else listOf("BCN", "MSG", "SLIST", "MAP") }
+        set(v) { p.edit().putString("ui_keys", v.joinToString(",")).apply() }
+
+    var uiDispPage: Int
+        get() = p.getInt("ui_disp", 0)
+        set(v) { p.edit().putInt("ui_disp", v).apply() }
+
+    /** Map: base layer id, OpenSeaMap, range rings, rotor beam; ArcGIS key for Esri World Imagery (optional). */
+    var mapLayer: String
+        get() = p.getString("map_layer", "osm")!!
+        set(v) { p.edit().putString("map_layer", v).apply() }
+    var mapSeamarks: Boolean
+        get() = p.getBoolean("map_sea", false)
+        set(v) { p.edit().putBoolean("map_sea", v).apply() }
+    var mapRings: Boolean
+        get() = p.getBoolean("map_rings", true)
+        set(v) { p.edit().putBoolean("map_rings", v).apply() }
+    var mapBeam: Boolean
+        get() = p.getBoolean("map_beam", true)
+        set(v) { p.edit().putBoolean("map_beam", v).apply() }
+    var mapMinutes: Int
+        get() = p.getInt("map_minutes", 60)
+        set(v) { p.edit().putInt("map_minutes", v).apply() }
+    var arcgisKey: String
+        get() = p.getString("arcgis_key", "")!!
+        set(v) { p.edit().putString("arcgis_key", v.trim()).apply() }
+
+    /** Messages: when each conversation was last read ("CALL=ms;CALL=ms"). */
+    var msgSeen: Map<String, Long>
+        get() = p.getString("msg_seen", "")!!.split(';').mapNotNull { e ->
+            val k = e.substringBefore('=', ""); val v = e.substringAfter('=', "").toLongOrNull()
+            if (k.isEmpty() || v == null) null else k to v
+        }.toMap()
+        set(v) { p.edit().putString("msg_seen", v.entries.joinToString(";") { it.key + "=" + it.value }).apply() }
+
+    // ---- DX cluster
+
+    /** Nodes added by hand ("name|host|port" lines); the defaults of DxCluster.DEFAULT_NODES come first. */
+    var dxNodes: List<es.ea7jrs.aprslorap.core.DxCluster.Node>
+        get() = p.getString("dx_nodes", "")!!.lines().mapNotNull { l ->
+            val f = l.split('|'); val port = f.getOrNull(2)?.toIntOrNull()
+            if (f.size < 3 || f[1].isBlank() || port == null) null else es.ea7jrs.aprslorap.core.DxCluster.Node(f[0], f[1], port, "added by hand")
+        }
+        set(v) { p.edit().putString("dx_nodes", v.joinToString("\n") { it.name.replace("|", "") + "|" + it.host + "|" + it.port }).apply() }
+    var dxNode: String
+        get() = p.getString("dx_node", "ea4ure.com:7300")!!
+        set(v) { p.edit().putString("dx_node", v).apply() }
+    var dxSdr: Boolean
+        get() = p.getBoolean("dx_sdr", true)
+        set(v) { p.edit().putBoolean("dx_sdr", v).apply() }
+    var dxCat: Boolean
+        get() = p.getBoolean("dx_cat", true)
+        set(v) { p.edit().putBoolean("dx_cat", v).apply() }
+    var dxOrigins: String
+        get() = p.getString("dx_origins", "HUMAN,RBN_CW,RBN_DIG,MINE")!!
+        set(v) { p.edit().putString("dx_origins", v).apply() }
+    var dxBand: String
+        get() = p.getString("dx_band", "ALL")!!
+        set(v) { p.edit().putString("dx_band", v).apply() }
+    var dxGroup: String
+        get() = p.getString("dx_group", "")!!
+        set(v) { p.edit().putString("dx_group", v).apply() }
+    var dxActivity: String
+        get() = p.getString("dx_act", "ANY")!!
+        set(v) { p.edit().putString("dx_act", v).apply() }
 }

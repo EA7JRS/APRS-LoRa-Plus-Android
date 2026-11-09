@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -110,7 +111,7 @@ fun WelcomeScreen(onEnter: () -> Unit) {
     )
 
     Column(
-        Modifier.fillMaxSize().background(WelcomeBg).imePadding().verticalScroll(rememberScrollState()),
+        Modifier.fillMaxSize().background(WelcomeBg).systemBarsPadding().imePadding().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(painterResource(R.drawable.welcome_logo), contentDescription = "APRS LoRa+", contentScale = ContentScale.Fit,

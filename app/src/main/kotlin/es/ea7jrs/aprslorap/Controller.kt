@@ -183,6 +183,11 @@ class Controller(
         }
     }
 
+    /** TxCLR: stops the retries of the messages waiting for an ack (all, or those to [peer]). */
+    fun cancelMessages(peer: String? = null) {
+        exec.execute { safe { engine.cancelPending(peer); publish() } }
+    }
+
     // ------------------------------------------------------------------ control service
 
     /** Sends a control command to the tracker (any thread). */

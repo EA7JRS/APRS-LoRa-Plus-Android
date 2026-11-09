@@ -16,6 +16,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,8 +73,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Spotter.init(this)
         LogStore.init(this)
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         setContent {
-            MaterialTheme {
+            AlpTheme {
                 // Welcome screen first (logo; callsign + DMR ID check if not validated yet), then the app
                 var entered by rememberSaveable { mutableStateOf(false) }
                 if (entered) App() else WelcomeScreen(onEnter = { entered = true })
@@ -100,146 +105,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-fun App() {
-    val titles = listOf("Stations", "Messages", "Tracker", "Sensors", "Heard", "AIS", "SAT", "Rotor", "SDR", "Modes", "Log", "SigID", "Remote", "Config", "DAPNET", "Firmware", "Connect", "About")
-    var tab by rememberSaveable { mutableStateOf(titles.indexOf("Connect")) }
-    val error by AppState.error.collectAsState()
-    val notice by AppState.notice.collectAsState()
-    Scaffold { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-                titles.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
-            }
-            error?.let {
-                Text(
-                    it, color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth().clickable { AppState.error.value = null }.padding(8.dp),
-                )
-            }
-            notice?.let {
-                Text(it, modifier = Modifier.fillMaxWidth().clickable { AppState.notice.value = null }.padding(8.dp))
-            }
-            when (titles.getOrNull(tab)) {
-                "Stations" -> StationsTab()
-                "Messages" -> MessagesTab()
-                "Tracker" -> TrackerTab()
-                "Sensors" -> SensorsTab()
-                "Heard" -> HeardTab()
-                "AIS" -> AisTab()
-                "SAT" -> SatTab()
-                "Rotor" -> RotorTab()
-                "SDR" -> SdrTab()
-                "Modes" -> DigimodesTab()
-                "Log" -> LogTab()
-                "SigID" -> SigIdTab()
-                "Remote" -> RemoteTab()
-                "Config" -> ConfigTab()
-                "DAPNET" -> DapnetTab()
-                "Firmware" -> FirmwareTab()
-                "Connect" -> ConnectTab()
-                else -> AboutTab()
-            }
-        }
-    }
-}
-
 /** "Go to": opens the route to the station in Google Maps (or any maps app if it is not installed). */
 fun goTo(ctx: Context, s: Station) {
     val lat = s.lat ?: return
     val lon = s.lon ?: return
-    val maps = Intent(Intent.ACTION_VIEW, Uri.parse(Nav.googleNavigationUri(lat, lon))).setPackage(Notifier.GOOGLE_MAPS)
-    try {
-        ctx.startActivity(maps)
-    } catch (e: ActivityNotFoundException) {
-        try {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Nav.geoUri(lat, lon, s.call))))
-        } catch (e2: ActivityNotFoundException) {
-            AppState.error.value = "No maps app found"
-        }
-    }
-}
-
-private fun ageText(s: Station): String {
-    val pos = s.lastPositionMs ?: return "no position yet"
-    val min = (System.currentTimeMillis() - pos) / 60_000
-    return if (min < 1) "position just now" else "position ${min} min ago"
-}
-
-@Composable
-fun StationsTab() {
-    val stations by AppState.stations.collectAsState()
-    val ctx = LocalContext.current
-    if (stations.isEmpty()) {
-        Text("No stations heard yet. Connect to the tracker in the Connect tab.", Modifier.padding(16.dp))
-    }
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(stations, key = { it.call }) { s ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(s.call, fontWeight = FontWeight.Bold)
-                    Text(ageText(s), fontSize = 12.sp)
-                    if (s.lat != null && s.lon != null) {
-                        Text(String.format(java.util.Locale.US, "%.5f, %.5f", s.lat, s.lon), fontSize = 12.sp)
-                    }
-                    if (s.comment.isNotBlank()) Text(s.comment, fontSize = 12.sp)
-                }
-                if (s.lat != null && s.lon != null) {
-                    Button(onClick = { goTo(ctx, s) }) { Text("Go to") }
-                }
-            }
-            HorizontalDivider()
-        }
-    }
-}
-
-private fun statusMark(m: ChatMessage): String = when (m.status) {
-    MessageStatus.PENDING -> "…"
-    MessageStatus.ACKED -> "✓"
-    MessageStatus.FAILED -> "✗ not delivered"
-    MessageStatus.REJECTED -> "✗ rejected"
-    MessageStatus.RECEIVED -> ""
-}
-
-@Composable
-fun MessagesTab() {
-    val msgs by AppState.messages.collectAsState()
-    var to by rememberSaveable { mutableStateOf("") }
-    var text by rememberSaveable { mutableStateOf("") }
-    Column(Modifier.fillMaxSize()) {
-        if (msgs.isEmpty()) Text("No messages yet.", Modifier.padding(16.dp))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true) {
-            // asReversed(), not reversed(): with compileSdk 35 List.reversed() may bind to the Java 21 method (Android 15+ only)
-            items(msgs.asReversed(), key = { it.id }) { m ->
-                val line = if (m.outgoing) "→ ${m.peer}: ${m.text}  ${statusMark(m)}" else "← ${m.peer}: ${m.text}"
-                Text(
-                    line,
-                    Modifier.fillMaxWidth().clickable { if (!m.outgoing) to = m.peer }.padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontWeight = if (m.outgoing) FontWeight.Normal else FontWeight.Bold,
-                )
-            }
-        }
-        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = to, onValueChange = { to = it.uppercase() },
-                label = { Text("To") }, singleLine = true, modifier = Modifier.width(120.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            OutlinedTextField(
-                value = text, onValueChange = { text = it },
-                label = { Text("Message (${text.length}/67)") }, modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                enabled = to.isNotBlank() && text.isNotBlank(),
-                onClick = {
-                    val c = AppState.controller
-                    if (c == null) AppState.error.value = "Start the link first (Connect tab)"
-                    else { c.sendMessage(to, text); text = "" }
-                },
-            ) { Text("Send") }
-        }
-    }
+    goToPos(ctx, lat, lon, s.call)
 }
 
 internal fun requiredPermissions(): Array<String> {
