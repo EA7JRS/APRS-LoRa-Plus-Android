@@ -1175,6 +1175,7 @@ private fun testNetWeather() {
     check(NetWeather.iqairUrl(37.0, -3.0, "abc").startsWith("https://api.airvisual.com/v2/nearest_city?lat=37.0000&lon=-3.0000&key=abc"), "IQAir url")
     eq(NetWeather.usAqiName(42), "Good", "US AQI band"); eq(NetWeather.owmAqiName(5), "Very poor", "OWM AQI name")
     check(NetWeather.summary(i2).contains("US AQI 42 (Good)"), "net weather summary")
+    eq(Control.parse("""{"e":"netreq","what":"wx"}"""), ControlEvent.NetRequest("wx"), "netreq event")
 }
 
 fun main() {

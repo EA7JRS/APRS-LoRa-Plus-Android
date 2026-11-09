@@ -293,6 +293,14 @@ class Controller(
                 AppState.notice.value = if (ev.ok) "Transmitted to the satellite on ${"%.4f".format(java.util.Locale.US, ev.freqHz / 1e6)} MHz (${ev.count} so far)"
                                         else "The tracker did not transmit"
             }
+            is ControlEvent.NetRequest -> {                  // the tracker asks (its menu): weather or satellite file with the phone's internet
+                val ctx = AppState.appContext
+                when (ev.what) {
+                    "wx" -> if (ctx != null) { AppState.addLog("The tracker asked for the internet weather"); NetWeatherFetcher.fetchNow(ctx, settings) }
+                    "sat" -> { AppState.addLog("The tracker asked for the satellite file"); SatData.downloadAndSend(settings.satDataUrl, settings.satGroups) }
+                    else -> AppState.addLog("The tracker asked for '${ev.what}': not known by this app")
+                }
+            }
             is ControlEvent.CwRx -> {
                 AppState.cwRxOn.value = ev.on
                 ev.letter?.let { AppState.cwRxText.value = (AppState.cwRxText.value + it).takeLast(2000) }

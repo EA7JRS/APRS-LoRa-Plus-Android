@@ -187,6 +187,8 @@ sealed class ControlEvent {
     data class SatTxDone(val ok: Boolean, val freqHz: Long, val count: Int) : ControlEvent()
     data class Rotor(val pointing: RotorPointing) : ControlEvent()
     /** CW listening on RF (`cwrx`): [letter] is null for a level-only update; [on] false = the session ended. */
+    /** The tracker asks the app to download something with the phone's internet: "wx" (TELEMETRY weather) or "sat" (satellite file). */
+    data class NetRequest(val what: String) : ControlEvent()
     data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?, val freqHz: Long? = null) : ControlEvent()
     data class Targets(
         val selected: Int, val source: Int, val items: List<RotorTarget>,
@@ -295,6 +297,7 @@ object Control {
                     o.num("pit"), o.num("rol"), o.bool("mob") ?: false, o.num("abs"), o.num("hdg"), o.num("aaz"), o.num("ael"),
                 ),
             )
+            "netreq" -> ControlEvent.NetRequest(o.str("what") ?: "")
             "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"), o.long("f"))
             "targets" -> ControlEvent.Targets(
                 o.int("sel") ?: 0, o.int("src") ?: 0,
