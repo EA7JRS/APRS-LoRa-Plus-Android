@@ -78,6 +78,8 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 
 - **Versión y About** (Manuel, 2026-11-07): mismo número de versión que el tracker, el rotor y el gateway (ahora **5.3.5**, `versionCode` 50305 = 5·10000+3·100+5). Pestaña **About** (`AboutTab.kt`): versión, «APRS LoRa+ - by Manuel EA7JRS · © 2026 Manuel - EA7JRS», GPL-3.0, enlace al proyecto y créditos de lo que se usa o se ha portado.
 
+- **Pantalla de bienvenida** (pedido 2026-11-09, diseño de Manuel): `WelcomeScreen.kt`, oscura (#131A22), con `res/drawable/welcome_logo.jpg` (el logo sin «OPTION 3», bordes fundidos a #131A22) y entrada con fundido. Indicativo ya validado: logo a pantalla completa 1,5 s y entra. Sin validar: logo en la mitad de arriba y formulario (indicativo en mayúsculas, DMR ID / CCS7 de 7 cifras, bordes verde #3CE68A al enfocar y cian #28B5E1 sin foco, botón verde «Validate and enter» con progreso circular); `Licence.validate(settings, expectedId)` exige que RadioID tenga ese ID para ese indicativo. «Listen only» entra sin validar (la app solo escucha, como antes). Textos en inglés como el resto de la app.
+
 ## Pendiente
 - Etapas siguientes (ver «Balizas del tracker» y «Modos de texto»): resto de WSJT-X; resto de fldigi; telemetría de satélites (G3RUH 9600 ya hecho; AFSK 1200 y decodificadores de SatNOGS).
 - Probar el emparejamiento con PIN en el móvil (diálogo de Android, PIN equivocado, cambio de PIN y «Forget pairing»).

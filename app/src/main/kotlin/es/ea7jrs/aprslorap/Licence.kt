@@ -29,8 +29,11 @@ object Licence {
         return "$base validated in RadioID (DMR/CCS7 ID ${settings.validatedIds})" + if (who.isNotEmpty()) " · $who" else ""
     }
 
-    /** Asks RadioID on its own thread; [onDone] gets null if the callsign was found, or the reason. */
-    fun validate(settings: Settings, onDone: (String?) -> Unit) {
+    /**
+     * Asks RadioID on its own thread; [onDone] gets null if the callsign was found, or the reason. With [expectedId] (the
+     * DMR ID / CCS7 typed on the welcome screen) that ID must also be one of the callsign's.
+     */
+    fun validate(settings: Settings, expectedId: Long? = null, onDone: (String?) -> Unit) {
         val base = CallsignCheck.base(settings.callsign)
         if (base == null) { onDone("Not a valid amateur callsign"); return }
         Thread({
@@ -49,6 +52,7 @@ object Licence {
                     when {
                         r == null -> "Unexpected answer from RadioID"
                         !r.found -> "$base has no DMR ID / CCS7 in RadioID.net (register it there first)"
+                        expectedId != null && expectedId !in r.ids -> "$expectedId is not a DMR ID / CCS7 of $base in RadioID.net"
                         else -> {
                             settings.saveValidation(base, r.ids.joinToString(","), r.name, r.country)
                             null

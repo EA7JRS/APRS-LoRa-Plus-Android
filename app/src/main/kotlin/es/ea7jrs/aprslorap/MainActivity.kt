@@ -72,7 +72,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Spotter.init(this)
         LogStore.init(this)
-        setContent { MaterialTheme { App() } }
+        setContent {
+            MaterialTheme {
+                // Welcome screen first (logo; callsign + DMR ID check if not validated yet), then the app
+                var entered by rememberSaveable { mutableStateOf(false) }
+                if (entered) App() else WelcomeScreen(onEnter = { entered = true })
+            }
+        }
     }
 
     /**
