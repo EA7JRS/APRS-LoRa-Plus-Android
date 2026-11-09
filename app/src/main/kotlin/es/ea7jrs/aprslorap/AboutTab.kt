@@ -91,7 +91,7 @@ fun AboutTab() {
             "APRS LoRa+ for Android $ver ($code) · Android ${Build.VERSION.RELEASE} · ${Build.MANUFACTURER} ${Build.MODEL}",
             fontSize = 12.sp,
         )
-        Text("APRS LoRa+ - by Manuel EA7JRS · © 2026 Manuel - EA7JRS", fontWeight = FontWeight.Bold)
+        Text("APRS LoRa+ · © 2026 Manuel - EA7JRS", fontWeight = FontWeight.Bold)
         Text("Licensed under the GNU General Public License, version 3 or later. This program comes with ABSOLUTELY NO WARRANTY.", fontSize = 12.sp)
         Text("APRS LoRa+ — EA7JRS: tracker firmware, Android app, rotor and gateway.")
         Text(
