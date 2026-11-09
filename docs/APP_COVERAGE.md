@@ -24,6 +24,8 @@ Estado: **FW** = el firmware lo expone por BLE; **App** = la app Android tiene e
 | DAPNET | `dapnet`, evento `page` | sí | sí |
 | Telegrafía: mensajes, texto libre, manipulador remoto | `cw`, `k`, `kcfg` | sí | sí |
 | Modo SAT: estado, lista, selección, receptor, emisión, transmisores, datos | `sat`, `satlist`, `satsel`, `satrx`, `sattx`, `sattxlist`, `satdata`, `pos` | sí | sí |
+| Satélites: favoritos, categorías de la lista, archivo completo por grupos de CelesTrak (la app y la WebUI filtran) | `satfav`, `satcat`, `satlist` (`b`, `fav`, `in`), `sat` (`fav`, `cat`, `tot`, `nfav`, `stamp`), `caps.satMax` / `satFav` | sí | sí |
+| T-TWR: el VFO de FM sigue al satélite (Doppler, subida, CTCSS), APRS por satélite (ISS, ruta `sat.aprsPath`), posición por satélite | `satrx` / `sattx` en FM y SAT, `sattx` `pos`, evento `fm` (`sat`), `caps.satFm` | sí | sí |
 | Rotor y objetivos (inclinómetro con los sensores del móvil; repetidores de RepeaterBook como objetivos) | evento `rot`, `att`, `tgtlist`, `tgt` | sí | sí |
 | rotctld desde el móvil: la app manda el apunte a un rotctld de la red (cliente) y acepta Look4Sat / GPredict en el puerto 4533 (servidor) | evento `rot` (`aaz`, `ael`), `rotext` | sí | sí |
 | Receptores SDR (SDR++ / gqrx por rigctl, SDRconnect por WebSocket, SpyServer de Airspy; RTL-SDR por USB con el driver de Android o rtl_tcp, demodulado en la app): sintonía, modo, filtro, ganancia, grabación; siguen el satélite con Doppler, la LoRa del tracker o el objetivo del rotor | solo en la app (eventos `sat`, `sattxlist`, `info`, `status`, `targets`) | — | sí |
@@ -42,6 +44,7 @@ Estado: **FW** = el firmware lo expone por BLE; **App** = la app Android tiene e
 | T-TWR (radio FM SA868): revisión, firmware, banda, módem y frecuencias en uso; modo M17 y SMS a otras radios M17 | `info.sa868`, `mode` 10, `m17sms` | sí | sí |
 | T-TWR modo FM de voz: canal, sintonía, tonos, potencia, silenciador (manual / automático), reducción de ruido, memorias, escaneo, ARTS, EAI, balizas APRS durante la voz; QSY desde estaciones oídas | `mode` 11, `fm`, `fmset`, `fmdial`, `fmmem`, `fmscan`, `fmarts`, `fmeai`, `qsy`, eventos `fm` / `fmmems` | sí | sí |
 | T-TWR: portadora de calibración de frecuencia | `carrier` | sí | sí |
+| Radio comercial por I2C (RDA5807M, Si4703, Si4735): sintonía, búsqueda, volumen, banda, mono, presintonías, RDS (nombre, texto, hora), RSSI / SNR / estéreo | `bcast`, `bcastset`, evento `bcast` | sí | sí |
 | T-TWR: DAPNET (VHF / UHF) y CW A1A / MCW (modo MORSE) | los de DAPNET y MORSE de siempre | sí | sí |
 | Sesiones interactivas con el pulsador (entrenador, sintonías WSPR / CW-baliza) | pendiente de orden propia | no | no |
 

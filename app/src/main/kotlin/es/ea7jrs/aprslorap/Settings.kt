@@ -118,8 +118,13 @@ class Settings(ctx: Context) {
 
     /** Where the app downloads the satellite file (sats.txt) it sends to the tracker. */
     var satDataUrl: String
-        get() = p.getString("sat_url", es.ea7jrs.aprslorap.core.Sat.DEFAULT_DATA_URL)!!.ifBlank { es.ea7jrs.aprslorap.core.Sat.DEFAULT_DATA_URL }
+        get() = p.getString("sat_url", es.ea7jrs.aprslorap.core.Sat.ALL_DATA_URL)!!.ifBlank { es.ea7jrs.aprslorap.core.Sat.ALL_DATA_URL }
         set(v) { p.edit().putString("sat_url", v.trim()).apply() }
+
+    /** CelesTrak groups sent to the tracker (letters of Sat.GROUPS; empty = all that fit). Amateur radio and space stations by default. */
+    var satGroups: String
+        get() = p.getString("sat_groups", "as")!!
+        set(v) { p.edit().putString("sat_groups", v).apply() }
 
     // Callsign validated in RadioID.net (DMR ID / CCS7); see Licence
     /** u-blox AssistNow Predictive Orbits address, with the chipcode / token of the user's Thingstream account (empty: not used). */

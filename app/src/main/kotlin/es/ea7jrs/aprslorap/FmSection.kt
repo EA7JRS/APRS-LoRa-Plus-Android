@@ -122,6 +122,8 @@ fun FmSection() {
     }
     Choice("Noise reduction (Rev2.1, restart)", listOf("off", "low", "mid", "high"), s.noiseReduction) { c?.control("fmset", "nr" to it) }
 
+    if (AppState.trackerInfo.collectAsState().value?.hasSatFm == true) FmSatBlock(s)
+
     Section("Scan, ARTS, EAI")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (s.scan == 0) {
@@ -161,5 +163,48 @@ fun FmSection() {
             }
             OutlinedButton(onClick = { c?.control("fmmem", "op" to "del", "i" to m.index) }) { Text("Del", fontSize = 11.sp) }
         }
+    }
+}
+
+
+/** The VFO following a satellite: Doppler on the downlink, uplink pre-compensated, CTCSS of the transmitter, APRS through a digipeater
+ *  (ISS 145.825, path of the WebUI). The satellite is the one chosen in the SAT tab (or the tracker's menu). */
+@Composable
+private fun FmSatBlock(s: FmState) {
+    val c = AppState.controller
+    val txs by AppState.satTransmitters.collectAsState()
+    val sat by AppState.satState.collectAsState()
+    var msg by rememberSaveable { mutableStateOf("") }
+    DisposableEffect(Unit) { c?.control("sat"); c?.control("sattxlist"); onDispose { } }
+    Section("Satellite")
+    val fs = s.sat
+    if (fs == null) {
+        Text("The VFO can follow the satellite chosen in the SAT tab: " + (sat?.name ?: "none chosen yet") + ".", fontSize = 12.sp)
+        val usable = txs.filter { it.rxKind != "n/a" || it.txKind != "n/a" }
+        if (usable.isEmpty()) Text("No transmitter of it in the band of this radio.", fontSize = 12.sp)
+        for (t in usable) Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${t.description.ifBlank { t.mode }} · ${t.mode}" + (t.toneHz?.let { String.format(Locale.US, " · %.1f Hz", it) } ?: ""), Modifier.weight(1f), fontSize = 13.sp)
+            OutlinedButton(onClick = { c?.control("satrx", "on" to true, "tx" to t.index) }) { Text("Follow") }
+        }
+        return
+    }
+    Text("${fs.name} · " + (if (fs.elDeg != null) String.format(Locale.US, "El %.0f° Az %.0f°", fs.elDeg, fs.azDeg ?: 0.0) else "no time / position") +
+         (if (fs.aprs) " · APRS digipeater" else ""), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    Text("RX ${FmChannel.mhz(fs.rxHz)} MHz (Doppler ${fs.dopplerHz} Hz, fine ${fs.fineHz} Hz)" + (if (fs.listenUplink) " · downlink on another band: listening to the uplink" else ""), fontSize = 12.sp)
+    Text(if (fs.upHz > 0) "TX ${FmChannel.mhz(fs.upHz)} MHz" + (if (fs.toneHz > 0) String.format(Locale.US, " · CTCSS %.1f Hz", fs.toneHz) else "") else "No uplink in this band", fontSize = 12.sp)
+    Text(if (fs.txOk) "Transmitting allowed now (PTT, APRS)" else "No TX now: ${fs.why ?: "?"}", fontSize = 12.sp)
+    if (fs.aprs) Text("APRS frames heard ${fs.heard}, sent ${fs.sent}", fontSize = 12.sp)
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedButton(onClick = { c?.control("satrx", "fine" to -100) }) { Text("−100 Hz") }
+        OutlinedButton(onClick = { c?.control("satrx", "fine" to 100) }) { Text("+100 Hz") }
+        Button(onClick = { c?.control("satrx", "on" to false) }) { Text("Stop") }
+    }
+    if (fs.aprs) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(msg, { msg = it.take(64) }, label = { Text("APRS text (empty = WebUI message)") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { c?.control("sattx", "tx" to fs.tx, "txt" to msg.trim()); msg = "" }, enabled = fs.txOk, modifier = Modifier.padding(start = 6.dp)) { Text("Send") }
+        }
+        OutlinedButton(onClick = { c?.control("sattx", "tx" to fs.tx, "pos" to true) }, enabled = fs.txOk) { Text("Send position via satellite") }
+        Text("With APRS beacons on, the beacons and messages go through the satellite while it is in view (and back to the APRS frequency after).", fontSize = 11.sp)
     }
 }

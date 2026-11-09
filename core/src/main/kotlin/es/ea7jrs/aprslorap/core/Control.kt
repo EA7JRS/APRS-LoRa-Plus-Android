@@ -63,6 +63,9 @@ data class TrackerInfo(
     val hasM17: Boolean = false,                // M17 mode and the "m17sms" command (T-TWR)
     val hasFm: Boolean = false,                 // FM voice mode: "fm*", "qsy", "carrier" (T-TWR)
     val bcastChip: String = "none",             // broadcast receiver on I2C ("RDA5807M", "Si4703", "Si4735"): "bcast", "bcastset"
+    val satMaxBytes: Int = Control.SAT_DATA_MAX, // satellite file the tracker can store (the app filters sats_all.txt by groups to fit)
+    val hasSatFav: Boolean = false,             // favorites and categories ("satfav", "satcat")
+    val hasSatFm: Boolean = false,              // T-TWR: the FM VFO follows the satellite ("satrx" / "sattx" also in FM mode, "sattx pos")
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -128,15 +131,21 @@ data class SatState(
     val ok: Boolean, val name: String?, val noradId: Int?, val index: Int?, val geostationary: Boolean, val transmitters: Int, val tleAgeDays: Double?,
     val positionSource: String, val azDeg: Double?, val elDeg: Double?, val rangeKm: Int?, val rangeRateKmS: Double?,
     val aos: Long?, val los: Long?, val maxElDeg: Int?,
+    val favorite: Boolean = false, val category: Int = 0, val total: Int = 0, val favorites: Int = 0, val stamp: String = "",
 )
 
-/** One satellite of the tracker's list. [category]: U 70 cm, L LoRa, G geostationary. */
-data class SatEntry(val index: Int, val noradId: Int, val name: String, val category: String, val transmitters: Int)
+/** One satellite of the tracker's list. [category]: U 70 cm, V 2 m, L LoRa, G geostationary; [bands]: Sat.BAND_* bits of its transmitters;
+ *  [inCategory]: in the list (category) chosen in the tracker. */
+data class SatEntry(
+    val index: Int, val noradId: Int, val name: String, val category: String, val transmitters: Int,
+    val bands: Int = 0, val favorite: Boolean = false, val inCategory: Boolean = true,
+)
 
 /** One transmitter of the chosen satellite; [rxKind] / [txKind]: CW, FSK, LoRa, n/a (what the tracker can do with it). */
 data class SatTransmitter(
     val index: Int, val mode: String, val baud: Int, val description: String, val upHz: Long, val downHz: Long,
     val rxKind: String, val txKind: String, val rxDopplerHz: Long?, val txDopplerHz: Long?,
+    val toneHz: Double? = null, val aprsDigi: Boolean = false,      // CTCSS of the uplink; APRS digipeater (ISS 145.825)
 )
 
 /** Receiver of satellites (event `satrx`). [text] only when there is a new received line. */
@@ -251,18 +260,24 @@ object Control {
                 SatState(
                     o.bool("ok") ?: false, o.str("n"), o.int("id"), o.int("i"), o.bool("geo") ?: false, o.int("tx") ?: 0, o.num("tle"),
                     o.str("pos") ?: "", o.num("az"), o.num("el"), o.int("rng"), o.num("rr"), o.long("aos"), o.long("los"), o.int("max"),
+                    o.bool("fav") ?: false, o.int("cat") ?: 0, o.int("tot") ?: 0, o.int("nfav") ?: 0, o.str("stamp") ?: "",
                 ),
             )
             "satlist" -> ControlEvent.SatList(
                 o.int("tot") ?: 0, o.int("sel") ?: -1, o.int("from") ?: 0,
-                o.objList("items").mapNotNull { e -> e.int("i")?.let { SatEntry(it, e.int("id") ?: 0, e.str("n") ?: "?", e.str("c") ?: "", e.int("t") ?: 0) } },
+                o.objList("items").mapNotNull { e ->
+                    e.int("i")?.let {
+                        SatEntry(it, e.int("id") ?: 0, e.str("n") ?: "?", e.str("c") ?: "", e.int("t") ?: 0, e.int("b") ?: 0, e.bool("fav") ?: false,
+                                 e.bool("in") ?: true)         // older firmware: no categories
+                    }
+                },
             )
             "sattxlist" -> ControlEvent.SatTransmitters(
                 o.objList("items").mapNotNull { t ->
                     t.int("i")?.let {
                         SatTransmitter(
                             it, t.str("m") ?: "", t.int("b") ?: 0, t.str("d") ?: "", t.long("up") ?: 0, t.long("dn") ?: 0,
-                            t.str("rx") ?: "n/a", t.str("tx") ?: "n/a", t.long("rxd"), t.long("txd"),
+                            t.str("rx") ?: "n/a", t.str("tx") ?: "n/a", t.long("rxd"), t.long("txd"), t.num("tone"), t.bool("aprs") ?: false,
                         )
                     }
                 },
@@ -336,7 +351,7 @@ object Control {
     fun configSet(configJson: String, reboot: Boolean = true): List<String> =
         chunked("cfgset", mapOf("n" to configJson.toByteArray(Charsets.UTF_8).size, "reboot" to reboot), configJson)
 
-    /** The file `sats.txt` for `satdata` (the tracker takes up to [SAT_DATA_MAX] bytes). Same stop-and-wait steps as [configSet]. */
+    /** The file `sats.txt` for `satdata` (the tracker takes up to [TrackerInfo.satMaxBytes] bytes, 64 kB on most boards). Same stop-and-wait steps as [configSet]. */
     fun satData(text: String): List<String> = chunked("satdata", mapOf("n" to text.toByteArray(Charsets.UTF_8).size), text)
 
     const val SAT_DATA_MAX = 64_000
@@ -367,6 +382,9 @@ object Control {
             caps.bool("m17") ?: false,
             caps.bool("fm") ?: false,
             caps.str("bcast") ?: "none",
+            caps.int("satMax") ?: SAT_DATA_MAX,
+            caps.bool("satFav") ?: false,
+            caps.bool("satFm") ?: false,
         )
     }
 }

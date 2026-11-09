@@ -55,6 +55,7 @@ data class FmState(
     val squelchAuto: Boolean, val noiseReduction: Int, val edit: Int, val busy: Boolean, val ptt: Boolean, val txSeconds: Int, val rssi: Int,
     val scan: Int, val arts: Int, val eaiSeconds: Int, val aprsBeacon: Boolean, val qsyInBeacon: Boolean, val toneOk: Boolean,
     val speakerFromEsp: Boolean, val notice: String?,
+    val sat: FmSat? = null,                         // the VFO follows a satellite (Doppler, uplink and CTCSS of the transmitter)
 ) {
     val artsText: String get() = when (arts) { 1 -> "ARTS: searching"; 2 -> "ARTS: IN RANGE"; 3 -> "ARTS: OUT OF RANGE"; else -> "" }
 
@@ -65,6 +66,23 @@ data class FmState(
             o.bool("sqa") ?: true, o.int("nr") ?: 0, o.int("edit") ?: 0, o.bool("busy") ?: false, o.bool("ptt") ?: false, o.int("txs") ?: 0,
             o.int("rssi") ?: 0, o.int("scan") ?: 0, o.int("arts") ?: 0, o.int("eai") ?: 0, o.bool("aprs") ?: true, o.bool("qsyb") ?: true,
             o.bool("tok") ?: true, o.bool("spk") ?: false, o.str("note"),
+            o.obj("sat")?.let { FmSat.parse(it) },
+        )
+    }
+}
+
+/** Satellite followed by the FM VFO of the T-TWR (object "sat" of the "fm" event). Frequencies in Hz; [listenUplink]: the downlink is on
+ *  another band, the radio listens to the uplink; [txOk] false = it cannot transmit now ([why]). */
+data class FmSat(
+    val name: String, val noradId: Int, val tx: Int, val rxHz: Long, val upHz: Long, val dopplerHz: Int, val fineHz: Int, val dopplerOk: Boolean,
+    val listenUplink: Boolean, val aprs: Boolean, val toneHz: Double, val sent: Int, val heard: Int, val azDeg: Double?, val elDeg: Double?,
+    val txOk: Boolean, val why: String?,
+) {
+    companion object {
+        fun parse(o: Map<String, Any?>) = FmSat(
+            o.str("n") ?: "?", o.int("id") ?: 0, o.int("tx") ?: 0, o.long("f") ?: 0, o.long("up") ?: 0, o.int("dop") ?: 0, o.int("fine") ?: 0,
+            o.bool("dok") ?: false, o.bool("xup") ?: false, o.bool("aprs") ?: false, o.num("tone") ?: 0.0, o.int("sent") ?: 0, o.int("heard") ?: 0,
+            o.num("az"), o.num("el"), o.bool("txok") ?: false, o.str("why"),
         )
     }
 }

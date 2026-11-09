@@ -56,7 +56,7 @@ class Controller(
             // the firmware update does not transmit: allowed too
             "ota", "ota_abort",
             // SAT mode: reading, listening and telling the tracker where the phone is do not transmit (sattx, satdata and tgt are not here)
-            "sat", "satlist", "sattxlist", "tgtlist", "satsel", "satrx", "pos",
+            "sat", "satlist", "sattxlist", "tgtlist", "satsel", "satrx", "pos", "satfav", "satcat",
             // CW listening on RF: receive only
             "cwrx",
             // A-GPS data for the tracker's GNSS receiver: nothing is transmitted
@@ -64,7 +64,7 @@ class Controller(
             // broadcast receiver (receive only) and the state of the T-TWR FM radio (tuning it is not here: it transmits)
             "bcast", "bcastset", "fm")
         const val SAT_LIST_PAGE = 40
-        const val SAT_LIST_MAX = 600
+        const val SAT_LIST_MAX = 3000             // the T-TWR keeps up to 3000 satellites (complete file)
     }
 
     private val exec = Executors.newSingleThreadScheduledExecutor()
@@ -451,7 +451,7 @@ class Controller(
                 if (!controlOn) { AppState.satDataMessage.value = "No control service"; return@safe }
                 if (!Licence.isValid(settings)) { AppState.error.value = "Callsign not validated in RadioID: the app cannot command the tracker"; return@safe }
                 if (AppState.satDataBusy.value) return@safe
-                val bad = Sat.checkData(text)
+                val bad = Sat.checkData(text, AppState.trackerInfo.value?.satMaxBytes ?: Control.SAT_DATA_MAX)
                 if (bad != null) { AppState.satDataMessage.value = bad; return@safe }
                 satLines.clear(); satLines.addAll(Control.satData(text))
                 satSteps = satLines.size

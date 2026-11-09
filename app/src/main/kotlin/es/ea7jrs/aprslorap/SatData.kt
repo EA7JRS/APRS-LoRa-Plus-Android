@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
 import es.ea7jrs.aprslorap.core.Control
+import es.ea7jrs.aprslorap.core.Sat
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -41,7 +42,7 @@ object SatData {
                     val n = inp.read(buf)
                     if (n < 0) break
                     out.write(buf, 0, n)
-                    if (out.size() > Control.SAT_DATA_MAX) throw IllegalStateException("the file is bigger than the tracker accepts (${Control.SAT_DATA_MAX} bytes)")
+                    if (out.size() > maxBytes) throw IllegalStateException("the file is bigger than $maxBytes bytes")
                 }
             }
             c.disconnect()
@@ -50,29 +51,49 @@ object SatData {
         throw IllegalStateException("too many redirects")
     }
 
-    /** Downloads [url] with the phone's internet and sends it to the tracker. */
-    fun downloadAndSend(url: String) {
+    private const val DOWNLOAD_MAX = 6_000_000             // the complete file (sats_all.txt) is a few hundred kB
+
+    private fun room() = AppState.trackerInfo.value?.satMaxBytes ?: Control.SAT_DATA_MAX
+
+    /** Favorites of the tracker (from its list): always sent, whatever the groups. */
+    private fun favorites(): Set<Int> = AppState.satList.value.filter { it.favorite }.map { it.noradId }.toSet()
+
+    /** Keeps the [groups] and the favorites that fit in the tracker, and sends them. */
+    private fun filterAndSend(text: String, groups: String, from: String) {
+        val f = Sat.filter(text, groups, favorites(), room())
+        if (f.count == 0) { AppState.satDataMessage.value = "No satellite of those groups in $from"; return }
+        AppState.satDataMessage.value = "${f.count} of ${f.total} satellites (${f.text.length / 1024} kB" +
+            (if (f.dropped > 0) ", ${f.dropped} left out: no room in the tracker" else "") + "). Sending..."
+        AppState.controller?.satDataWrite(f.text) ?: run { AppState.satDataMessage.value = "Start the link in the Connect tab" }
+    }
+
+    /** Downloads [url] with the phone's internet, keeps the chosen [groups] (and the favorites) and sends it to the tracker. If the
+     *  complete file is not published yet, the old one (sats.txt) is used. */
+    fun downloadAndSend(url: String, groups: String) {
         if (AppState.satDataBusy.value) return
         if (!url.startsWith("https://")) { AppState.satDataMessage.value = "The address must start with https://"; return }
         AppState.satDataMessage.value = "Downloading..."
         Thread({
             try {
-                val text = String(get(url, Control.SAT_DATA_MAX), Charsets.UTF_8)
-                AppState.controller?.satDataWrite(text) ?: run { AppState.satDataMessage.value = "Start the link in the Connect tab" }
+                val text = try { String(get(url, DOWNLOAD_MAX), Charsets.UTF_8) } catch (e: Exception) {
+                    if (url != Sat.ALL_DATA_URL) throw e
+                    String(get(Sat.DEFAULT_DATA_URL, DOWNLOAD_MAX), Charsets.UTF_8)
+                }
+                filterAndSend(text, groups, "the downloaded file")
             } catch (e: Exception) {
                 AppState.satDataMessage.value = "Download failed: ${e.message}"
             }
         }, "sat-data").start()
     }
 
-    /** Reads a file the user picked and sends it to the tracker. */
-    fun sendFile(ctx: Context, uri: Uri) {
+    /** Reads a file the user picked, keeps the chosen [groups] and sends it to the tracker. */
+    fun sendFile(ctx: Context, uri: Uri, groups: String) {
         if (AppState.satDataBusy.value) return
         Thread({
             try {
                 val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("cannot open the file")
-                if (bytes.size > Control.SAT_DATA_MAX) throw IllegalStateException("the file is bigger than the tracker accepts (${Control.SAT_DATA_MAX} bytes)")
-                AppState.controller?.satDataWrite(String(bytes, Charsets.UTF_8)) ?: run { AppState.satDataMessage.value = "Start the link in the Connect tab" }
+                if (bytes.size > DOWNLOAD_MAX) throw IllegalStateException("the file is too big")
+                filterAndSend(String(bytes, Charsets.UTF_8), groups, "the file")
             } catch (e: Exception) {
                 AppState.satDataMessage.value = "Cannot read the file: ${e.message}"
             }

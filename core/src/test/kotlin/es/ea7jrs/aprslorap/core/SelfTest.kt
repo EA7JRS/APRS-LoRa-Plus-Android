@@ -228,6 +228,10 @@ private fun testControl() {
     eq(Sa868Info(21, "NiceRF", "VHF", true, "AFSK 1200", 144_800_000, 145_000_000).channel, "AFSK 1200, RX 144.8000 / TX 145.0000 MHz", "SA868 split channel")
     // FM voice mode (T-TWR)
     val fmEv = Control.parse("""{"e":"fm","f":145650000,"tx":145050000,"sh":-1,"ofs":600000,"tm":1,"t":885,"d":23,"inv":false,"w":false,"hp":true,"m":true,"i":3,"n":"EA7RCE","step":12500,"sq":2,"sqm":1,"sqa":true,"nr":2,"edit":0,"busy":true,"ptt":false,"txs":0,"rssi":-97,"scan":0,"arts":2,"eai":0,"aprs":true,"qsyb":true,"tok":true,"spk":true}""") as ControlEvent.Fm
+    check(fmEv.state.sat == null, "fm event without satellite")
+    val fmSat = Control.parse("""{"e":"fm","f":145826100,"tx":145826100,"sh":0,"ofs":0,"tm":0,"t":885,"d":23,"inv":false,"w":true,"hp":true,"m":false,"i":0,"sat":{"n":"ISS (ZARYA)","id":25544,"tx":1,"f":145826100,"up":145824000,"dop":1100,"fine":0,"dok":true,"xup":false,"aprs":true,"tone":0.0,"sent":2,"heard":5,"az":123.4,"el":34.5,"txok":false,"why":"SAT TX off (WebUI)"}}""") as ControlEvent.Fm
+    val fsat = fmSat.state.sat
+    check(fsat != null && fsat.aprs && fsat.dopplerHz == 1100 && fsat.upHz == 145_824_000L && fsat.elDeg == 34.5 && !fsat.txOk && fsat.why == "SAT TX off (WebUI)", "fm event with satellite")
     eq(fmEv.state.channel.freqText, "145.6500", "FM frequency"); eq(fmEv.state.channel.shiftText, "-0.600 MHz", "FM shift"); eq(fmEv.state.channel.toneText, "T 88.5", "FM tone")
     eq(fmEv.state.channel.name, "EA7RCE", "FM memory name"); eq(fmEv.state.memIndex, 3, "FM memory index"); eq(fmEv.state.artsText, "ARTS: IN RANGE", "ARTS state")
     eq(fmEv.state.squelchAuto && fmEv.state.speakerFromEsp && fmEv.state.noiseReduction == 2, true, "FM squelch / NR")
@@ -503,6 +507,37 @@ private fun testSat() {
     eq(Sat.passText(1000, 1600, 900), "Next pass starts in 1 min 40 s", "pass waiting"); eq(Sat.passText(1000, 1600, 1100), "In view, ends in 8 min 20 s", "pass in view")
     eq(Sat.passText(1000, 1600, 2000), "Pass over", "pass over"); eq(Sat.passText(null, null, 0), null, "pass unknown")
     eq(Sat.compass(0.0), "N", "compass N"); eq(Sat.compass(359.0), "N", "compass wrap"); eq(Sat.compass(135.0), "SE", "compass SE"); eq(Sat.compass(-90.0), "W", "compass negative")
+
+    // complete file: groups, favorites and the room of the tracker
+    val all = "# APRS LoRa+ satellites (all bands, groups) 2026-11-09T03:17Z\n" +
+        "S|48274|CSS (TIANHE)|U|s\n1 a\n2 b\n" +
+        "S|43017|FOX-1B (AO-91)|U|a\n1 a\n2 b\nT|435250000|435250000|145960000|145960000|FM|0|0|FM rptr|670\n" +
+        "S|25544|ISS (ZARYA)|U|as\n1 a\n2 b\nT|145825000|145825000|145825000|145825000|AFSK|1200|0|APRS digipeater\n" +
+        "S|33591|NOAA 19|V|w\n1 a\n2 b\n" +
+        "S|99999|LORASAT|L|\n1 a\n2 b\n"
+    val fs = Sat.filter(all, "s", emptySet(), 100_000)
+    eq(fs.count, 2, "filter: space stations"); eq(fs.total, 5, "filter: total"); check(fs.text.startsWith("# APRS LoRa+"), "filter keeps the header")
+    eq(Sat.filter(all, "", emptySet(), 100_000).count, 5, "filter: no group = all")
+    eq(Sat.filter(all, "w", setOf(43017), 100_000).count, 2, "filter: weather + a favorite")
+    eq(Sat.filter(all, "l", emptySet(), 100_000).count, 1, "filter: LoRa by category")
+    val fav = Sat.filter(all, "a", setOf(33591), 200)
+    check(fav.text.contains("NOAA 19") && fav.dropped > 0, "filter: the favorite first when there is no room")
+    eq(Sat.countSatellites(Sat.filter(all, "as", emptySet(), 100_000).text), 3, "filter output is a satellite file")
+    eq(Sat.categoryName("V"), "2 m", "category V"); eq(Sat.categoryLabel(4), "Favorites", "category label")
+    eq(Sat.favCommand(25544, true), "{\"c\":\"satfav\",\"id\":25544,\"on\":true}\n", "satfav command")
+    eq(Sat.categoryCommand(6), "{\"c\":\"satcat\",\"k\":6}\n", "satcat command")
+    eq(Sat.bandsText(Sat.BAND_2M or Sat.BAND_VHF or Sat.BAND_70CM or Sat.BAND_UHF), "2 m + 70 cm", "bands text")
+    check(Sat.checkData(all.repeat(200), 900_000) == null && Sat.checkData(all.repeat(200)) != null, "the T-TWR takes a bigger file")
+    val sl2 = Control.parse("""{"e":"satlist","tot":2,"sel":0,"from":0,"items":[{"i":0,"id":25544,"n":"ISS","c":"U","t":2,"b":15,"fav":true,"in":true},{"i":1,"id":1,"n":"X","c":"V","t":0,"b":0,"in":false}]}""") as ControlEvent.SatList
+    check(sl2.items[0].favorite && sl2.items[0].inCategory && sl2.items[0].bands == 15 && !sl2.items[1].favorite && !sl2.items[1].inCategory, "satlist favorites and bands")
+    val tl2 = Control.parse("""{"e":"sattxlist","items":[{"i":0,"m":"FM","b":0,"d":"rpt","up":145990000,"dn":437800000,"rx":"n/a","tx":"FM","tone":67.0},{"i":1,"m":"AFSK","b":1200,"d":"APRS","up":145825000,"dn":145825000,"rx":"APRS","tx":"APRS","aprs":true}]}""") as ControlEvent.SatTransmitters
+    check(tl2.items[0].toneHz == 67.0 && !tl2.items[0].aprsDigi && tl2.items[1].aprsDigi && tl2.items[1].toneHz == null, "sattxlist tone and APRS")
+    val ss = Control.parse("""{"e":"sat","ok":true,"n":"ISS","id":25544,"i":0,"geo":false,"tx":2,"tle":0.4,"fav":true,"cat":4,"tot":120,"nfav":3,"stamp":"2026-11-09T03:17Z","pos":"GPS"}""") as ControlEvent.Sat
+    check(ss.state.favorite && ss.state.category == 4 && ss.state.total == 120 && ss.state.favorites == 3 && ss.state.stamp.startsWith("2026"), "sat event favorites")
+    val inf = Control.parse("""{"e":"info","v":1,"fw":"5.3.5","board":"T-TWR","caps":{"satMax":900000,"satFav":true,"satFm":true}}""") as ControlEvent.Info
+    check(inf.info.satMaxBytes == 900_000 && inf.info.hasSatFav && inf.info.hasSatFm, "info satellite caps")
+    val inf2 = Control.parse("""{"e":"info","v":1,"fw":"5.3.4","board":"x","caps":{}}""") as ControlEvent.Info
+    check(inf2.info.satMaxBytes == Control.SAT_DATA_MAX && !inf2.info.hasSatFav, "info without satellite caps")
 }
 
 private fun hex(b: ByteArray) = b.joinToString("") { String.format("%02x", it.toInt() and 0xFF) }

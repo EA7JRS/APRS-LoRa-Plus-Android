@@ -84,12 +84,18 @@ fun SatTab() {
 
     val inSat = info?.mode == TrackerMode.SAT
     val canSat = info?.modes?.any { it.mode == TrackerMode.SAT } == true
+    // T-TWR: the FM VFO follows the satellite also in FM mode (listen, PTT voice and APRS through the satellite)
+    val canListen = inSat || (info?.hasSatFm == true && info?.mode == TrackerMode.FM)
+    val hasFav = info?.hasSatFav == true
 
     var filter by rememberSaveable { mutableStateOf("") }
     var txText by rememberSaveable { mutableStateOf("") }
     var url by rememberSaveable { mutableStateOf(settings.satDataUrl) }
+    var groups by rememberSaveable { mutableStateOf(settings.satGroups) }
+    var onlyCategory by rememberSaveable { mutableStateOf(false) }
     var phoneOn by rememberSaveable { mutableStateOf(false) }
     var confirmTx by remember { mutableStateOf<SatTransmitter?>(null) }
+    var confirmPos by remember { mutableStateOf<SatTransmitter?>(null) }
     var confirmMode by remember { mutableStateOf(false) }
     var newName by rememberSaveable { mutableStateOf("") }
     var newLat by rememberSaveable { mutableStateOf("") }
@@ -102,7 +108,7 @@ fun SatTab() {
     val locLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
         if (r.values.any { it }) startPhone() else { phoneOn = false; AppState.error.value = "Location permission is needed to send the phone position" }
     }
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) SatData.sendFile(ctx, uri) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) SatData.sendFile(ctx, uri, groups) }
 
     DisposableEffect(Unit) {
         c?.control("sat")
@@ -118,14 +124,20 @@ fun SatTab() {
         item {
             Section("Satellite pass")
             if (!inSat) {
-                Text("The tracker is not in SAT mode: the pass, the receiver and the transmitter need it.", fontSize = 13.sp)
+                Text(if (canListen) "FM mode: the VFO can follow the chosen satellite (receiver below); the rest needs SAT mode."
+                     else "The tracker is not in SAT mode: the pass, the receiver and the transmitter need it.", fontSize = 13.sp)
                 if (canSat) OutlinedButton(onClick = { confirmMode = true }) { Text("Switch the tracker to SAT mode") }
                 else Text("This board or firmware has no SAT mode.", fontSize = 13.sp)
             }
             val s = state
             if (s == null || !s.ok) Text(if (s == null) "Waiting for the tracker..." else "No satellite data in the tracker: send the satellite file (below).")
             else {
-                Field("Satellite", (s.name ?: "?") + (s.noradId?.let { " ($it)" } ?: ""))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Field("Satellite", (s.name ?: "?") + (s.noradId?.let { " ($it)" } ?: ""))
+                    if (hasFav && s.noradId != null) TextButton(onClick = { c?.control("satfav", "id" to s.noradId, "on" to !s.favorite); markFav(s.noradId, !s.favorite) }) {
+                        Text(if (s.favorite) "★ Favorite" else "☆ Add to favorites")
+                    }
+                }
                 Field("Position used", s.positionSource.ifBlank { "none yet (no GNSS fix, no phone position)" })
                 Field("Orbit data age", fmt(s.tleAgeDays, "%.1f", " days"))
                 val az = s.azDeg
@@ -174,10 +186,12 @@ fun SatTab() {
                 androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
                     Text("#${t.index} ${t.description.ifBlank { t.mode }} — ${t.mode}${if (t.baud > 0) " ${t.baud} bd" else ""}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Text("Down ${mhz(t.rxDopplerHz ?: t.downHz)}  Up ${mhz(t.txDopplerHz ?: t.upHz)}", fontSize = 12.sp)
-                    Text("Tracker can receive: ${t.rxKind}   transmit: ${t.txKind}", fontSize = 12.sp)
+                    Text("Tracker can receive: ${t.rxKind}   transmit: ${t.txKind}" + (t.toneHz?.let { String.format(Locale.US, "   CTCSS %.1f Hz", it) } ?: "") +
+                         (if (t.aprsDigi) "   APRS digipeater" else "") + (if (t.txKind == "FM") "   (voice: PTT of the tracker)" else ""), fontSize = 12.sp)
                 }
-                if (t.rxKind != "n/a") OutlinedButton(onClick = { c?.control("satrx", "on" to true, "tx" to t.index) }, enabled = inSat) { Text("Listen") }
-                if (t.txKind != "n/a") TextButton(onClick = { confirmTx = t }, enabled = inSat) { Text("Transmit") }
+                if (t.rxKind != "n/a") OutlinedButton(onClick = { c?.control("satrx", "on" to true, "tx" to t.index) }, enabled = canListen) { Text("Listen") }
+                if (t.txKind != "n/a" && t.txKind != "FM") TextButton(onClick = { confirmTx = t }, enabled = canListen) { Text(if (t.aprsDigi) "Message" else "Transmit") }
+                if (t.aprsDigi && t.txKind == "APRS") TextButton(onClick = { confirmPos = t }, enabled = canListen) { Text("Position") }
             }
         }
         item {
@@ -193,23 +207,40 @@ fun SatTab() {
         // ---- list of satellites
         item {
             Section("Satellites in the tracker ($total)")
+            if (hasFav) {
+                Text("List of the tracker (its button and encoder go through it): ${Sat.categoryLabel(state?.category ?: 0)} · ${state?.favorites ?: 0} favorites", fontSize = 12.sp)
+                for (row in Sat.CATEGORIES.chunked(4)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for ((code, name) in row) {
+                        if ((state?.category ?: 0) == code) Button(onClick = {}) { Text(name, fontSize = 12.sp) }
+                        else OutlinedButton(onClick = { c?.control("satcat", "k" to code); c?.satListRead() }) { Text(name, fontSize = 12.sp) }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Show only that list", Modifier.weight(1f), fontSize = 13.sp)
+                    Switch(onlyCategory, { onlyCategory = it })
+                }
+            }
             OutlinedTextField(filter, { filter = it }, label = { Text("Search name or NORAD number") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             if (list.size < total) Text("Loading the list... ${list.size} of $total", fontSize = 12.sp)
         }
-        val shown = list.filter { filter.isBlank() || it.name.contains(filter, ignoreCase = true) || it.noradId.toString().contains(filter) }.take(80)
+        val shown = list.filter { (!onlyCategory || it.inCategory) && (filter.isBlank() || it.name.contains(filter, ignoreCase = true) || it.noradId.toString().contains(filter)) }.take(80)
         items(shown, key = { "s${it.index}" }) { e ->
             Row(
-                Modifier.fillMaxWidth().clickable(enabled = inSat) { c?.control("satsel", "i" to e.index) }.padding(vertical = 6.dp),
+                Modifier.fillMaxWidth().clickable(enabled = canListen) { c?.control("satsel", "i" to e.index); c?.control("sattxlist") }.padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text((if (e.index == selected) "● " else "○ ") + e.name, Modifier.weight(1f), fontSize = 14.sp,
                     fontWeight = if (e.index == selected) FontWeight.Bold else FontWeight.Normal)
-                Text("${Sat.categoryName(e.category)} · ${e.transmitters} tx · ${e.noradId}", fontSize = 11.sp)
+                val bands = Sat.bandsText(e.bands)
+                Text("${if (bands.isNotEmpty()) bands else Sat.categoryName(e.category)} · ${e.transmitters} tx · ${e.noradId}", fontSize = 11.sp)
+                if (hasFav) TextButton(onClick = { c?.control("satfav", "id" to e.noradId, "on" to !e.favorite); markFav(e.noradId, !e.favorite) }) {
+                    Text(if (e.favorite) "★" else "☆", fontSize = 18.sp)
+                }
             }
         }
         item {
             if (list.isNotEmpty() && shown.size == 80) Text("Only the first 80 matches are shown: refine the search.", fontSize = 11.sp)
-            if (!inSat && list.isNotEmpty()) Text("Switch the tracker to SAT mode to choose a satellite.", fontSize = 11.sp)
+            if (!canListen && list.isNotEmpty()) Text("Switch the tracker to SAT mode to choose a satellite.", fontSize = 11.sp)
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
         }
 
@@ -307,18 +338,35 @@ fun SatTab() {
 
         // ---- satellite file
         item {
-            Section("Satellite file (sats.txt)")
+            Section("Satellite file")
+            Text("CelesTrak groups to send (none = all that fit; favorites always go). Room in the tracker: ${(info?.satMaxBytes ?: 64000) / 1024} kB.", fontSize = 12.sp)
+            for (row in Sat.GROUPS.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((letter, name) in row) {
+                    val on = groups.contains(letter)
+                    val pick = { val g = if (on) groups.replace(letter, "") else groups + letter; groups = g; settings.satGroups = g }
+                    if (on) Button(onClick = pick) { Text(name, fontSize = 12.sp) } else OutlinedButton(onClick = pick) { Text(name, fontSize = 12.sp) }
+                }
+            }
             OutlinedTextField(url, { url = it }, label = { Text("Download address") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { settings.satDataUrl = url; SatData.downloadAndSend(url.trim()) }, enabled = !dataBusy) { Text("Download and send") }
+                Button(onClick = { settings.satDataUrl = url; SatData.downloadAndSend(url.trim(), groups) }, enabled = !dataBusy) { Text("Download and send") }
                 OutlinedButton(onClick = { filePicker.launch("*/*") }, enabled = !dataBusy) { Text("Choose a file...") }
-                OutlinedButton(onClick = { url = Sat.DEFAULT_DATA_URL }) { Text("Default") }
+                OutlinedButton(onClick = { url = Sat.ALL_DATA_URL }) { Text("Default") }
             }
             if (dataMsg.isNotBlank()) Text(dataMsg, fontSize = 13.sp)
-            Text("The phone downloads the file with its internet and sends it to the tracker over Bluetooth: the tracker needs no WiFi. The default file is renewed daily from the project's repository.", fontSize = 11.sp)
+            Text("The phone downloads the file with its internet and sends it to the tracker over Bluetooth: the tracker needs no WiFi. The default file (all bands, groups, CTCSS) is renewed daily from the project's repository; until it is published the app uses the old 70 cm file. The WebUI of the tracker (Satellites) does the same by WiFi.", fontSize = 11.sp)
         }
     }
 
+    confirmPos?.let { t ->
+        AlertDialog(
+            onDismissRequest = { confirmPos = null },
+            title = { Text("Position through the satellite") },
+            text = { Text("The tracker sends its position as APRS on ${mhz(t.txDopplerHz ?: t.upHz)} towards ${state?.name ?: "the satellite"} (path of the WebUI, ARISS by default; comment = the message of the WebUI). Only with the satellite in view.") },
+            confirmButton = { TextButton(onClick = { c?.control("sattx", "tx" to t.index, "pos" to true); confirmPos = null }) { Text("Send") } },
+            dismissButton = { TextButton(onClick = { confirmPos = null }) { Text("Cancel") } },
+        )
+    }
     confirmTx?.let { t ->
         AlertDialog(
             onDismissRequest = { confirmTx = null },
@@ -342,6 +390,11 @@ fun SatTab() {
             dismissButton = { TextButton(onClick = { confirmMode = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** Favorite changed from the app: the list is updated here (the tracker answers with the "sat" event only). */
+private fun markFav(noradId: Int, on: Boolean) {
+    AppState.satList.value = AppState.satList.value.map { if (it.noradId == noradId) it.copy(favorite = on) else it }
 }
 
 /** The tracker's own rotor settings for following what it hears (firmware with sources 4 / 5): filter, max age, estimate. */
