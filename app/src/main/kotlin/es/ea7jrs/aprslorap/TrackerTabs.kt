@@ -264,7 +264,7 @@ fun SensorsTab() {
             Field("Temperature", fmt(s.temperatureC, "%.1f", " °C"))
             Field("Humidity", fmt(s.humidityPct, "%.0f", " %"))
             Field("Pressure", fmt(s.pressureHpa, "%.1f", " hPa"))
-            Field("QNH", fmt(s.qnhHpa, "%.1f", " hPa"))
+            Field("QNH", fmt(s.qnhHpa, "%.1f", " hPa") + when (s.qnhSource) { "net" -> " (internet)"; "man" -> " (manual)"; "gps" -> " (GNSS)"; else -> "" })
             Field("Barometric altitude", fmt(s.baroAltitudeM, "%.0f", " m"))
             Field("Magnetic heading", fmt(s.headingDeg, "%.0f", "°"))
             Field("Moving (IMU)", s.moving?.let { if (it) "Yes" else "No" } ?: "—")

@@ -82,6 +82,7 @@ object NetWeatherFetcher {
                 }
                 val data = d ?: throw IllegalStateException(errors.joinToString("; "))
                 AppState.netWx.value = data
+                RotorLink.onNetWeather(data)
                 val nowS = System.currentTimeMillis() / 1000
                 AppState.controller?.sendWxNet(NetWeather.command(data, nowS))
                 AppState.netWxMessage.value = (if (errors.isEmpty()) "Updated" else errors.joinToString("; ")) +

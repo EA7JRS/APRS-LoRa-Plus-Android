@@ -266,6 +266,7 @@ private fun testControl() {
     check(Control.parse("garbage") is ControlEvent.Unknown, "garbage is unknown")
 
     // full sensors event
+    check((Control.parse("""{"e":"sensors","qnh":1016.0,"qs":"net"}""") as ControlEvent.SensorData).sensors.qnhSource == "net", "sensors qnh source")
     val fs = (Control.parse("""{"e":"sensors","batt":4.1,"battPct":87,"gas":120.3,"iaq":42,"iaqLabel":"Good","wxSensor":"BME680","accel":[0.01,0.02,1.0],"gyro":[0,0,0],"flat":true,"charging":true,"vbus":5.1,"pmuTemp":31.5,"battMa":-120,"heap":150000}""") as ControlEvent.SensorData).sensors
     eq(fs.batteryPct, 87, "battPct"); eq(fs.accelG?.size, 3, "accel"); eq(fs.charging, true, "charging"); eq(fs.iaqLabel, "Good", "iaq label"); eq(fs.humidityPct, null, "absent is null"); eq(fs.freeHeap, 150000L, "heap")
 
@@ -629,6 +630,15 @@ private fun testRotorProto() {
     eq(RotorProto.parse("{\"e\":\"err\",\"c\":\"pos\",\"m\":\"auth required\"}"), RotorProto.Event.Err("pos", "auth required"), "rotor err event")
     eq(RotorProto.parse("{\"e\":\"ok\",\"c\":\"cfgset\",\"i\":2,\"done\":true}"), RotorProto.Event.Ok("cfgset", 2, true), "rotor ok event")
     check(RotorProto.parse("not json") == null && RotorProto.parse("{\"e\":\"pos\"}") == null, "rotor bad events")
+    // Wind protection: internet weather to the box, state in the pos event
+    eq(RotorProto.wx(NetWeather.Data("OWM", windMs = 20.04, gustMs = 28.41, windDeg = 250, timeS = 1000), 1150),
+        "{\"c\":\"wx\",\"ws\":20,\"wg\":28.4,\"wd\":250,\"age\":150,\"src\":\"OWM\"}\n", "rotor wx")
+    eq(RotorProto.wx(NetWeather.Data("IQAir", windMs = 3.0), 5), "{\"c\":\"wx\",\"ws\":3,\"age\":0,\"src\":\"IQAir\"}\n", "rotor wx no gust")
+    check(RotorProto.wx(NetWeather.Data("OWM", tempC = 20.0), 5) == null, "rotor wx without wind")
+    val wp = RotorProto.parse("{\"e\":\"pos\",\"az\":10,\"st\":0,\"mv\":false,\"f\":\"WIND\",\"wind\":{\"on\":true,\"park\":15,\"lk\":true,\"ws\":20,\"wg\":28.4,\"wd\":250,\"pk\":28.4,\"age\":150,\"src\":\"OWM\",\"hold\":870}}")
+    check(wp is RotorProto.Event.Pos && wp.pos.wind?.locked == true && wp.pos.wind?.gustMs == 28.4 && wp.pos.wind?.holdS == 870L && !wp.pos.ok, "rotor pos wind")
+    val wi = RotorProto.parse("{\"e\":\"info\",\"lim\":{},\"caps\":{\"wind\":true}}")
+    check(wi is RotorProto.Event.InfoEv && wi.info.wind, "rotor info wind")
     // Lines split across BLE notifications
     val la = RotorProto.LineAssembler()
     eq(la.feed("{\"e\":\"ok\",".toByteArray()), emptyList<String>(), "rotor line part 1")

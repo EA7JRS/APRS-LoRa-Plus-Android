@@ -102,6 +102,8 @@ data class Sensors(
     val magCalibrated: Boolean? = null, val magAligned: Boolean? = null,
     val charging: Boolean? = null, val vbusV: Double? = null, val pmuTemperatureC: Double? = null, val batteryMa: Double? = null,
     val batteryPct: Int? = null, val freeHeap: Long? = null,
+    /** Where the QNH comes from: "gps" (learnt from the GNSS altitude), "man" (set by hand), "net" (internet weather from the app). */
+    val qnhSource: String? = null,
 )
 
 data class Gnss(
@@ -234,7 +236,7 @@ object Control {
                     o.bool("moving"), o.num("imuTemp"), o.num("boardTemp"),
                     o.num("gas"), o.num("iaq"), o.str("iaqLabel"), o.str("wxSensor"), numList(o, "accel"), numList(o, "gyro"), o.bool("flat"),
                     o.bool("magCal"), o.bool("magAlign"), o.bool("charging"), o.num("vbus"), o.num("pmuTemp"), o.num("battMa"),
-                    o.int("battPct"), o.long("heap"),
+                    o.int("battPct"), o.long("heap"), o.str("qs"),
                 ),
             )
             "gnss" -> ControlEvent.Position(

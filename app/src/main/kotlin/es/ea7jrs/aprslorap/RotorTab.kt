@@ -186,7 +186,25 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
             }
             if (p.targetAzDeg != null) Field("Target", RotorProto.deg(p.targetAzDeg) + (p.targetElDeg?.let { " / " + RotorProto.deg(it) } ?: ""))
             Field("State", RotorProto.statusText(p.status).ifEmpty { "still" })
-            Field("Fault", p.fault)
+            Field("Fault", if (p.fault == "WIND") "WIND (parked by wind: Clear fault releases it)" else p.fault)
+            p.wind?.let { w ->
+                val ws = w.windMs
+                val text = if (ws == null) "no data yet" else buildString {
+                    append(String.format(java.util.Locale.US, "%.1f m/s", ws))
+                    w.gustMs?.let { append(String.format(java.util.Locale.US, ", gusts %.1f", it)) }
+                    w.dirDeg?.let { append(" from $it°") }
+                    w.ageS?.let { append(" · ${it / 60} min old") }
+                    if (w.source.isNotEmpty()) append(" (${w.source})")
+                }
+                Field("Wind", text)
+                Field("Wind protection", when {
+                    !w.on -> "off (rotor box configuration wind.on)"
+                    w.locked -> "PARKED" + (w.holdS?.takeIf { it > 0 }?.let { " · at least ${(it + 59) / 60} min more" } ?: "")
+                    else -> String.format(java.util.Locale.US, "parks at %.0f m/s", w.parkMs)
+                })
+            }
+            if (i.wind && p.wind == null && AppState.netWx.value == null)
+                Text("Wind protection: turn on Internet weather (Sensors) so the box gets the wind", fontSize = 12.sp)
             p.aprs?.let { Text("APRS: $it", fontSize = 12.sp) }
         }
 

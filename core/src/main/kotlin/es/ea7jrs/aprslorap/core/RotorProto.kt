@@ -57,6 +57,18 @@ object RotorProto {
     val CAT_MODES = listOf("LSB", "USB", "CW", "FM", "AM", "PKTUSB")
     val CAT_STEPS = listOf(10L, 100L, 1000L, 5000L, 12500L, 25000L, 100000L)
     fun cat() = line("c" to "cat")
+
+    /** Internet weather for the wind protection of the box (null without wind data). [nowS] Unix time to work out the age. */
+    fun wx(d: NetWeather.Data, nowS: Long): String? {
+        val ws = d.windMs ?: d.gustMs ?: return null
+        val age = if (d.timeS > 0) (nowS - d.timeS).coerceIn(0L, 86_400L) else 0L
+        val m = linkedMapOf<String, Any?>("c" to "wx", "ws" to Math.round(ws * 10) / 10.0)
+        d.gustMs?.let { m["wg"] = Math.round(it * 10) / 10.0 }
+        d.windDeg?.let { m["wd"] = it }
+        m["age"] = age
+        m["src"] = d.source.take(11)
+        return Json.encode(m) + "\n"
+    }
     fun catFreq(hz: Long) = line("c" to "catset", "f" to hz)
     fun catMode(mode: String) = line("c" to "catset", "m" to mode)
     fun catTxFreq(hz: Long) = line("c" to "catset", "txf" to hz)
@@ -104,6 +116,14 @@ object RotorProto {
         val callsign: String, val limits: Limits, val hasEl: Boolean, val pinRequired: Boolean, val ip: String, val rotctldPort: Int,
         val wifi: Boolean, val ble: Boolean, val spp: Boolean, val lora: Boolean, val canCalibrate: Boolean, val canMove: Boolean,
         val uptimeS: Long, val hamlib: String?, val cat: Boolean = false, val rigctldPort: Int = 0,
+        /** Wind protection: the box takes the internet weather (command `wx`) and parks on strong gusts. */
+        val wind: Boolean = false,
+    )
+
+    /** Wind protection state (object `wind` of the event `pos`). [locked] = parked by wind; [holdS] = seconds left at least. */
+    data class Wind(
+        val on: Boolean, val parkMs: Double, val locked: Boolean, val windMs: Double?, val gustMs: Double?, val dirDeg: Int?,
+        val peakMs: Double?, val ageS: Long?, val source: String, val holdS: Long?,
     )
 
     data class CatTracking(val enabled: Boolean, val active: Boolean, val name: String, val dopplerHz: Long)
@@ -123,6 +143,7 @@ object RotorProto {
     data class Position(
         val azDeg: Double, val elDeg: Double?, val status: Int, val moving: Boolean, val fault: String,
         val mechAzDeg: Double?, val targetAzDeg: Double?, val targetElDeg: Double?, val aprs: String?,
+        val wind: Wind? = null,
     ) {
         val ok: Boolean get() = fault == "OK"
     }
@@ -152,12 +173,18 @@ object RotorProto {
                     caps.bool("wifi") ?: false, caps.bool("ble") ?: false, caps.bool("spp") ?: false, caps.bool("lora") ?: false,
                     caps.bool("cal") ?: false, caps.bool("move") ?: true, o.long("up") ?: 0L, o.str("hamlib"),
                     o.bool("cat") ?: caps.bool("cat") ?: false, o.int("rigctld") ?: 0,
+                    o.bool("wind") ?: caps.bool("wind") ?: false,
                 ))
             }
             "pos" -> {
                 val az = o.num("az") ?: return null
+                val w = o.obj("wind")
                 Event.Pos(Position(az, o.num("el"), o.int("st") ?: 0, o.bool("mv") ?: false, o.str("f") ?: "OK",
-                    o.num("maz"), o.num("taz"), o.num("tel"), o.str("aprs")))
+                    o.num("maz"), o.num("taz"), o.num("tel"), o.str("aprs"),
+                    w?.let {
+                        Wind(it.bool("on") ?: false, it.num("park") ?: 15.0, it.bool("lk") ?: false, it.num("ws"), it.num("wg"),
+                            it.int("wd"), it.num("pk"), it.long("age"), it.str("src") ?: "", it.long("hold"))
+                    }))
             }
             "raw" -> Event.Raw(o.num("az"), o.num("el"), o.str("unit") ?: "", o.bool("link"))
             "cfg" -> Event.ConfigPiece(o.int("i") ?: return null, o.int("n") ?: return null, o.str("d") ?: "")

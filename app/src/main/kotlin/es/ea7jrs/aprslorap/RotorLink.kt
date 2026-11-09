@@ -110,9 +110,9 @@ object RotorLink {
 
     private fun onLine(line: String) {
         when (val ev = RotorProto.parse(line)) {
-            is RotorProto.Event.InfoEv -> { AppState.rotorInfo.value = ev.info; if (ev.info.cat) send(RotorProto.cat()) }
+            is RotorProto.Event.InfoEv -> { AppState.rotorInfo.value = ev.info; if (ev.info.cat) send(RotorProto.cat()); sendWind() }
             is RotorProto.Event.Cat -> AppState.rotorCat.value = ev.state
-            is RotorProto.Event.Pos -> AppState.rotorPos.value = ev.pos
+            is RotorProto.Event.Pos -> { AppState.rotorPos.value = ev.pos; maybeFetchWeather() }
             is RotorProto.Event.Raw -> AppState.rotorRaw.value = ev
             is RotorProto.Event.ConfigPiece -> cfg.add(ev)?.let { text ->
                 AppState.rotorConfig.value = text
@@ -120,7 +120,7 @@ object RotorLink {
                 AppState.rotorMessage.value = "Configuration read (${text.length} characters)"
             }
             is RotorProto.Event.Ok -> when (ev.command) {
-                "auth" -> { AppState.rotorAuthed.value = true; AppState.rotorMessage.value = "" }
+                "auth" -> { AppState.rotorAuthed.value = true; AppState.rotorMessage.value = ""; sendWind() }
                 "cfgset" -> if (ev.done) {
                     AppState.rotorBusy.value = false
                     AppState.rotorMessage.value = "Configuration saved: the rotor box restarts"
@@ -145,6 +145,30 @@ object RotorLink {
             }
             is RotorProto.Event.Hello, null -> {}
         }
+    }
+
+    // ------------------------------------------------------------------ wind protection
+
+    @Volatile private var weatherCheckMs = 0L
+
+    /** New internet weather (NetWeatherFetcher): to the box, which parks on strong gusts (wind.on in its configuration). */
+    fun onNetWeather(d: es.ea7jrs.aprslorap.core.NetWeather.Data) { sendWind(d) }
+
+    private fun sendWind(d: es.ea7jrs.aprslorap.core.NetWeather.Data? = AppState.netWx.value) {
+        val info = AppState.rotorInfo.value ?: return
+        if (d == null || !info.wind || transport == null) return
+        if (info.pinRequired && !AppState.rotorAuthed.value) return         // "wx" needs the PIN: no error every 15 min
+        RotorProto.wx(d, System.currentTimeMillis() / 1000)?.let { send(it) }
+    }
+
+    /** With only the rotor box linked (no tracker control), the weather is still fetched on the usual interval. */
+    private fun maybeFetchWeather() {
+        val now = System.currentTimeMillis()
+        if (now - weatherCheckMs < 30_000) return
+        weatherCheckMs = now
+        val ctx = appCtx ?: return
+        if (AppState.rotorInfo.value?.wind != true) return
+        NetWeatherFetcher.maybeFetch(ctx, Settings(ctx))
     }
 
     // ------------------------------------------------------------------ configuration
