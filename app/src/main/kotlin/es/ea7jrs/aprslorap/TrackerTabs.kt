@@ -90,7 +90,8 @@ fun TrackerTab() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Field("Firmware", "${i.firmware} (${i.board})")
-        Field("Mode", TrackerMode.name(mode))
+        i.sa868?.let { Field("Radio", it.text) }               // LilyGO T-TWR: FM radio; settings in Config > sa868
+        Field("Mode", if (i.radio == "sa868" && mode == 0) "APRS AFSK 1200" else TrackerMode.name(mode))
         status?.let { s ->
             Field("Battery", fmt(s.batteryV, "%.2f", " V"))
             Field("Up", "${s.uptimeS / 3600} h ${(s.uptimeS % 3600) / 60} min")

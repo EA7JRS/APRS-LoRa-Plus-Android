@@ -56,7 +56,14 @@ data class TrackerInfo(
     val hasSecondSlot: Boolean = false,         // firmware update over BLE ("ota")
     val hasGpsAid: Boolean = false,             // A-GPS for the u-blox receiver ("gpsaid")
     val hasRotor: Boolean = false,              // rotor on in the WebUI ("rotext", "att", "tgt")
+    val radio: String = "lora",                 // "lora" (SX12xx / LLCC68) or "sa868" (LilyGO T-TWR Plus: FM radio, APRS AFSK 1200)
+    val sa868: Sa868Info? = null,               // only with radio = "sa868"; its settings are the "sa868" group of the configuration
 )
+
+/** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band and whether it answers. */
+data class Sa868Info(val revision: Int, val firmware: String, val band: String, val ok: Boolean) {
+    val text: String get() = if (!ok) "SA868 not answering" else String.format(java.util.Locale.US, "SA868 %s, Rev%.1f, %s firmware", band, revision / 10.0, firmware)
+}
 
 data class TrackerStatus(
     val mode: Int, val profile: Int, val lora: Int, val digi: Boolean, val smartBeacon: Boolean, val sos: Boolean,
@@ -329,6 +336,8 @@ object Control {
             caps.bool("ota") ?: false,
             caps.bool("gpsaid") ?: false,
             caps.bool("rotor") ?: false,
+            caps.str("radio") ?: "lora",
+            o.obj("sa868")?.let { Sa868Info(it.int("rev") ?: 0, it.str("fw") ?: "?", it.str("band") ?: "?", it.bool("ok") ?: false) },
         )
     }
 }

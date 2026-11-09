@@ -216,6 +216,11 @@ private fun testControl() {
     eq(i.profiles[0], BeaconProfile("EA7JRS-7", "Coche"), "beacon profile")
     eq(i.loras[0].freqHz, 433_775_000L, "LoRa frequency"); eq(i.loras[0].text, "433.775 MHz SF12 CR4/5", "LoRa profile text")
     eq(i.cwMessages.size, 2, "CW messages")
+    eq(i.radio, "lora", "radio missing = lora"); eq(i.sa868, null, "no SA868 block")
+    // LilyGO T-TWR Plus (radio FM SA868, APRS AFSK 1200)
+    val ttwr = (Control.parse("""{"e":"info","v":1,"fw":"5.3.5","board":"lilygo_t_twr_plus","caps":{"radio":"sa868","modes":true},"sa868":{"rev":21,"fw":"NiceRF","band":"VHF","ok":true},"mode":0,"modes":[{"m":0,"n":"APRS AFSK 1200"}]}""") as ControlEvent.Info).info
+    eq(ttwr.radio, "sa868", "T-TWR radio"); eq(ttwr.sa868, Sa868Info(21, "NiceRF", "VHF", true), "T-TWR SA868 info")
+    eq(ttwr.sa868?.text, "SA868 VHF, Rev2.1, NiceRF firmware", "T-TWR SA868 text"); eq(ttwr.modes[0].name, "APRS AFSK 1200", "T-TWR mode name")
 
     val st = Control.parse("""{"e":"status","mode":0,"profile":0,"lora":0,"digi":false,"smart":true,"sos":false,"batt":4.05,"up":3600,"bleKiss":true}""")
     eq((st as ControlEvent.Status).status, TrackerStatus(0, 0, 0, false, true, false, 4.05, 3600, true), "status event")
