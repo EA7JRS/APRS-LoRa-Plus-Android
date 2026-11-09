@@ -55,11 +55,15 @@ object PhoneGnss {
 
     fun granted(ctx: Context) = ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-    fun use(ctx: Context) = main.post { if (users++ == 0) start(ctx.applicationContext) }
-    fun release() = main.post { if (users > 0 && --users == 0) stop() }
+    fun use(ctx: Context) = main.post {
+        if (users++ == 0) try { start(ctx.applicationContext) } catch (e: Exception) { set { it.copy(running = false, status = "Phone GNSS: " + (e.message ?: e.javaClass.simpleName)) } }
+    }
+    fun release() = main.post { if (users > 0 && --users == 0) try { stop() } catch (_: Exception) {} }
 
     private val gnssCallback = object : GnssStatus.Callback() {
-        override fun onSatelliteStatusChanged(status: GnssStatus) {
+        override fun onSatelliteStatusChanged(status: GnssStatus) = try { satellites(status) } catch (_: Exception) {}
+
+        private fun satellites(status: GnssStatus) {
             // dual-frequency phones list a satellite once per signal: keep the best one
             val map = LinkedHashMap<String, SkySat>()
             for (i in 0 until status.satelliteCount) {
@@ -77,10 +81,12 @@ object PhoneGnss {
         override fun onStopped() { set { it.copy(status = "Phone GNSS stopped") } }
     }
 
-    private val nmea = OnNmeaMessageListener { line, _ -> GnssSky.gsaDops(line.trim())?.let { dops = it } }
+    private val nmea = OnNmeaMessageListener { line, _ -> try { GnssSky.gsaDops(line.trim())?.let { dops = it } } catch (_: Exception) {} }
 
     private val location = object : LocationListener {
-        override fun onLocationChanged(l: Location) {
+        override fun onLocationChanged(l: Location) = try { fix(l) } catch (_: Exception) {}
+
+        private fun fix(l: Location) {
             val msl = Build.VERSION.SDK_INT >= 34 && l.hasMslAltitude()
             val alt = if (msl) l.mslAltitudeMeters else if (l.hasAltitude()) l.altitude else null
             set {
@@ -98,12 +104,14 @@ object PhoneGnss {
     private val sensors = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
             val v = e.values
-            val m = sqrt((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).toDouble())
+            if (v.isEmpty()) return
+            // the light sensor gives a single value: the 3-axis magnitude only for the other sensors
+            fun mag(): Double? = if (v.size < 3) null else sqrt((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).toDouble())
             when (e.sensor.type) {
-                Sensor.TYPE_LINEAR_ACCELERATION -> set { it.copy(accelG = m / SensorManager.GRAVITY_EARTH) }
-                Sensor.TYPE_GYROSCOPE -> set { it.copy(gyroDps = Math.toDegrees(m)) }
+                Sensor.TYPE_LINEAR_ACCELERATION -> mag()?.let { m -> set { it.copy(accelG = m / SensorManager.GRAVITY_EARTH) } }
+                Sensor.TYPE_GYROSCOPE -> mag()?.let { m -> set { it.copy(gyroDps = Math.toDegrees(m)) } }
                 Sensor.TYPE_LIGHT -> set { it.copy(lux = v[0].toDouble()) }
-                Sensor.TYPE_MAGNETIC_FIELD -> set { it.copy(magUT = m) }
+                Sensor.TYPE_MAGNETIC_FIELD -> mag()?.let { m -> set { it.copy(magUT = m) } }
             }
         }
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -148,7 +156,11 @@ object PhoneGnss {
         val now = System.currentTimeMillis()
         if (now - lastBatteryMs < 10_000) return
         lastBatteryMs = now
-        val i: Intent = app?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return
+        val ctx = app ?: return
+        val i: Intent = try {
+            if (Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_EXPORTED)
+            else ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        } catch (_: Exception) { null } ?: return
         val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
         val temp = i.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
