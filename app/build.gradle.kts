@@ -12,8 +12,8 @@ android {
         applicationId = "es.ea7jrs.aprslorap"
         minSdk = 26
         targetSdk = 35
-        versionCode = 50305
-        versionName = "5.3.5"
+        versionCode = 50306
+        versionName = "5.3.6"
     }
 
     buildTypes {
