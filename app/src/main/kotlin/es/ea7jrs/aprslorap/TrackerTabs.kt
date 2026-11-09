@@ -83,6 +83,8 @@ fun TrackerTab() {
     val status by AppState.trackerStatus.collectAsState()
     var askMode by remember { mutableStateOf<Int?>(null) }
     var cwText by rememberSaveable { mutableStateOf("") }
+    var smsTo by rememberSaveable { mutableStateOf("") }
+    var smsText by rememberSaveable { mutableStateOf("") }
     val i = info
     if (!ready || i == null) { NoControl(); return }
     val c = AppState.controller
@@ -90,7 +92,7 @@ fun TrackerTab() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Field("Firmware", "${i.firmware} (${i.board})")
-        i.sa868?.let { Field("Radio", it.text) }               // LilyGO T-TWR: FM radio; settings in Config > sa868
+        i.sa868?.let { Field("Radio", it.text); if (it.modem.isNotBlank()) Field("Channel", it.channel) }    // LilyGO T-TWR: FM radio; settings in Config > sa868
         Field("Mode", if (i.radio == "sa868" && mode == 0) "APRS AFSK 1200" else TrackerMode.name(mode))
         status?.let { s ->
             Field("Battery", fmt(s.batteryV, "%.2f", " V"))
@@ -140,6 +142,18 @@ fun TrackerTab() {
                 Spacer(Modifier.width(8.dp))
                 Switch(checked = status?.digi ?: false, onCheckedChange = { c?.control("digi", "on" to it) })
                 Text("Digipeater")
+            }
+        }
+
+        if (mode == TrackerMode.M17 && i.hasM17) {
+            Section("M17 SMS (to other M17 radios)")
+            Text("APRS messages and beacons already go out as M17 APRS packets. This sends a plain M17 SMS (OpenRTX, M17 radios): one transmission, no acknowledgement.", fontSize = 12.sp)
+            OutlinedTextField(smsTo, { smsTo = it.uppercase().filter { ch -> ch.isLetterOrDigit() || ch in "-/.@" }.take(9) },
+                label = { Text("To (empty = @ALL)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(smsText, { smsText = it.replace('\n', ' ').take(800) }, label = { Text("Text") }, singleLine = true, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Button(enabled = smsText.isNotBlank(), onClick = { c?.control("m17sms", "to" to smsTo.trim(), "t" to smsText.trim()); smsText = "" }) { Text("Send") }
             }
         }
 

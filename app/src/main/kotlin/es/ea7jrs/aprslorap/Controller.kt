@@ -304,6 +304,7 @@ class Controller(
                 "satsel" -> { AppState.satRxLog.value = emptyList(); sendControlLine(Control.command("sattxlist")) }
                 "act" -> sendControlLine(Control.command("screen"))
                 "msg" -> { AppState.notice.value = "Message queued in the tracker"; sendControlLine(Control.command("msgs", "cnt" to 20)) }
+                "m17sms" -> AppState.notice.value = "M17 SMS sent"
                 "ota" -> FirmwareUpdater.onStarted()
             }
             is ControlEvent.Error -> {

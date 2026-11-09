@@ -221,6 +221,11 @@ private fun testControl() {
     val ttwr = (Control.parse("""{"e":"info","v":1,"fw":"5.3.5","board":"lilygo_t_twr_plus","caps":{"radio":"sa868","modes":true},"sa868":{"rev":21,"fw":"NiceRF","band":"VHF","ok":true},"mode":0,"modes":[{"m":0,"n":"APRS AFSK 1200"}]}""") as ControlEvent.Info).info
     eq(ttwr.radio, "sa868", "T-TWR radio"); eq(ttwr.sa868, Sa868Info(21, "NiceRF", "VHF", true), "T-TWR SA868 info")
     eq(ttwr.sa868?.text, "SA868 VHF, Rev2.1, NiceRF firmware", "T-TWR SA868 text"); eq(ttwr.modes[0].name, "APRS AFSK 1200", "T-TWR mode name")
+    eq(ttwr.hasM17, false, "no m17 cap = false")
+    val m17 = (Control.parse("""{"e":"info","v":1,"fw":"5.3.5","board":"lilygo_t_twr_plus","caps":{"radio":"sa868","modes":true,"m17":true},"sa868":{"rev":20,"fw":"OpenRTX","band":"UHF","ok":true,"modem":"M17","rx":433475000,"tx":433475000,"m17":433475000},"mode":10,"modes":[{"m":0,"n":"APRS AFSK 1200"},{"m":1,"n":"APRS FSK 9600"},{"m":10,"n":"M17"}]}""") as ControlEvent.Info).info
+    eq(m17.hasM17, true, "T-TWR m17 cap"); eq(m17.sa868?.m17Hz, 433_475_000L, "M17 frequency")
+    eq(m17.sa868?.channel, "M17, 433.4750 MHz", "SA868 channel text"); eq(TrackerMode.name(10), "M17", "M17 mode name"); eq(TrackerMode.isAprs(10), true, "M17 is an APRS mode")
+    eq(Sa868Info(21, "NiceRF", "VHF", true, "AFSK 1200", 144_800_000, 145_000_000).channel, "AFSK 1200, RX 144.8000 / TX 145.0000 MHz", "SA868 split channel")
 
     val st = Control.parse("""{"e":"status","mode":0,"profile":0,"lora":0,"digi":false,"smart":true,"sos":false,"batt":4.05,"up":3600,"bleKiss":true}""")
     eq((st as ControlEvent.Status).status, TrackerStatus(0, 0, 0, false, true, false, 4.05, 3600, true), "status event")

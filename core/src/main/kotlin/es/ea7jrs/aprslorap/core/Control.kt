@@ -29,13 +29,14 @@ object TrackerMode {
     const val FT4 = 7
     const val FST4W = 8
     const val SAT = 9
+    const val M17 = 10                          // LilyGO T-TWR only: APRS in M17 APRS packets; M17 SMS and voice-call callsigns / GNSS heard
 
     fun name(m: Int): String = when (m) {
         APRS_LORA -> "APRS LoRa"; APRS_FSK -> "APRS FSK"; MORSE -> "Morse / CW"; WSPR -> "WSPR"; LRFHSS -> "LR-FHSS"
-        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; else -> "Mode $m"
+        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; M17 -> "M17"; else -> "Mode $m"
     }
 
-    fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK
+    fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK || m == M17
 }
 
 data class ModeOption(val mode: Int, val name: String)
@@ -58,11 +59,21 @@ data class TrackerInfo(
     val hasRotor: Boolean = false,              // rotor on in the WebUI ("rotext", "att", "tgt")
     val radio: String = "lora",                 // "lora" (SX12xx / LLCC68) or "sa868" (LilyGO T-TWR Plus: FM radio, APRS AFSK 1200)
     val sa868: Sa868Info? = null,               // only with radio = "sa868"; its settings are the "sa868" group of the configuration
+    val hasM17: Boolean = false,                // M17 mode and the "m17sms" command (T-TWR)
 )
 
-/** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band and whether it answers. */
-data class Sa868Info(val revision: Int, val firmware: String, val band: String, val ok: Boolean) {
+/** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
+ *  modem in use ("AFSK 1200", "G3RUH 9600", "M17"), frequencies in use and the M17 frequency (Hz; 0 = not reported). */
+data class Sa868Info(
+    val revision: Int, val firmware: String, val band: String, val ok: Boolean,
+    val modem: String = "", val rxHz: Long = 0, val txHz: Long = 0, val m17Hz: Long = 0,
+) {
     val text: String get() = if (!ok) "SA868 not answering" else String.format(java.util.Locale.US, "SA868 %s, Rev%.1f, %s firmware", band, revision / 10.0, firmware)
+    val channel: String get() = when {
+        rxHz <= 0 -> modem
+        txHz > 0 && txHz != rxHz -> String.format(java.util.Locale.US, "%s, RX %.4f / TX %.4f MHz", modem, rxHz / 1e6, txHz / 1e6)
+        else -> String.format(java.util.Locale.US, "%s, %.4f MHz", modem, rxHz / 1e6)
+    }
 }
 
 data class TrackerStatus(
@@ -337,7 +348,11 @@ object Control {
             caps.bool("gpsaid") ?: false,
             caps.bool("rotor") ?: false,
             caps.str("radio") ?: "lora",
-            o.obj("sa868")?.let { Sa868Info(it.int("rev") ?: 0, it.str("fw") ?: "?", it.str("band") ?: "?", it.bool("ok") ?: false) },
+            o.obj("sa868")?.let {
+                Sa868Info(it.int("rev") ?: 0, it.str("fw") ?: "?", it.str("band") ?: "?", it.bool("ok") ?: false,
+                          it.str("modem") ?: "", it.long("rx") ?: 0, it.long("tx") ?: 0, it.long("m17") ?: 0)
+            },
+            caps.bool("m17") ?: false,
         )
     }
 }
