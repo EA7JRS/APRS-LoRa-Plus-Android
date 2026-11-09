@@ -410,7 +410,7 @@ private fun TxRangeSection(sa: es.ea7jrs.aprslorap.core.Sa868Info?) {
     val c = AppState.controller
     var code by rememberSaveable { mutableStateOf("") }
     Section("Transmit range")
-    Text("Receives 136–174 / 400–480 MHz; transmits only in the amateur bands of the IARU region where it is (GPS; without a position 144–146 and 430–440 MHz). Fixed in the firmware.", fontSize = 12.sp)
+    Text("Receives 136–174 / 400–480 MHz; transmits only in the amateur bands of the IARU region where it is, by GPS: Europe 144–146 and 430–440 MHz, Americas 144–148 and 430–450 MHz (without a position 144–146 and 430–440 MHz). Fixed in the firmware.", fontSize = 12.sp)
     if (sa == null) return
     when {
         sa.txUnlocked -> {
