@@ -30,13 +30,14 @@ object TrackerMode {
     const val FST4W = 8
     const val SAT = 9
     const val M17 = 10                          // LilyGO T-TWR only: APRS in M17 APRS packets; M17 SMS and voice-call callsigns / GNSS heard
+    const val FM = 11                           // LilyGO T-TWR only: FM voice radio (APRS beacons on the APRS frequency during voice)
 
     fun name(m: Int): String = when (m) {
         APRS_LORA -> "APRS LoRa"; APRS_FSK -> "APRS FSK"; MORSE -> "Morse / CW"; WSPR -> "WSPR"; LRFHSS -> "LR-FHSS"
-        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; M17 -> "M17"; else -> "Mode $m"
+        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; M17 -> "M17"; FM -> "FM voice"; else -> "Mode $m"
     }
 
-    fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK || m == M17
+    fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK || m == M17 || m == FM
 }
 
 data class ModeOption(val mode: Int, val name: String)
@@ -60,6 +61,8 @@ data class TrackerInfo(
     val radio: String = "lora",                 // "lora" (SX12xx / LLCC68) or "sa868" (LilyGO T-TWR Plus: FM radio, APRS AFSK 1200)
     val sa868: Sa868Info? = null,               // only with radio = "sa868"; its settings are the "sa868" group of the configuration
     val hasM17: Boolean = false,                // M17 mode and the "m17sms" command (T-TWR)
+    val hasFm: Boolean = false,                 // FM voice mode: "fm*", "qsy", "carrier" (T-TWR)
+    val bcastChip: String = "none",             // broadcast receiver on I2C ("RDA5807M", "Si4703", "Si4735"): "bcast", "bcastset"
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -67,7 +70,9 @@ data class TrackerInfo(
 data class Sa868Info(
     val revision: Int, val firmware: String, val band: String, val ok: Boolean,
     val modem: String = "", val rxHz: Long = 0, val txHz: Long = 0, val m17Hz: Long = 0,
+    val dapnetHz: Long = 0, val speakerFromEsp: Boolean = false,
 ) {
+    val uhf: Boolean get() = band.equals("UHF", ignoreCase = true)
     val text: String get() = if (!ok) "SA868 not answering" else String.format(java.util.Locale.US, "SA868 %s, Rev%.1f, %s firmware", band, revision / 10.0, firmware)
     val channel: String get() = when {
         rxHz <= 0 -> modem
@@ -178,6 +183,9 @@ sealed class ControlEvent {
         // rotor following what the tracker hears (firmware with sources 4 / 5): callsign filter, max age, moving-station estimate
         val filter: String = "", val maxAgeMin: Int = 30, val predict: Boolean = true, val predictMaxS: Int = 300,
     ) : ControlEvent()
+    data class Fm(val state: FmState) : ControlEvent()
+    data class FmMemories(val max: Int, val items: List<FmChannel>) : ControlEvent()
+    data class Bcast(val state: BcastState) : ControlEvent()
     data class Ok(val command: String, val id: Int?) : ControlEvent()
     data class Error(val command: String, val id: Int?, val message: String) : ControlEvent()
     data class Unknown(val raw: String) : ControlEvent()
@@ -223,6 +231,9 @@ object Control {
             "ota" -> ControlEvent.OtaProgress(o.long("off") ?: 0, o.bool("done") ?: false)
             "msgs" -> ControlEvent.Messages(o.int("tot") ?: 0, o.int("unread") ?: 0, o.int("from") ?: 0, o.objList("items").map { message(it) })
             "msg" -> ControlEvent.MessageChanged(o.int("tot") ?: 0, o.int("unread") ?: 0, if (o.containsKey("c")) message(o) else null)
+            "fm" -> ControlEvent.Fm(FmState.parse(o))
+            "bcast" -> ControlEvent.Bcast(BcastState.parse(o))
+            "fmmems" -> ControlEvent.FmMemories(o.int("max") ?: 32, o.objList("mem").map { FmChannel.parse(it) })
             "heard" -> ControlEvent.Heard(o.int("tot") ?: 0, o.long("pkts") ?: 0, o.int("from") ?: 0, o.objList("items").mapNotNull { heard(it) })
             "screen" -> ControlEvent.Screen(
                 ScreenMirror(
@@ -350,9 +361,12 @@ object Control {
             caps.str("radio") ?: "lora",
             o.obj("sa868")?.let {
                 Sa868Info(it.int("rev") ?: 0, it.str("fw") ?: "?", it.str("band") ?: "?", it.bool("ok") ?: false,
-                          it.str("modem") ?: "", it.long("rx") ?: 0, it.long("tx") ?: 0, it.long("m17") ?: 0)
+                          it.str("modem") ?: "", it.long("rx") ?: 0, it.long("tx") ?: 0, it.long("m17") ?: 0,
+                          it.long("dapnet") ?: 0, it.bool("spkEsp") ?: false)
             },
             caps.bool("m17") ?: false,
+            caps.bool("fm") ?: false,
+            caps.str("bcast") ?: "none",
         )
     }
 }

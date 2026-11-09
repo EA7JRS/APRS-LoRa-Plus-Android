@@ -145,6 +145,18 @@ fun TrackerTab() {
             }
         }
 
+        if (mode == TrackerMode.FM && i.hasFm) FmSection()
+        if (i.bcastChip != "none") BcastSection(i.bcastChip)
+
+        if (i.radio == "sa868") {
+            Section("Frequency calibration (SA868)")
+            Text("Unmodulated carrier for 30 s on the transmit frequency in use: measure it with an SDR and enter the error in WebUI > Frequency calibration (one ppm value for transmit and receive).", fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { c?.control("carrier", "s" to "start") }) { Text("Tune carrier") }
+                OutlinedButton(onClick = { c?.control("carrier", "s" to "stop") }) { Text("Stop") }
+            }
+        }
+
         if (mode == TrackerMode.M17 && i.hasM17) {
             Section("M17 SMS (to other M17 radios)")
             Text("APRS messages and beacons already go out as M17 APRS packets. This sends a plain M17 SMS (OpenRTX, M17 radios): one transmission, no acknowledgement.", fontSize = 12.sp)

@@ -6,6 +6,9 @@
 package es.ea7jrs.aprslorap
 
 import es.ea7jrs.aprslorap.core.ChatMessage
+import es.ea7jrs.aprslorap.core.BcastState
+import es.ea7jrs.aprslorap.core.FmChannel
+import es.ea7jrs.aprslorap.core.FmState
 import es.ea7jrs.aprslorap.core.ActionPage
 import es.ea7jrs.aprslorap.core.Gnss
 import es.ea7jrs.aprslorap.core.RotorPointing
@@ -48,6 +51,10 @@ object AppState {
     val trackerMessages = MutableStateFlow<List<TrackerMessage>>(emptyList())   // newest first
     val trackerMessageCounts = MutableStateFlow(0 to 0)                          // total, unread
     val heard = MutableStateFlow<List<HeardStation>>(emptyList())
+    // FM voice mode of the T-TWR
+    val fmState = MutableStateFlow<FmState?>(null)
+    val fmMemories = MutableStateFlow<List<FmChannel>>(emptyList())
+    val bcastState = MutableStateFlow<BcastState?>(null)                         // broadcast receiver on the tracker's I2C
     val heardCounts = MutableStateFlow(0 to 0L)                                  // stations, packets
     val screen = MutableStateFlow<ScreenMirror?>(null)
     val actions = MutableStateFlow<List<ActionPage>>(emptyList())

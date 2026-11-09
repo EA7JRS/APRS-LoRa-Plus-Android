@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import es.ea7jrs.aprslorap.core.FmQsy
 import es.ea7jrs.aprslorap.core.HeardStation
 import es.ea7jrs.aprslorap.core.Json
 import es.ea7jrs.aprslorap.core.JsonEdit
@@ -101,6 +102,14 @@ private fun HeardRow(h: HeardStation) {
         }
         h.status?.let { Text(it, fontSize = 12.sp) }
         h.comment?.let { Text(it, fontSize = 12.sp) }
+        // T-TWR: the station announces a voice frequency ("146.940MHz T100 -060"): QSY with the tracker's FM radio
+        val info = AppState.trackerInfo.collectAsState().value
+        val mhz = FmQsy.announcedMHz(h.call, h.comment)
+        if (info?.hasFm == true && mhz != null && FmQsy.inBand(mhz, info.sa868?.uhf == true)) {
+            OutlinedButton(onClick = { AppState.controller?.control("qsy", "c" to (h.comment ?: ""), "name" to h.call) }) {
+                Text(String.format(Locale.US, "QSY %.3f MHz (FM)", mhz), fontSize = 12.sp)
+            }
+        }
     }
 }
 

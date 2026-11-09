@@ -60,7 +60,9 @@ class Controller(
             // CW listening on RF: receive only
             "cwrx",
             // A-GPS data for the tracker's GNSS receiver: nothing is transmitted
-            "gpsaid")
+            "gpsaid",
+            // broadcast receiver (receive only) and the state of the T-TWR FM radio (tuning it is not here: it transmits)
+            "bcast", "bcastset", "fm")
         const val SAT_LIST_PAGE = 40
         const val SAT_LIST_MAX = 600
     }
@@ -256,6 +258,9 @@ class Controller(
                 AppState.heard.value = if (ev.from == 0) ev.items else AppState.heard.value + ev.items
             }
             is ControlEvent.Screen -> AppState.screen.value = ev.screen
+            is ControlEvent.Fm -> AppState.fmState.value = ev.state
+            is ControlEvent.FmMemories -> AppState.fmMemories.value = ev.items
+            is ControlEvent.Bcast -> AppState.bcastState.value = ev.state
             is ControlEvent.Actions -> {
                 if (actionsFresh) { actionsBuilding.clear(); actionsFresh = false }
                 actionsBuilding.add(ev.page)
@@ -305,6 +310,8 @@ class Controller(
                 "act" -> sendControlLine(Control.command("screen"))
                 "msg" -> { AppState.notice.value = "Message queued in the tracker"; sendControlLine(Control.command("msgs", "cnt" to 20)) }
                 "m17sms" -> AppState.notice.value = "M17 SMS sent"
+                "qsy" -> AppState.notice.value = "QSY sent to the tracker"
+                "carrier" -> AppState.notice.value = "Carrier on for 30 s: measure it with an SDR"
                 "ota" -> FirmwareUpdater.onStarted()
             }
             is ControlEvent.Error -> {

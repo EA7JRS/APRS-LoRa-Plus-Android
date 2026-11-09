@@ -226,6 +226,20 @@ private fun testControl() {
     eq(m17.hasM17, true, "T-TWR m17 cap"); eq(m17.sa868?.m17Hz, 433_475_000L, "M17 frequency")
     eq(m17.sa868?.channel, "M17, 433.4750 MHz", "SA868 channel text"); eq(TrackerMode.name(10), "M17", "M17 mode name"); eq(TrackerMode.isAprs(10), true, "M17 is an APRS mode")
     eq(Sa868Info(21, "NiceRF", "VHF", true, "AFSK 1200", 144_800_000, 145_000_000).channel, "AFSK 1200, RX 144.8000 / TX 145.0000 MHz", "SA868 split channel")
+    // FM voice mode (T-TWR)
+    val fmEv = Control.parse("""{"e":"fm","f":145650000,"tx":145050000,"sh":-1,"ofs":600000,"tm":1,"t":885,"d":23,"inv":false,"w":false,"hp":true,"m":true,"i":3,"n":"EA7RCE","step":12500,"sq":2,"sqm":1,"sqa":true,"nr":2,"edit":0,"busy":true,"ptt":false,"txs":0,"rssi":-97,"scan":0,"arts":2,"eai":0,"aprs":true,"qsyb":true,"tok":true,"spk":true}""") as ControlEvent.Fm
+    eq(fmEv.state.channel.freqText, "145.6500", "FM frequency"); eq(fmEv.state.channel.shiftText, "-0.600 MHz", "FM shift"); eq(fmEv.state.channel.toneText, "T 88.5", "FM tone")
+    eq(fmEv.state.channel.name, "EA7RCE", "FM memory name"); eq(fmEv.state.memIndex, 3, "FM memory index"); eq(fmEv.state.artsText, "ARTS: IN RANGE", "ARTS state")
+    eq(fmEv.state.squelchAuto && fmEv.state.speakerFromEsp && fmEv.state.noiseReduction == 2, true, "FM squelch / NR")
+    val mems = Control.parse("""{"e":"fmmems","max":32,"mem":[{"i":0,"n":"S20","f":145500000,"sh":0,"ofs":600000,"tm":0,"t":885,"d":23,"inv":false,"w":false,"hp":false},{"i":5,"n":"RPT","f":439050000,"sh":-1,"ofs":7600000,"tm":3,"t":885,"d":754,"inv":true,"w":true,"hp":true}]}""") as ControlEvent.FmMemories
+    eq(mems.items.size, 2, "FM memories"); eq(mems.items[1].index, 5, "FM memory slot"); eq(mems.items[1].toneText, "DCS 754I", "FM DCS text")
+    eq(FmQsy.announcedMHz(null, "146.940MHz T100 -060 Club"), 146.94, "QSY in comment"); eq(FmQsy.announcedMHz(null, "146.82 MHz T107"), 146.82, "QSY with space")
+    eq(FmQsy.announcedMHz("146.94-R", "T100 -060"), 146.94, "QSY in object name"); eq(FmQsy.announcedMHz("EA7JRS-7", "Hola 145.5"), null, "no QSY")
+    eq(FmQsy.inBand(145.65, false) && !FmQsy.inBand(439.05, false) && FmQsy.inBand(439.05, true), true, "QSY band")
+    eq(TrackerMode.name(11), "FM voice", "FM mode name"); eq(TrackerMode.isAprs(11), true, "FM is an APRS mode")
+    val bc = Control.parse("""{"e":"bcast","chip":"Si4735","on":true,"band":0,"f":101500,"vol":9,"mute":false,"mono":false,"rssi":45,"snr":22,"st":true,"seek":false,"ps":"RNE R 3 ","rt":"Hoy en Radio 3","pi":57873,"ct":"2026-11-09 13:05","ctOff":2,"bands":[0,1,2,3],"presets":[101500,999,0,0,0,0,0,0,0,0]}""") as ControlEvent.Bcast
+    eq(bc.state.freqText, "101.50 MHz", "broadcast frequency"); eq(bc.state.station, "RNE R 3", "RDS name"); eq(bc.state.bands.size, 4, "Si4735 bands")
+    eq(BcastState.freqText(bc.state.presets[1]), "999 kHz", "AM preset text")
 
     val st = Control.parse("""{"e":"status","mode":0,"profile":0,"lora":0,"digi":false,"smart":true,"sos":false,"batt":4.05,"up":3600,"bleKiss":true}""")
     eq((st as ControlEvent.Status).status, TrackerStatus(0, 0, 0, false, true, false, 4.05, 3600, true), "status event")
