@@ -1154,7 +1154,31 @@ private fun testWsjt() {
     eq(Wsjt.Mode.entries.count { it.isFst4w }, 4, "FST4W periods"); eq(Wsjt.slotStart(1_799_999, Wsjt.Mode.FST4W_1800.periodMs), 0L, "FST4W-1800 slot")
 }
 
+private fun testNetWeather() {
+    val owm = """{"coord":{"lon":-3.94,"lat":37.19},"weather":[{"id":802,"main":"Clouds","description":"scattered clouds","icon":"03d"}],"base":"stations","main":{"temp":18.42,"feels_like":17.9,"pressure":1018,"humidity":56,"sea_level":1018,"grnd_level":955},"visibility":10000,"wind":{"speed":4.12,"deg":250,"gust":7.2},"clouds":{"all":40},"dt":1793970000,"sys":{"country":"ES"},"timezone":3600,"id":2517117,"name":"Granada","cod":200}"""
+    val w = NetWeather.parseOwmWeather(owm)
+    check(w != null && w.tempC == 18.42 && w.humidity == 56.0 && w.pressureHpa == 1018.0 && w.windDeg == 250 && w.gustMs == 7.2 && w.clouds == 40 && w.place == "Granada" && w.description == "scattered clouds", "OWM weather")
+    eq(NetWeather.parseOwmWeather("""{"cod":401,"message":"Invalid API key"}"""), null, "OWM bad key")
+    eq(NetWeather.parseOwmWeather("not json"), null, "OWM garbage")
+    val air = """{"coord":{"lon":-3.94,"lat":37.19},"list":[{"main":{"aqi":2},"components":{"co":201.94,"no":0.0,"no2":0.77,"o3":68.66,"so2":0.64,"pm2_5":7.5,"pm10":9.1,"nh3":0.12},"dt":1793970000}]}"""
+    val wa = NetWeather.parseOwmAir(air, w)
+    check(wa != null && wa.aqiOwm == 2 && wa.pm25 == 7.5 && wa.pm10 == 9.1 && wa.tempC == 18.42, "OWM air pollution")
+    val iq = """{"status":"success","data":{"city":"Granada","state":"Andalusia","country":"Spain","location":{"type":"Point","coordinates":[-3.6,37.18]},"current":{"pollution":{"ts":"2026-11-09T13:00:00.000Z","aqius":42,"mainus":"p2","aqicn":15,"maincn":"p2"},"weather":{"ts":"2026-11-09T14:00:00.000Z","ic":"03d","hu":55,"pr":1017,"tp":19,"wd":240,"ws":3.6}}}}"""
+    val i1 = NetWeather.parseIqair(iq, null)
+    check(i1 != null && i1.source == "IQAir" && i1.aqiUs == 42 && i1.mainPollutant == "PM2.5" && i1.tempC == 19.0 && i1.windMs == 3.6 && i1.timeS == 1794232800L, "IQAir alone")
+    val i2 = NetWeather.parseIqair(iq, wa)
+    check(i2 != null && i2.source == "OWM+IQAir" && i2.aqiUs == 42 && i2.tempC == 18.42 && i2.aqiOwm == 2, "IQAir added to OWM")
+    eq(NetWeather.parseIqair("""{"status":"fail","data":{"message":"incorrect_api_key"}}""", null), null, "IQAir bad key")
+    val cmd = NetWeather.command(i2!!, 1793970600L)
+    check(cmd.startsWith("{\"c\":\"wxnet\",\"src\":\"OWM+IQAir\",\"pl\":\"Granada\",\"t\":18.4,\"h\":56,\"p\":1018") && cmd.contains("\"aqus\":42") && cmd.contains("\"age\":600") && cmd.contains("\"mp\":\"PM2.5\""), "wxnet command: " + cmd)
+    check(NetWeather.owmWeatherUrl(37.19151, -3.93670, "k y").endsWith("lat=37.1915&lon=-3.9367&units=metric&appid=k+y"), "OWM url")
+    check(NetWeather.iqairUrl(37.0, -3.0, "abc").startsWith("https://api.airvisual.com/v2/nearest_city?lat=37.0000&lon=-3.0000&key=abc"), "IQAir url")
+    eq(NetWeather.usAqiName(42), "Good", "US AQI band"); eq(NetWeather.owmAqiName(5), "Very poor", "OWM AQI name")
+    check(NetWeather.summary(i2).contains("US AQI 42 (Good)"), "net weather summary")
+}
+
 fun main() {
+    testNetWeather();
     testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)

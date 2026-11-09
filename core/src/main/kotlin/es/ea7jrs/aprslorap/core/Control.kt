@@ -66,6 +66,7 @@ data class TrackerInfo(
     val satMaxBytes: Int = Control.SAT_DATA_MAX, // satellite file the tracker can store (the app filters sats_all.txt by groups to fit)
     val hasSatFav: Boolean = false,             // favorites and categories ("satfav", "satcat")
     val hasSatFm: Boolean = false,              // T-TWR: the FM VFO follows the satellite ("satrx" / "sattx" also in FM mode, "sattx pos")
+    val hasWxNet: Boolean = false,              // weather from the internet for the TELEMETRY page ("wxnet")
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -385,6 +386,7 @@ object Control {
             caps.int("satMax") ?: SAT_DATA_MAX,
             caps.bool("satFav") ?: false,
             caps.bool("satFm") ?: false,
+            caps.bool("wxnet") ?: false,
         )
     }
 }

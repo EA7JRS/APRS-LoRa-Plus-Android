@@ -278,6 +278,8 @@ fun SensorsTab() {
             if (s.magAligned != null) Field("Compass aligned to the board", if (s.magAligned == true) "Yes" else "No")
         }
 
+        NetWeatherSection(settings, info?.hasWxNet == true)
+
         Section("Power")
         val pw = sensors
         if (pw == null) Text("No data yet") else {
@@ -364,4 +366,38 @@ fun DapnetTab() {
             }
         }
     }
+}
+
+
+/** Weather and air quality from the internet (OpenWeatherMap / IQAir) for the TELEMETRY page of the tracker. */
+@Composable
+private fun NetWeatherSection(settings: Settings, trackerTakesIt: Boolean) {
+    val ctx = LocalContext.current
+    val data by AppState.netWx.collectAsState()
+    val msg by AppState.netWxMessage.collectAsState()
+    var on by rememberSaveable { mutableStateOf(settings.netWxOn) }
+    var owm by rememberSaveable { mutableStateOf(settings.owmKey) }
+    var iq by rememberSaveable { mutableStateOf(settings.iqairKey) }
+    var minutes by rememberSaveable { mutableStateOf(settings.netWxMinutes.toString()) }
+    Section("Weather from the internet (TELEMETRY page)")
+    if (!trackerTakesIt) Text("The tracker firmware is too old to show it (no wxnet command): it is only shown here.", fontSize = 12.sp)
+    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Download every few minutes and send to the tracker", Modifier.weight(1f), fontSize = 14.sp)
+        androidx.compose.material3.Switch(on, { v -> on = v; settings.netWxOn = v; if (v) NetWeatherFetcher.fetchNow(ctx, settings) })
+    }
+    OutlinedTextField(owm, { owm = it.trim(); settings.owmKey = owm }, label = { Text("OpenWeatherMap API key (free)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(iq, { iq = it.trim(); settings.iqairKey = iq }, label = { Text("IQAir AirVisual API key (free Community)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        OutlinedTextField(minutes, { minutes = it.filter(Char::isDigit).take(3); minutes.toIntOrNull()?.let { m -> settings.netWxMinutes = m.coerceAtLeast(es.ea7jrs.aprslorap.core.NetWeather.MIN_MINUTES) } },
+            label = { Text("Every (min, ≥ 10)") }, singleLine = true, modifier = Modifier.weight(1f))
+        Button(onClick = { NetWeatherFetcher.fetchNow(ctx, settings) }, modifier = Modifier.padding(start = 8.dp)) { Text("Now") }
+    }
+    data?.let { d ->
+        Field("Source", d.source + if (d.place.isNotBlank()) " · ${d.place}" else "")
+        Text(es.ea7jrs.aprslorap.core.NetWeather.summary(d), fontSize = 13.sp)
+        if (d.description.isNotBlank()) Text(d.description, fontSize = 12.sp)
+    }
+    if (msg.isNotBlank()) Text(msg, fontSize = 12.sp)
+    Text("At the tracker's GNSS position (or the phone's last one). OpenWeatherMap gives weather and air pollution (AQI 1–5, PM2.5, PM10); IQAir the US AQI and the main pollutant (and the weather, without an OpenWeatherMap key). " +
+         "Free plans: OpenWeatherMap 1000 calls a day, IQAir 10 000 a month; 15 minutes keeps you well inside. The tracker shows it marked NET and does not put it in APRS weather reports.", fontSize = 11.sp)
 }

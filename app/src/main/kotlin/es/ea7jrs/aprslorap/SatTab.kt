@@ -134,7 +134,8 @@ fun SatTab() {
             else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Field("Satellite", (s.name ?: "?") + (s.noradId?.let { " ($it)" } ?: ""))
-                    if (hasFav && s.noradId != null) TextButton(onClick = { c?.control("satfav", "id" to s.noradId, "on" to !s.favorite); markFav(s.noradId, !s.favorite) }) {
+                    val nid = s.noradId
+                    if (hasFav && nid != null) TextButton(onClick = { c?.control("satfav", "id" to nid, "on" to !s.favorite); markFav(nid, !s.favorite) }) {
                         Text(if (s.favorite) "★ Favorite" else "☆ Add to favorites")
                     }
                 }

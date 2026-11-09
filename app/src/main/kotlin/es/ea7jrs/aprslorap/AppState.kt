@@ -63,6 +63,9 @@ object AppState {
     val configMessage = MutableStateFlow("")
     // SAT mode: current pass, list of satellites, transmitters, receiver, rotor
     val satState = MutableStateFlow<SatState?>(null)
+    /** Weather from the internet (OpenWeatherMap / IQAir) for the tracker's TELEMETRY page, and the last message of the download. */
+    val netWx = MutableStateFlow<es.ea7jrs.aprslorap.core.NetWeather.Data?>(null)
+    val netWxMessage = MutableStateFlow("")
     val satList = MutableStateFlow<List<SatEntry>>(emptyList())
     val satSelected = MutableStateFlow(-1)                                       // index in the tracker's list
     val satListTotal = MutableStateFlow(0)
@@ -139,6 +142,8 @@ object AppState {
     val fwMessage = MutableStateFlow("")
 
     @Volatile var controller: Controller? = null
+    /** Application context for helpers that run from the Controller (internet weather). */
+    @Volatile var appContext: android.content.Context? = null
     @Volatile var notifier: Notifier? = null
     @Volatile var ble: TrackerBle? = null
 

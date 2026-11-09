@@ -121,6 +121,20 @@ class Settings(ctx: Context) {
         get() = p.getString("sat_url", es.ea7jrs.aprslorap.core.Sat.ALL_DATA_URL)!!.ifBlank { es.ea7jrs.aprslorap.core.Sat.ALL_DATA_URL }
         set(v) { p.edit().putString("sat_url", v.trim()).apply() }
 
+    /** Weather from the internet for the tracker's TELEMETRY page (NetWeatherFetcher): on / off, interval and the user's keys. */
+    var netWxOn: Boolean
+        get() = p.getBoolean("netwx_on", false)
+        set(v) { p.edit().putBoolean("netwx_on", v).apply() }
+    var netWxMinutes: Int
+        get() = p.getInt("netwx_min", es.ea7jrs.aprslorap.core.NetWeather.DEFAULT_MINUTES)
+        set(v) { p.edit().putInt("netwx_min", v).apply() }
+    var owmKey: String
+        get() = p.getString("owm_key", "")!!
+        set(v) { p.edit().putString("owm_key", v.trim()).apply() }
+    var iqairKey: String
+        get() = p.getString("iqair_key", "")!!
+        set(v) { p.edit().putString("iqair_key", v.trim()).apply() }
+
     /** CelesTrak groups sent to the tracker (letters of Sat.GROUPS; empty = all that fit). Amateur radio and space stations by default. */
     var satGroups: String
         get() = p.getString("sat_groups", "as")!!

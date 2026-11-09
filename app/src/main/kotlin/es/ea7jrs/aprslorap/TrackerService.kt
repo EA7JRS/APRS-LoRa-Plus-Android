@@ -91,6 +91,7 @@ class TrackerService : Service() {
         else AppState.nmeaStatus.value = "Off"
         if (settings.mockLocation) mock = MockLocation(this) { AppState.mockStatus.value = it }.takeIf { it.start() }
         else AppState.mockStatus.value = "Off"
+        AppState.appContext = applicationContext
         val c = Controller(
             settings, notifier,
             transmitBytes = { bleLink.write(it) },

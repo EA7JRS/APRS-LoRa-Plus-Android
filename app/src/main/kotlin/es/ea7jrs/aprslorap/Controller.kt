@@ -62,7 +62,9 @@ class Controller(
             // A-GPS data for the tracker's GNSS receiver: nothing is transmitted
             "gpsaid",
             // broadcast receiver (receive only) and the state of the T-TWR FM radio (tuning it is not here: it transmits)
-            "bcast", "bcastset", "fm")
+            "bcast", "bcastset", "fm",
+            // weather from the internet for the TELEMETRY page: shown only, not transmitted
+            "wxnet")
         const val SAT_LIST_PAGE = 40
         const val SAT_LIST_MAX = 3000             // the T-TWR keeps up to 3000 satellites (complete file)
     }
@@ -182,6 +184,11 @@ class Controller(
     // ------------------------------------------------------------------ control service
 
     /** Sends a control command to the tracker (any thread). */
+    /** Internet weather for the TELEMETRY page (NetWeatherFetcher, any thread): only to firmware that knows "wxnet". */
+    fun sendWxNet(line: String) {
+        exec.execute { safe { if (controlOn && AppState.trackerInfo.value?.hasWxNet == true) sendControlLine(line) } }
+    }
+
     fun control(name: String, vararg fields: Pair<String, Any?>) {
         if (!controlOn) { AppState.error.value = "The tracker has no control service (update its firmware)"; return }
         if (name !in QUERIES && !Licence.isValid(settings)) {
@@ -577,8 +584,12 @@ class Controller(
 
     // ------------------------------------------------------------------
 
+    private var netWxCheckMs = 0L
+
     private fun tick() {
         if (engine.tick().isNotEmpty()) publish()
+        val nowWx = System.currentTimeMillis()
+        if (controlOn && nowWx - netWxCheckMs > 30_000) { netWxCheckMs = nowWx; AppState.appContext?.let { NetWeatherFetcher.maybeFetch(it, settings) } }
         drainTx()
         val now = System.currentTimeMillis()
         if (AppState.configBusy.value && now > configDeadlineMs) {
