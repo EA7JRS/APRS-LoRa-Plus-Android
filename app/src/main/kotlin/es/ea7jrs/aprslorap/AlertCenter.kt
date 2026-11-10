@@ -144,7 +144,14 @@ object AlertCenter {
             else -> listOf(a.text, where ?: "").filter { it.isNotBlank() }.joinToString(". ")
         }
         val replyTo = if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
-        n.alert(CAR_PREFIX + a.key, a.kind.title, a.who, text.ifBlank { a.kind.title }, replyTo, lat, lon)
+        // avatar: the station's APRS symbol; AIS: the APRS yacht (distress) or ship symbol, as the tracker shows them
+        val icon = when (a.kind) {
+            AlertKind.AIS_DISTRESS -> n.symbolIcon(a.who, '/', 'Y')
+            AlertKind.AIS_COLLISION -> n.symbolIcon(a.who, '/', 's')
+            AlertKind.EAI, AlertKind.MAN_DOWN -> null
+            else -> n.symbolIcon(a.who)
+        }
+        n.alert(CAR_PREFIX + a.key, a.kind.title, a.who, text.ifBlank { a.kind.title }, replyTo, lat, lon, icon)
     }
 
     /** "Mark as read" in the car: silences the alarm; for the man-down warning it is "I'm OK". */

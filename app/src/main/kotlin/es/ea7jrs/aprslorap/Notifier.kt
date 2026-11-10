@@ -41,6 +41,28 @@ class Notifier(private val ctx: Context) {
     }
 
     private val history = HashMap<String, MutableList<ChatMessage>>()
+    private val icons = HashMap<String, androidx.core.graphics.drawable.IconCompat>()
+
+    /**
+     * The station's APRS symbol (as aprs.fi draws it) on a light disc, for the sender's avatar on the phone and in Android Auto.
+     * [table] + [code] given, or looked up in the station list and the tracker's heard list.
+     */
+    fun symbolIcon(call: String, table: Char? = null, code: Char? = null): androidx.core.graphics.drawable.IconCompat? {
+        val s = AppState.stations.value.firstOrNull { it.call.equals(call, true) }
+        val h = AppState.heard.value.firstOrNull { it.call.equals(call, true) }
+        val sym = es.ea7jrs.aprslorap.core.AprsSymbols.of(table ?: s?.symbolTable ?: h?.symbol?.getOrNull(0), code ?: s?.symbolCode ?: h?.symbol?.getOrNull(1)) ?: return null
+        val key = "" + (sym.base) + (sym.overlay)
+        synchronized(icons) { icons[key]?.let { return it } }
+        return try {
+            val px = 128
+            val out = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(out)
+            c.drawCircle(px / 2f, px / 2f, px / 2f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE8EEF3.toInt() })
+            val sprite = AprsSprites.bitmap(ctx, sym, px * 5 / 8)
+            c.drawBitmap(sprite, px * 3 / 16f, px * 3 / 16f, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+            androidx.core.graphics.drawable.IconCompat.createWithBitmap(out).also { synchronized(icons) { icons[key] = it } }
+        } catch (_: Exception) { null }
+    }
 
     init {
         val nm = ctx.getSystemService(NotificationManager::class.java)       // nullable in the SDK annotations
@@ -130,11 +152,12 @@ class Notifier(private val ctx: Context) {
      * the alarm and, for the man-down warning, means "I'm OK".
      */
     @SuppressLint("MissingPermission")
-    fun alert(peer: String, title: String, who: String, text: String, replyTo: String?, lat: Double?, lon: Double?) {
+    fun alert(peer: String, title: String, who: String, text: String, replyTo: String?, lat: Double?, lon: Double?,
+              icon: androidx.core.graphics.drawable.IconCompat? = null) {
         val nmc = NotificationManagerCompat.from(ctx)
         if (!nmc.areNotificationsEnabled()) return
         val me = Person.Builder().setName("Me").build()
-        val from = Person.Builder().setName(who.ifBlank { title }).setKey(peer).build()
+        val from = Person.Builder().setName(who.ifBlank { title }).setKey(peer).also { b -> icon?.let { b.setIcon(it) } }.build()
         val style = NotificationCompat.MessagingStyle(me).setConversationTitle(title).setGroupConversation(false)
             .addMessage(text, System.currentTimeMillis(), from)
         val read = NotificationCompat.Action.Builder(
@@ -180,7 +203,7 @@ class Notifier(private val ctx: Context) {
         val nmc = NotificationManagerCompat.from(ctx)
         if (!nmc.areNotificationsEnabled()) return
         val me = Person.Builder().setName("Me").build()
-        val other = Person.Builder().setName(peer).setKey(peer).build()
+        val other = Person.Builder().setName(peer).setKey(peer).also { b -> symbolIcon(peer)?.let { b.setIcon(it) } }.build()
         val style = NotificationCompat.MessagingStyle(me)
         val msgs = synchronized(history) { history[peer].orEmpty().toList() }
         for (m in msgs) style.addMessage(m.text, m.timeMs, if (m.outgoing) me else other)
