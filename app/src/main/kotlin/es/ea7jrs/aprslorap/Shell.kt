@@ -202,6 +202,8 @@ fun App() {
         }
     }
 
+    AlertOverlay(nav)
+
     assign?.let { k ->
         AlertDialog(
             onDismissRequest = { assign = null },
@@ -399,6 +401,18 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
                 "auto" -> "Light from sunrise to sunset at our position (tracker GNSS or locator), dark at night."
                 else -> "Dark, for night and the car."
             }, fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+        }
+        MenuGroup("EMERGENCY ALERTS") {
+            var snd by remember { mutableStateOf(settings.alertSound) }
+            var vib by remember { mutableStateOf(settings.alertVibrate) }
+            var torch by remember { mutableStateOf(settings.alertTorch) }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                Chip("SOUND", snd, Modifier.weight(1f), color = Alp.Amber) { snd = !snd; settings.alertSound = snd }
+                Chip("VIBRATE", vib, Modifier.weight(1f), color = Alp.Amber) { vib = !vib; settings.alertVibrate = vib }
+                Chip("TORCH", torch, Modifier.weight(1f), color = Alp.Amber) { torch = !torch; settings.alertTorch = torch }
+            }
+            Text("The phone as a buzzer: alarm tone (sounds in silent mode, alarm volume), vibration and the torch flashing.",
+                fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

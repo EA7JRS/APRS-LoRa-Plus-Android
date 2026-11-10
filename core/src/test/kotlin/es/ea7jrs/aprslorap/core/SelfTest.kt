@@ -1215,7 +1215,7 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1357,6 +1357,41 @@ private fun testRtlUsb() {
     eq(RtlUsb.find(0x1a86, 0x7523), null, "CH340 is not an RTL-SDR")
     eq(RtlUsb.id(0x0bda, 0x2838), "0bda:2838", "USB id text")
     eq(RtlUsb.KNOWN.map { it.vid to it.pid }.toSet().size, RtlUsb.KNOWN.size, "no repeated ids")
+}
+
+private fun testAlerts() {
+    eq(Alerts.textKind("EMERGENCY need help", true), AlertKind.APRS_MESSAGE, "emergency message")
+    eq(Alerts.textKind("sos at km 12", false), AlertKind.APRS_BEACON, "sos beacon, any case")
+    eq(Alerts.textKind("SOSTENIDO", true), null, "SOS only as a word")
+    eq(Alerts.textKind("Man overboard!", true), AlertKind.MOB, "MOB")
+    eq(Alerts.textKind("normal text", true), null, "no alarm")
+    val l = Control.parse("""{"e":"led","msg":false,"unread":0,"emg":true,"ec":"EA7ZZZ-9","et":"Mic-E: Emergency!","ek":"emergency","em":false,"eq":3,"eo":true,"fl":true}""") as ControlEvent.Led
+    val a = Alerts.fromLed(l, 1000)!!
+    eq(a.kind, AlertKind.APRS_BEACON, "led beacon"); eq(a.key, "aprs:EA7ZZZ-9", "led key")
+    val ais = Alerts.fromLed(l.copy(kind = "ais_sos", emgCall = "970123456"), 1000)!!
+    eq(ais.kind, AlertKind.AIS_DISTRESS, "led AIS"); eq(ais.mmsi, 970123456L, "led AIS mmsi"); eq(ais.key, "ais:970123456", "led AIS key")
+    eq(Alerts.fromLed(l.copy(seq = 0), 1000), null, "old firmware: no alert from led")
+    val v = AisVessel(970123456, "T", "", "", 0, 14, 36.5, -6.2, 5, 0.8, 245.0, null, 5, 3.2, 212, null, null, false, text = "SART ACTIVE")
+    eq(Alerts.fromAis(v, 0)?.kind, AlertKind.AIS_DISTRESS, "SART")
+    eq(Alerts.fromAis(v.copy(text = "SART TEST"), 0), null, "SART test")
+    eq(Alerts.fromAis(v.copy(mmsi = 224123450, status = 0, text = "", danger = true), 0)?.kind, AlertKind.AIS_COLLISION, "collision")
+    val q = Alerts.Queue()
+    eq(q.offer(a, 1000), true, "new alert sounds")
+    eq(q.offer(a.copy(fromTracker = false), 2000), false, "same alert from the app: no second sound")
+    eq(q.items.size, 1, "one alert")
+    q.close(a.key, 3000)
+    eq(q.offer(a, 4000), false, "closed: quiet for 10 min")
+    eq(q.offer(a, 3000 + Alerts.QUIET_MS + 1), true, "after 10 min it opens again")
+    val cpa = Alerts.fromAis(v.copy(mmsi = 224123450, status = 0, text = "", danger = true), 0)!!
+    q.offer(cpa, 0); eq(q.offer(cpa.copy(kind = AlertKind.AIS_DISTRESS), 1), true, "collision then distress sounds again")
+    val e = Control.parse("""{"e":"eai","sos":2,"sent":3,"left":581,"by":"EA7URM-9","fm":false,"md":true,"mdLeft":27,"mdMin":15}""") as ControlEvent.Eai
+    eq(e.left, 581, "eai left"); eq(e.by, "EA7URM-9", "eai by"); eq(e.manDownLeft, 27, "man down left")
+    eq(Alerts.fromEai(e, "EA7JRS-7", 0).map { it.kind }, listOf(AlertKind.EAI, AlertKind.MAN_DOWN), "eai alerts")
+    eq(Alerts.formatLeft(581), "9:41", "countdown")
+    val own = Alerts.fromEai(e, "EA7JRS-7", 0)[0]
+    val q2 = Alerts.Queue(); q2.offer(own, 0); q2.close("eai", 1)
+    eq(q2.offer(own, 5000), false, "closed EAI stays closed while it lasts")
+    q2.end("eai"); eq(q2.offer(own, Alerts.QUIET_MS * 3), true, "next EAI opens again")
 }
 
 private fun testLights() {

@@ -1,0 +1,224 @@
+/* Copyright (C) 2026 Manuel - EA7JRS
+ *
+ * This file is part of APRS LoRa+ for Android.
+ * Licensed under the GNU General Public License, version 3 or later.
+ */
+package es.ea7jrs.aprslorap
+
+import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import es.ea7jrs.aprslorap.core.AisVessel
+import es.ea7jrs.aprslorap.core.AlertKind
+import es.ea7jrs.aprslorap.core.Alerts
+import es.ea7jrs.aprslorap.core.ControlEvent
+import es.ea7jrs.aprslorap.core.EmergencyAlert
+import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+
+/**
+ * Emergency alerts: APRS beacon or message, AIS distress or collision (from the tracker's alarm, the AIS list or what the app
+ * decodes itself), own EAI and man down (event "eai"). Opens the window over any screen, a full-screen notification when the
+ * app is not in front, and the phone's "buzzer": alarm tone (alarm stream: it sounds in silent mode), vibration and torch.
+ */
+object AlertCenter {
+    const val CH_ALERTS = "alerts"
+    private const val ID_ALERT = 7
+
+    val items = MutableStateFlow<List<EmergencyAlert>>(emptyList())
+    val eai = MutableStateFlow<ControlEvent.Eai?>(null)
+    val sounding = MutableStateFlow(false)
+
+    private val queue = Alerts.Queue()
+    private var ctx: Context? = null
+    private var settings: Settings? = null
+    private val exec = Executors.newSingleThreadScheduledExecutor()
+    private var beat: ScheduledFuture<*>? = null
+    private var tone: ToneGenerator? = null
+    private var torchId: String? = null
+    private var torchOn = false
+    private var startedMs = 0L
+    private const val MAX_MS = 10 * 60_000L                 // like the tracker: the alarm stops by itself after 10 minutes
+
+    fun init(c: Context) {
+        if (ctx != null) return
+        ctx = c.applicationContext
+        settings = Settings(c.applicationContext)
+        val ch = NotificationChannel(CH_ALERTS, "Emergency alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+            setSound(null, null)                         // the app plays the alarm itself (alarm stream, its own rhythm)
+            enableVibration(false)
+            setBypassDnd(true)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+        }
+        c.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
+    }
+
+    // ---- sources
+
+    fun onLed(l: ControlEvent.Led) { Alerts.fromLed(l, System.currentTimeMillis())?.let { offer(it) } }
+
+    fun onAis(v: AisVessel) { Alerts.fromAis(v, System.currentTimeMillis())?.let { offer(it) } }
+
+    fun onAprs(call: String, text: String, fromMsg: Boolean) { Alerts.fromAprs(call, text, fromMsg, System.currentTimeMillis())?.let { offer(it) } }
+
+    fun onEai(e: ControlEvent.Eai) {
+        eai.value = e
+        val now = System.currentTimeMillis()
+        val list = Alerts.fromEai(e, settings?.callsign ?: "", now)
+        for (k in listOf("eai", "mandown")) if (list.none { it.key == k }) synchronized(queue) { queue.end(k) }
+        for (a in list) offer(a)
+        publish()
+    }
+
+    private fun offer(a: EmergencyAlert) {
+        val isNew = synchronized(queue) { queue.offer(a, System.currentTimeMillis()) }
+        publish()
+        if (isNew) {
+            startAlarm(a.kind.distress)
+            notify(a)
+        }
+    }
+
+    private fun publish() {
+        val list = synchronized(queue) { queue.items }
+        items.value = list
+        if (list.isEmpty()) { stopAlarm(); cancelNotification() }
+    }
+
+    // ---- user actions
+
+    /** SILENCE ALARM: the phone and the tracker (its buzzer, LED and flash; its alarm screen stays). */
+    fun silence() {
+        stopAlarm()
+        val c = AppState.controller ?: return
+        if (AppState.trackerLeds.value?.emg == true) c.control("alarm", "s" to "off")
+    }
+
+    fun close(key: String) {
+        synchronized(queue) { queue.close(key, System.currentTimeMillis()) }
+        publish()
+    }
+
+    // ---- the phone's "buzzer"
+
+    @Synchronized
+    private fun startAlarm(distress: Boolean) {
+        val s = settings ?: return
+        stopAlarmLocked()
+        startedMs = System.currentTimeMillis()
+        sounding.value = true
+        if (s.alertSound) tone = try { ToneGenerator(AudioManager.STREAM_ALARM, 100) } catch (_: Exception) { null }
+        if (s.alertVibrate) vibrate(distress)
+        if (s.alertTorch) torchId = findTorch()
+        // distress: fast (0.25 s on / 0.25 s off, like the tracker's alarm); warning: 1 s every 2.5 s
+        val period = if (distress) 500L else 2500L
+        val on = if (distress) 250 else 1000
+        beat = exec.scheduleAtFixedRate({
+            try {
+                if (System.currentTimeMillis() - startedMs > MAX_MS) { stopAlarm(); return@scheduleAtFixedRate }
+                tone?.startTone(if (distress) ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK else ToneGenerator.TONE_PROP_BEEP2, on)
+                torch(true)
+                exec.schedule({ torch(false) }, on.toLong(), TimeUnit.MILLISECONDS)
+            } catch (_: Exception) {}
+        }, 0, period, TimeUnit.MILLISECONDS)
+    }
+
+    @Synchronized
+    fun stopAlarm() { stopAlarmLocked() }
+
+    private fun stopAlarmLocked() {
+        beat?.cancel(false)
+        beat = null
+        try { tone?.stopTone(); tone?.release() } catch (_: Exception) {}
+        tone = null
+        torch(false)
+        torchId = null
+        try { vibrator()?.cancel() } catch (_: Exception) {}
+        sounding.value = false
+    }
+
+    private fun vibrator(): Vibrator? {
+        val c = ctx ?: return null
+        if (Build.VERSION.SDK_INT >= 31) return c.getSystemService(VibratorManager::class.java)?.defaultVibrator
+        @Suppress("DEPRECATION")
+        return c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    }
+
+    private fun vibrate(distress: Boolean) {
+        val v = vibrator() ?: return
+        val pattern = if (distress) longArrayOf(0, 250, 250) else longArrayOf(0, 1000, 1500)
+        val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        try {
+            @Suppress("DEPRECATION")
+            v.vibrate(VibrationEffect.createWaveform(pattern, 0), attrs)
+        } catch (_: Exception) {}
+    }
+
+    private fun findTorch(): String? = try {
+        val cm = ctx?.getSystemService(CameraManager::class.java)
+        cm?.cameraIdList?.firstOrNull { cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true }
+    } catch (_: Exception) { null }
+
+    private fun torch(on: Boolean) {
+        val id = torchId ?: return
+        if (on == torchOn) return
+        try { ctx?.getSystemService(CameraManager::class.java)?.setTorchMode(id, on); torchOn = on } catch (_: Exception) {}
+    }
+
+    // ---- notification (full screen when the app is not in front or the phone is locked)
+
+    @SuppressLint("MissingPermission")
+    private fun notify(a: EmergencyAlert) {
+        val c = ctx ?: return
+        val nmc = NotificationManagerCompat.from(c)
+        if (!nmc.areNotificationsEnabled()) return
+        val open = PendingIntent.getActivity(c, ID_ALERT, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = listOf(a.who, a.text).filter { it.isNotBlank() }.joinToString(" · ")
+        val b = NotificationCompat.Builder(c, CH_ALERTS)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle(a.kind.title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setColor(if (a.kind.distress) 0xFFFF3B3B.toInt() else 0xFFFFB347.toInt())
+            .setContentIntent(open)
+            .setFullScreenIntent(open, true)
+            .setAutoCancel(true)
+        try { nmc.notify(ID_ALERT, b.build()) } catch (_: Exception) {}
+    }
+
+    private fun cancelNotification() {
+        val c = ctx ?: return
+        try { NotificationManagerCompat.from(c).cancel(ID_ALERT) } catch (_: Exception) {}
+    }
+
+    /** Short label of who raised the own EAI. */
+    fun eaiSource(e: ControlEvent.Eai): String = when {
+        e.by.isNotBlank() -> "Started by ${e.by} · “EAI <code>”"
+        e.fm && e.fmBy == "mandown" -> "Started by the man-down timer"
+        e.fm && e.fmBy == "app" -> "Started from this app"
+        e.fm -> "Started from the tracker menu"
+        else -> "SOS beacon of this tracker"
+    }
+
+    fun isOwn(k: AlertKind) = k == AlertKind.EAI || k == AlertKind.MAN_DOWN
+}

@@ -450,6 +450,17 @@ class Settings(ctx: Context) {
         get() = p.getString("ui_keys", "BCN,MSG,SLIST,MAP")!!.split(',').filter { it.isNotEmpty() }.let { if (it.size == 4) it else listOf("BCN", "MSG", "SLIST", "MAP") }
         set(v) { p.edit().putString("ui_keys", v.joinToString(",")).apply() }
 
+    /** Emergency alerts: the phone's "buzzer" (alarm tone on the alarm stream, vibration, torch strobe). */
+    var alertSound: Boolean
+        get() = p.getBoolean("alert_sound", true)
+        set(v) { p.edit().putBoolean("alert_sound", v).apply() }
+    var alertVibrate: Boolean
+        get() = p.getBoolean("alert_vibrate", true)
+        set(v) { p.edit().putBoolean("alert_vibrate", v).apply() }
+    var alertTorch: Boolean
+        get() = p.getBoolean("alert_torch", false)
+        set(v) { p.edit().putBoolean("alert_torch", v).apply() }
+
     /** Theme: "dark" (default), "light", "system" (as Android) or "auto" (by the Sun at our position). */
     var uiTheme: String
         get() = p.getString("ui_theme", "dark")!!

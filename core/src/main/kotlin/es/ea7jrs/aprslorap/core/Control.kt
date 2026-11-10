@@ -218,7 +218,11 @@ sealed class ControlEvent {
     /** Radio activity for the TX / RX lights: "tx" while a frame is being sent, "idle" after it, "rx" for each frame heard. */
     data class Rf(val state: String, val rssi: Int?, val snr: Double?) : ControlEvent()
     /** Tracker lights: unread-message LED, emergency alarm sounding (station, detail) and the white flash. */
-    data class Led(val msg: Boolean, val unread: Int, val emg: Boolean, val emgCall: String, val emgText: String, val flash: Boolean) : ControlEvent()
+    data class Led(val msg: Boolean, val unread: Int, val emg: Boolean, val emgCall: String, val emgText: String, val flash: Boolean,
+                   val kind: String = "", val fromMsg: Boolean = false, val seq: Int = 0, val open: Boolean = false) : ControlEvent()
+    /** Own emergency: SOS beacon (0 off, 1 countdown, 2 on; [left] s and [by] only for the remote EAI), voice EAI of the T-TWR, man down. */
+    data class Eai(val sos: Int, val sent: Int, val left: Int?, val by: String, val fm: Boolean, val fmLeft: Int?, val fmBy: String, val fmMode: Int,
+                   val manDown: Boolean, val manDownLeft: Int?, val manDownMin: Int, val atMs: Long = System.currentTimeMillis()) : ControlEvent()
     data class Targets(
         val selected: Int, val source: Int, val items: List<RotorTarget>,
         // rotor following what the tracker hears (firmware with sources 4 / 5): callsign filter, max age, moving-station estimate
@@ -334,7 +338,10 @@ object Control {
                 o.objList("items").mapNotNull { AisVessel.parse(it, System.currentTimeMillis()) })
             "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"), o.long("f"))
             "rf" -> ControlEvent.Rf(o.str("s") ?: "idle", o.int("rssi"), o.num("snr"))
-            "led" -> ControlEvent.Led(o.bool("msg") ?: false, o.int("unread") ?: 0, o.bool("emg") ?: false, o.str("ec") ?: "", o.str("et") ?: "", o.bool("fl") ?: false)
+            "led" -> ControlEvent.Led(o.bool("msg") ?: false, o.int("unread") ?: 0, o.bool("emg") ?: false, o.str("ec") ?: "", o.str("et") ?: "", o.bool("fl") ?: false,
+                o.str("ek") ?: "", o.bool("em") ?: false, o.int("eq") ?: 0, o.bool("eo") ?: false)
+            "eai" -> ControlEvent.Eai(o.int("sos") ?: 0, o.int("sent") ?: 0, o.int("left"), o.str("by") ?: "", o.bool("fm") ?: false, o.int("fmLeft"),
+                o.str("fmBy") ?: "", o.int("fmMode") ?: 0, o.bool("md") ?: false, o.int("mdLeft"), o.int("mdMin") ?: 0)
             "targets" -> ControlEvent.Targets(
                 o.int("sel") ?: 0, o.int("src") ?: 0,
                 o.objList("items").mapNotNull { t ->

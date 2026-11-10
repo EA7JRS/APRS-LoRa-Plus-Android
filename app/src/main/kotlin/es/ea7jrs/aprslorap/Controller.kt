@@ -66,7 +66,9 @@ class Controller(
             // weather from the internet for the TELEMETRY page: shown only, not transmitted
             "wxnet",
             // AIS receiver: list, settings and the phone's own decoded frames (nothing is transmitted)
-            "aislist", "aisset", "aisin")
+            "aislist", "aisset", "aisin",
+            // silencing the tracker's emergency alarm does not transmit
+            "alarm")
         const val SAT_LIST_PAGE = 40
         const val SAT_LIST_MAX = 3000             // the T-TWR keeps up to 3000 satellites (complete file)
     }
@@ -146,6 +148,13 @@ class Controller(
         table.onFrame(frame, now)
         AppState.addLog("RX " + (via?.let { "[$it] " } ?: "") + frame.toTnc2())
         val p = Aprs.parse(frame.infoText)
+        // emergency words in a message to anyone or in a beacon comment (Mic-E status: the tracker's alarm, event "led")
+        when (p) {
+            is AprsPacket.Message -> if (!p.isAck && !p.isRej) AlertCenter.onAprs(frame.source.text(), p.text, true)
+            is AprsPacket.Position -> if (p.symbolTable == '\\' && p.symbolCode == '!') AlertCenter.onAprs(frame.source.text(), "EMERGENCY " + p.comment, false)
+                else AlertCenter.onAprs(frame.source.text(), p.comment, false)
+            else -> {}
+        }
         if (p is AprsPacket.Message) {
             engine.onMessage(frame.source.text(), p)?.let { msg ->
                 notifier.incoming(msg, table.get(msg.peer))
@@ -198,7 +207,9 @@ class Controller(
 
     fun control(name: String, vararg fields: Pair<String, Any?>) {
         if (!controlOn) { AppState.error.value = "The tracker has no control service (update its firmware)"; return }
-        if (name !in QUERIES && !Licence.isValid(settings)) {
+        // stopping the own emergency (SOS / EAI) or answering the man-down warning does not transmit
+        val stopsEmergency = name == "eai" && fields.any { it.first == "s" && (it.second == "stop" || it.second == "ok") }
+        if (name !in QUERIES && !stopsEmergency && !Licence.isValid(settings)) {
             AppState.error.value = "Callsign not validated in RadioID: the app cannot command the tracker"
             return
         }
@@ -305,11 +316,12 @@ class Controller(
                 val m = AppState.aisVessels.value.toMutableMap()
                 m[ev.vessel.mmsi] = es.ea7jrs.aprslorap.core.Ais.merge(m[ev.vessel.mmsi], ev.vessel)
                 AppState.aisVessels.value = m
+                m[ev.vessel.mmsi]?.let { AlertCenter.onAis(it) }
             }
             is ControlEvent.AisList -> {
                 val m = AppState.aisVessels.value.toMutableMap()
                 if (ev.from == 0) m.keys.retainAll(ev.items.map { it.mmsi }.toSet() + m.filterValues { System.currentTimeMillis() - it.receivedAtMs < 60_000 }.keys)
-                for (v in ev.items) m[v.mmsi] = es.ea7jrs.aprslorap.core.Ais.merge(m[v.mmsi], v)
+                for (v in ev.items) { m[v.mmsi] = es.ea7jrs.aprslorap.core.Ais.merge(m[v.mmsi], v); AlertCenter.onAis(m[v.mmsi]!!) }
                 AppState.aisVessels.value = m
                 AppState.aisSource.value = ev.source + if (ev.channel.isNotBlank()) " (channel ${ev.channel})" else ""
                 AppState.aisMessages.value = ev.messages
@@ -328,7 +340,8 @@ class Controller(
                 "rx" -> AppState.rfRxAtMs.value = System.currentTimeMillis()
                 else -> AppState.rfTxSinceMs.value = 0L
             }
-            is ControlEvent.Led -> AppState.trackerLeds.value = ev
+            is ControlEvent.Led -> { AppState.trackerLeds.value = ev; AlertCenter.onLed(ev) }
+            is ControlEvent.Eai -> AlertCenter.onEai(ev)
             is ControlEvent.CwRx -> {
                 AppState.cwRxOn.value = ev.on
                 AppState.cwRxDbm.value = if (ev.on) ev.dbm ?: AppState.cwRxDbm.value else null
