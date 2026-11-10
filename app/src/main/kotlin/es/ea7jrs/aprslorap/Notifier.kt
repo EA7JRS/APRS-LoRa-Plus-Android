@@ -47,6 +47,29 @@ class Notifier(private val ctx: Context) {
      * The station's APRS symbol (as aprs.fi draws it) on a light disc, for the sender's avatar on the phone and in Android Auto.
      * [table] + [code] given, or looked up in the station list and the tracker's heard list.
      */
+    /** DAPNET's mark (three linked rings, the image Manuel gave), drawn on a light disc: avatar of the DAPNET pages. */
+    val dapnetIcon: androidx.core.graphics.drawable.IconCompat? by lazy {
+        try {
+            val px = 128
+            val out = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(out)
+            val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            p.color = 0xFFE8EEF3.toInt(); c.drawCircle(px / 2f, px / 2f, px / 2f, p)
+            val k = px * 0.62f / 280f                                // the 280 x 280 drawing, centred
+            val o = px * 0.19f
+            fun x(v: Float) = o + v * k
+            p.style = android.graphics.Paint.Style.STROKE
+            p.color = 0xFF5BBEF5.toInt(); p.strokeWidth = 9f * k
+            c.drawLine(x(118f), x(75f), x(178f), x(106f), p)
+            c.drawLine(x(126f), x(168f), x(176f), x(146f), p)
+            p.color = 0xFF1E78B4.toInt(); p.strokeWidth = 15f * k
+            c.drawCircle(x(90f), x(60f), 31f * k, p)
+            c.drawCircle(x(220f), x(126f), 48f * k, p)
+            c.drawCircle(x(72f), x(196f), 60f * k, p)
+            androidx.core.graphics.drawable.IconCompat.createWithBitmap(out)
+        } catch (_: Exception) { null }
+    }
+
     fun symbolIcon(call: String, table: Char? = null, code: Char? = null): androidx.core.graphics.drawable.IconCompat? {
         val s = AppState.stations.value.firstOrNull { it.call.equals(call, true) }
         val h = AppState.heard.value.firstOrNull { it.call.equals(call, true) }
@@ -123,7 +146,8 @@ class Notifier(private val ctx: Context) {
         val style = NotificationCompat.MessagingStyle(me).setConversationTitle("DAPNET")
         val now = System.currentTimeMillis()
         for (x in pages) {
-            val from = Person.Builder().setName(if (x.own) "RIC ${x.ric}" else "RIC ${x.ric} (other)").setKey("ric${x.ric}").build()
+            val from = Person.Builder().setName(if (x.own) "RIC ${x.ric}" else "RIC ${x.ric} (other)").setKey("ric${x.ric}")
+                .also { b -> dapnetIcon?.let { b.setIcon(it) } }.build()
             style.addMessage(x.text, now - x.ageS * 1000, from)
         }
         val read = NotificationCompat.Action.Builder(
