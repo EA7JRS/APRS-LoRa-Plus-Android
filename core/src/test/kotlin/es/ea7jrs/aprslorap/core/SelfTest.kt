@@ -1212,7 +1212,7 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1347,4 +1347,11 @@ private fun testSun() {
     // sunrise in Seville on 2026-11-10 is ~08:10 CET (07:10 UTC)
     check(!Sun.isDay(37.39, -5.99, utc(2026, 11, 10, 6, 55)), "before sunrise")
     check(Sun.isDay(37.39, -5.99, utc(2026, 11, 10, 7, 25)), "after sunrise")
+}
+
+private fun testRtlUsb() {
+    check(RtlUsb.find(0x0bda, 0x2838) != null, "RTL-SDR Blog dongle known")
+    eq(RtlUsb.find(0x1a86, 0x7523), null, "CH340 is not an RTL-SDR")
+    eq(RtlUsb.id(0x0bda, 0x2838), "0bda:2838", "USB id text")
+    eq(RtlUsb.KNOWN.map { it.vid to it.pid }.toSet().size, RtlUsb.KNOWN.size, "no repeated ids")
 }

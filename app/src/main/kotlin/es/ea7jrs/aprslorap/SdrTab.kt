@@ -134,10 +134,7 @@ fun SdrTab() {
                 Text("Bias-T (LNA)", fontSize = 13.sp)
                 Switch(biasT, { biasT = it; settings.sdrBiasTee = it })
             }
-            if (driverMissing) OutlinedButton(onClick = {
-                try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + Sdr.RtlTcp.DRIVER_PACKAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                catch (_: Exception) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + Sdr.RtlTcp.DRIVER_PACKAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            }) { Text("Install the RTL-SDR driver") }
+            if (local) RtlUsbPanel()
         }
 
         // ---- tuning
