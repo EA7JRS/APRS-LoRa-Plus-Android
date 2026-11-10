@@ -44,8 +44,8 @@ Con eso cada ejecución de la CI deja el artefacto **aprs-lora-plus-play-aab** (
 
 ### Textos de la ficha
 **Descripción breve (≤ 80)**
-- EN: `Companion app for the APRS LoRa+ tracker: APRS messages, stations, map, rotor and more.`
-- ES: `App del tracker APRS LoRa+: mensajes APRS, estaciones, mapa, rotor y mucho más.`
+- EN: `APRS LoRa+ tracker companion: messages, stations, map, alerts, rotor and more.`
+- ES: `App del tracker APRS LoRa+: mensajes APRS, estaciones, mapa, alertas y rotor.`
 
 **Descripción completa (EN)**
 ```
@@ -64,7 +64,23 @@ It is made for licensed radio amateurs.
 A licensed amateur radio callsign is needed to transmit: the app checks it in RadioID.net and only listens until then.
 Open source (GPL-3.0). No ads, no tracking.
 ```
-**Descripción completa (ES)**: la misma, traducida (puedo prepararla cuando la necesites).
+**Descripción completa (ES)**
+```
+APRS LoRa+ es la app compañera del tracker APRS LoRa+ (placas ESP32 con LoRa, FSK y FM) y de su familia de equipos.
+Está pensada para radioaficionados con licencia.
+
+• Pantalla tipo emisora: banda del tracker con S-meter, luces TX/RX, banda CAT o SDR, estado de baliza, iGate y rotor.
+• Mensajes APRS con estado de entrega y respuesta desde las notificaciones y Android Auto.
+• Estaciones oídas y mapa con OpenStreetMap, IGN y cartas náuticas, radar meteorológico, círculos de alcance y haz del rotor.
+• Alertas de emergencia: balizas y mensajes APRS de emergencia, socorro y colisión AIS, hombre caído y EAI.
+• Control completo del tracker por Bluetooth con PIN: modos, perfiles, sensores, cielo GNSS, satélites con Doppler,
+  DAPNET, CW, AIS, configuración y actualización del firmware.
+• Caja del rotor, cluster DX con sintonía, receptores SDR, modos digitales (CW, RTTY, PSK, FT8, FT4, WSPR, FST4W) y libro de
+  guardia con QRZ, LoTW y eQSL.
+
+Para transmitir hace falta un indicativo de radioaficionado: la app lo comprueba en RadioID.net y hasta entonces solo escucha.
+Código abierto (GPL-3.0). Sin anuncios ni seguimiento.
+```
 
 **Gráficos**: icono 512 × 512 (el de la app), imagen destacada 1024 × 500, al menos 2 capturas de teléfono (las saco de las maquetas o del móvil cuando funcione).
 
