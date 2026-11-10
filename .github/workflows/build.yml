@@ -64,8 +64,10 @@ jobs:
           if [ -n "$ALP_UPLOAD_KEYSTORE" ]; then
               # only base64 characters: a copy from Windows brings CR / LF, spaces or a BOM
               k=$(printf '%s' "$ALP_UPLOAD_KEYSTORE" | tr -dc 'A-Za-z0-9+/=')
-              # diagnosis without showing the key: length, length mod 4, first 3 characters (a PKCS12 / JKS file starts "MII" / "/u3")
-              echo "keystore secret: ${#ALP_UPLOAD_KEYSTORE} characters, ${#k} base64 characters, mod 4 = $(( ${#k} % 4 )), starts '${k:0:3}'"
+              # a keystore is several kB: a short value means another secret (a password?) went into ALP_UPLOAD_KEYSTORE
+              if [ ${#k} -lt 1000 ] || [ $(( ${#k} % 4 )) -ne 0 ]; then
+                  echo "::error::ALP_UPLOAD_KEYSTORE is not the .jks in base64 (${#k} characters; it should be several thousand)"; exit 1
+              fi
               printf '%s' "$k" | base64 -d > "$RUNNER_TEMP/upload.jks"
               export ALP_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
           else
