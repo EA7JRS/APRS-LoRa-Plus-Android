@@ -124,6 +124,51 @@ class Notifier(private val ctx: Context) {
         nmc.notify(DAPNET_PEER.hashCode(), b.build())
     }
 
+    /**
+     * An emergency alert also as a conversation (MessagingStyle), so that Android Auto shows it and reads it aloud: the alarm-type
+     * notification of AlertCenter does not reach the car. Reply (APRS alerts) answers the station by APRS; "Mark as read" silences
+     * the alarm and, for the man-down warning, means "I'm OK".
+     */
+    @SuppressLint("MissingPermission")
+    fun alert(peer: String, title: String, who: String, text: String, replyTo: String?, lat: Double?, lon: Double?) {
+        val nmc = NotificationManagerCompat.from(ctx)
+        if (!nmc.areNotificationsEnabled()) return
+        val me = Person.Builder().setName("Me").build()
+        val from = Person.Builder().setName(who.ifBlank { title }).setKey(peer).build()
+        val style = NotificationCompat.MessagingStyle(me).setConversationTitle(title).setGroupConversation(false)
+            .addMessage(text, System.currentTimeMillis(), from)
+        val read = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_view, "Mark as read",
+            PendingIntent.getBroadcast(ctx, peer.hashCode() + 1,
+                Intent(ctx, ReplyReceiver::class.java).setAction(ACTION_READ).putExtra(EXTRA_PEER, peer),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE),
+        ).setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build()
+        val b = NotificationCompat.Builder(ctx, CH_MESSAGES)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setStyle(style)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(ctx, peer.hashCode() + 3, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+        if (replyTo != null) {
+            b.addAction(NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_send, "Reply",
+                PendingIntent.getBroadcast(ctx, peer.hashCode(),
+                    Intent(ctx, ReplyReceiver::class.java).setAction(ACTION_REPLY).putExtra(EXTRA_PEER, replyTo),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE),
+            ).addRemoteInput(RemoteInput.Builder(KEY_REPLY).setLabel("Reply").build())
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+                .setShowsUserInterface(false).setAllowGeneratedReplies(false).build())
+        }
+        b.addAction(read)
+        if (lat != null && lon != null) {
+            val nav = Intent(Intent.ACTION_VIEW, Uri.parse(Nav.googleNavigationUri(lat, lon))).setPackage(GOOGLE_MAPS)
+            b.addAction(NotificationCompat.Action.Builder(android.R.drawable.ic_menu_directions, "Go to",
+                PendingIntent.getActivity(ctx, peer.hashCode() + 2, nav, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).build())
+        }
+        try { nmc.notify(peer.hashCode(), b.build()) } catch (_: Exception) {}
+    }
+
     fun clear(peer: String) {
         if (peer == DAPNET_PEER) synchronized(pageHistory) { pageHistory.clear() }
         synchronized(history) { history.remove(peer) }

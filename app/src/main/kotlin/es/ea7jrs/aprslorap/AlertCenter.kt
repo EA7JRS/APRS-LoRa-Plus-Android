@@ -92,11 +92,13 @@ object AlertCenter {
         if (isNew) {
             startAlarm(a.kind.distress)
             notify(a)
+            toCar(a)
         }
     }
 
     private fun publish() {
         val list = synchronized(queue) { queue.items }
+        for (k in items.value.map { it.key } - list.map { it.key }.toSet()) AppState.notifier?.clear(CAR_PREFIX + k)
         items.value = list
         if (list.isEmpty()) { stopAlarm(); cancelNotification() }
     }
@@ -112,7 +114,43 @@ object AlertCenter {
 
     fun close(key: String) {
         synchronized(queue) { queue.close(key, System.currentTimeMillis()) }
+        AppState.notifier?.clear(CAR_PREFIX + key)
         publish()
+    }
+
+    // ---- Android Auto: the same alert as a conversation, read aloud by the car
+
+    const val CAR_PREFIX = "ALERT:"
+
+    private fun toCar(a: EmergencyAlert) {
+        val n = AppState.notifier ?: return
+        var lat: Double? = null
+        var lon: Double? = null
+        when (a.kind) {
+            AlertKind.AIS_DISTRESS, AlertKind.AIS_COLLISION -> a.mmsi?.let { AppState.aisVessels.value[it] }?.let { lat = it.lat; lon = it.lon }
+            AlertKind.EAI, AlertKind.MAN_DOWN -> {}
+            else -> {
+                val s = AppState.stations.value.firstOrNull { it.call.equals(a.who, true) }
+                val h = AppState.heard.value.firstOrNull { it.call.equals(a.who, true) }
+                lat = s?.lat ?: h?.lat; lon = s?.lon ?: h?.lon
+            }
+        }
+        val e = eai.value
+        val where = Own.to(lat, lon)?.let { String.format(java.util.Locale.US, "%s, bearing %03.0f°", Fmt.km(it.first), it.second) }
+        val text = when (a.kind) {
+            AlertKind.EAI -> listOfNotNull("Own emergency on this tracker", e?.let { eaiSource(it) },
+                (e?.left ?: e?.fmLeft)?.let { "${Alerts.formatLeft(it.toLong())} left" }).joinToString(". ")
+            AlertKind.MAN_DOWN -> "No key touched for ${e?.manDownMin ?: 0} min: EAI starts in ${e?.manDownLeft ?: 30} s. Mark as read means I'm OK."
+            else -> listOf(a.text, where ?: "").filter { it.isNotBlank() }.joinToString(". ")
+        }
+        val replyTo = if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
+        n.alert(CAR_PREFIX + a.key, a.kind.title, a.who, text.ifBlank { a.kind.title }, replyTo, lat, lon)
+    }
+
+    /** "Mark as read" in the car: silences the alarm; for the man-down warning it is "I'm OK". */
+    fun acknowledgedInCar(key: String) {
+        silence()
+        if (key == "mandown") AppState.controller?.control("eai", "s" to "ok")
     }
 
     // ---- the phone's "buzzer"

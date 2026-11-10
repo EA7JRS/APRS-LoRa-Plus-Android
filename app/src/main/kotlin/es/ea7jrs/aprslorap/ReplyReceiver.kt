@@ -28,7 +28,10 @@ class ReplyReceiver : BroadcastReceiver() {
                 c.sendMessage(peer, text)
                 AppState.notifier?.replied(peer, text, null)
             }
-            Notifier.ACTION_READ -> AppState.notifier?.clear(peer)
+            Notifier.ACTION_READ -> {
+                AppState.notifier?.clear(peer)
+                if (peer.startsWith(AlertCenter.CAR_PREFIX)) AlertCenter.acknowledgedInCar(peer.removePrefix(AlertCenter.CAR_PREFIX))
+            }
         }
     }
 }
