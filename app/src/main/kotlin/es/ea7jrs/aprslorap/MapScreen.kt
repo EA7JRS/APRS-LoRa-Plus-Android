@@ -13,6 +13,10 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.util.LruCache
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -172,6 +176,7 @@ private class MapHolder(val map: MapView) {
     var layerId = ""
     var esriKey = ""
     var seamarks: TilesOverlay? = null
+    var radar: RadarOverlay? = null
     val dynamic = ArrayList<Overlay>()
     var centered = false
     var focused: String? = null
@@ -191,6 +196,21 @@ fun MapScreen(nav: Navigator) {
     var beam by remember { mutableStateOf(settings.mapBeam) }
     var minutes by remember { mutableStateOf(settings.mapMinutes) }
     var key by remember { mutableStateOf(settings.arcgisKey) }
+    var radarOn by remember { mutableStateOf(settings.mapRadar) }
+    var aemetKey by remember { mutableStateOf(settings.aemetKey) }
+    var aemet by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var aemetOpen by remember { mutableStateOf(false) }
+    var aemetMsg by remember { mutableStateOf("") }
+    val radarFrames by WxRadarSource.frames.collectAsState()
+    val radarStatus by WxRadarSource.status.collectAsState()
+    var frameIx by remember { mutableStateOf(-1) }                     // -1 = newest
+    var playing by remember { mutableStateOf(false) }
+    LaunchedEffect(radarOn) { while (radarOn) { WxRadarSource.refresh(); kotlinx.coroutines.delay(60_000) } }
+    LaunchedEffect(playing, radarFrames) {
+        val n = radarFrames?.past?.size ?: 0
+        while (playing && n > 0) { frameIx = if (frameIx < 0 || frameIx >= n - 1) 0 else frameIx + 1; kotlinx.coroutines.delay(if (frameIx == n - 1) 1500 else 600) }
+    }
+    val frame = radarFrames?.past?.let { p -> if (p.isEmpty()) null else p[if (frameIx < 0) p.size - 1 else frameIx.coerceAtMost(p.size - 1)] }
     var panel by remember { mutableStateOf(false) }
     val now = rememberNow(30_000)
     val shown = all.filter { it.lat != null && it.lon != null && now - it.lastMs <= minutes * 60_000L }
@@ -231,6 +251,15 @@ fun MapScreen(nav: Navigator) {
             } else if (!sea && oldSea != null) {
                 map.overlays.remove(oldSea); oldSea.onDetach(map); holder.seamarks = null
             }
+            val oldRadar = holder.radar
+            if (radarOn && oldRadar == null) {
+                val o = RadarOverlay(map)
+                holder.radar = o
+                map.overlays.add(if (holder.seamarks != null) 1 else 0, o)
+            } else if (!radarOn && oldRadar != null) {
+                map.overlays.remove(oldRadar); holder.radar = null
+            }
+            holder.radar?.let { r -> r.host = radarFrames?.host ?: ""; if (r.frame != frame) r.frame = frame }
             map.overlays.removeAll(holder.dynamic.toSet()); holder.dynamic.clear()
             val center = me?.let { GeoPoint(it.first, it.second) }
             if (center != null && rings) for (r in listOf(10_000.0, 25_000.0, 50_000.0)) {
@@ -292,7 +321,8 @@ fun MapScreen(nav: Navigator) {
         }
 
         if (panel) Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 66.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Alp.Bg.copy(alpha = 0.97f))
-            .border(1.dp, Alp.KeyBorder, RoundedCornerShape(14.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            .border(1.dp, Alp.KeyBorder, RoundedCornerShape(14.dp)).heightIn(max = 560.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionLabel("BASE MAP")
             for (row in MapLayers.BASE.chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (l in row) RadioKey(l.label, Modifier.weight(1f).height(44.dp), labelSize = 15, bg = if (l.id == layer) Alp.Cyan else Alp.Key,
@@ -309,6 +339,18 @@ fun MapScreen(nav: Navigator) {
                 Toggle("Range rings", rings, color = Alp.Cyan) { rings = !rings; settings.mapRings = rings }
                 Toggle("Rotor beam", beam, color = Alp.Amber) { beam = !beam; settings.mapBeam = beam }
             }
+            SectionLabel("WEATHER RADAR")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Toggle("Radar (RainViewer)", radarOn, color = Alp.Cyan) { radarOn = !radarOn; settings.mapRadar = radarOn; if (!radarOn) playing = false }
+                RadioKey("AEMET Spain", Modifier.height(40.dp), labelSize = 14, enabled = aemetKey.isNotBlank()) {
+                    aemetOpen = true; aemetMsg = "Downloading the AEMET national radar…"; aemet = null
+                    WxRadarSource.aemetNational(aemetKey) { r -> r.onSuccess { aemet = it; aemetMsg = "" }.onFailure { aemetMsg = it.message ?: "AEMET: error" } }
+                }
+            }
+            OutlinedTextField(aemetKey, { aemetKey = it.trim(); settings.aemetKey = aemetKey }, label = { Text("Your AEMET OpenData API key (free, opendata.aemet.es)") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text("RainViewer: past radar, last 2 h every 10 min, regional detail (zoom 7), personal use. AEMET: the latest national composite image.",
+                fontSize = 12.sp, color = Alp.Muted)
             SectionLabel("STATIONS HEARD IN THE LAST")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (m in listOf(30, 60, 180, 720, 1440)) Chip(if (m >= 60) "${m / 60} h" else "$m min", m == minutes, height = 32.dp) { minutes = m; settings.mapMinutes = m }
@@ -316,9 +358,30 @@ fun MapScreen(nav: Navigator) {
         }
 
         val attr = (MapLayers.BASE.firstOrNull { it.id == (if (layer == "esri" && key.isBlank()) "osm" else layer) }?.attribution ?: "") +
-            (if (sea) " · Seamarks © OpenSeaMap" else "") + " · APRS symbols aprs.fi"
+            (if (sea) " · Seamarks © OpenSeaMap" else "") + (if (radarOn) " · Radar RainViewer" else "") + " · APRS symbols aprs.fi"
         Text(attr, fontSize = 11.sp, color = Alp.SubText, modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 10.dp, end = 76.dp)
             .widthIn(max = 300.dp).clip(RoundedCornerShape(6.dp)).background(Alp.Bg.copy(alpha = 0.85f)).padding(horizontal = 8.dp, vertical = 3.dp))
+        // radar frame bar: age of the frame shown, step back / forward, play the last 2 hours
+        if (radarOn) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 46.dp).clip(RoundedCornerShape(12.dp)).background(Alp.Bg.copy(alpha = 0.92f))
+            .border(1.dp, Alp.KeyBorder, RoundedCornerShape(12.dp)).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val n = radarFrames?.past?.size ?: 0
+            val cur = if (frameIx < 0) n - 1 else frameIx
+            Text("‹", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Alp.Text, modifier = Modifier.clickable(enabled = n > 0) { playing = false; frameIx = (cur - 1).coerceAtLeast(0) }.padding(horizontal = 10.dp))
+            Text(if (radarStatus.isNotBlank()) radarStatus else frame?.let { "RADAR " + es.ea7jrs.aprslorap.core.WxRadar.ago(System.currentTimeMillis() / 1000, it) + " · " + Fmt.hhmm(it.timeS * 1000, utc = true) + "Z" } ?: "RADAR …",
+                fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Alp.Cyan, maxLines = 1)
+            Text("›", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Alp.Text, modifier = Modifier.clickable(enabled = n > 0) { playing = false; frameIx = if (cur + 1 >= n - 1) -1 else cur + 1 }.padding(horizontal = 10.dp))
+            Text(if (playing) "■" else "▶", fontSize = 18.sp, color = Alp.Green, modifier = Modifier.clickable(enabled = n > 0) { playing = !playing; if (!playing) frameIx = -1 }.padding(horizontal = 10.dp))
+        }
+        if (aemetOpen) androidx.compose.ui.window.Dialog(onDismissRequest = { aemetOpen = false }) {
+            Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Alp.Panel).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("AEMET · national radar composite", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Alp.Text)
+                aemet?.let { androidx.compose.foundation.Image(it.asImageBitmap(), "AEMET national radar", Modifier.fillMaxWidth(), contentScale = androidx.compose.ui.layout.ContentScale.FillWidth) }
+                if (aemetMsg.isNotBlank()) Text(aemetMsg, fontSize = 14.sp, color = Alp.Muted)
+                Text("Source: AEMET (Agencia Estatal de Meteorología)", fontSize = 11.sp, color = Alp.Muted)
+                RadioKey("CLOSE", Modifier.fillMaxWidth().height(44.dp)) { aemetOpen = false }
+            }
+        }
         Box(Modifier.align(Alignment.BottomEnd).padding(12.dp).size(48.dp).clip(RoundedCornerShape(24.dp)).background(Alp.Bg).border(1.dp, Alp.KeyBorder, RoundedCornerShape(24.dp))
             .clickable { me?.let { holder.map.controller.animateTo(GeoPoint(it.first, it.second)) } ?: run { AppState.notice.value = "No own position yet (tracker GNSS or locator)" } },
             contentAlignment = Alignment.Center) { Text("◎", fontSize = 22.sp, color = Alp.Green) }

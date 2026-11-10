@@ -477,6 +477,13 @@ class Settings(ctx: Context) {
     var mapSeamarks: Boolean
         get() = p.getBoolean("map_sea", false)
         set(v) { p.edit().putBoolean("map_sea", v).apply() }
+    /** Weather radar over the map (RainViewer) and the AEMET OpenData key for the Spanish national radar image. */
+    var mapRadar: Boolean
+        get() = p.getBoolean("map_radar", false)
+        set(v) { p.edit().putBoolean("map_radar", v).apply() }
+    var aemetKey: String
+        get() = p.getString("aemet_key", "")!!
+        set(v) { p.edit().putString("aemet_key", v).apply() }
     var mapRings: Boolean
         get() = p.getBoolean("map_rings", true)
         set(v) { p.edit().putBoolean("map_rings", v).apply() }
