@@ -82,7 +82,7 @@ Para transmitir hace falta un indicativo de radioaficionado: la app lo comprueba
 Código abierto (GPL-3.0). Sin anuncios ni seguimiento.
 ```
 
-**Gráficos**: icono 512 × 512 (el de la app), imagen destacada 1024 × 500, al menos 2 capturas de teléfono (las saco de las maquetas o del móvil cuando funcione).
+**Gráficos**: icono `docs/play/icon-512.png` (512 × 512, PNG sin transparencia) e imagen destacada `docs/play/feature-1024x500.png` (1024 × 500, PNG sin transparencia), hechos con el logo de la bienvenida; al menos 2 capturas de teléfono (del móvil cuando funcione, o de las maquetas).
 
 ## 4. Contenido de la app (Play Console > Política > Contenido de la app)
 - **Anuncios**: no.
