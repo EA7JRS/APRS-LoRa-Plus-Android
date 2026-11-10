@@ -92,7 +92,7 @@ fun LogTab() {
                     )
                     for ((l, sent, conf) in flags) Text(
                         if (conf) l else if (sent) l.lowercase() else "·", fontSize = 13.sp, fontFamily = FontFamily.Monospace,
-                        color = if (conf) Color(0xFF2E7D32) else Color.Unspecified, modifier = Modifier.padding(start = 6.dp))
+                        color = if (conf) Alp.Green else Color.Unspecified, modifier = Modifier.padding(start = 6.dp))
                 }
             }
         }

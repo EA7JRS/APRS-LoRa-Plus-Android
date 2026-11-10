@@ -202,6 +202,6 @@ private fun WsjtSection(source: ModemRunner.Source) {
         val hit = d.calls.any { it in mine }
         Text(String.format(Locale.US, "%s %+3.0f %+4.1f %s  %s", fmt.format(java.util.Date(d.slotMs)), d.snr, d.dt,
                 d.rfHz?.let { es.ea7jrs.aprslorap.core.Sdr.mhz(it) } ?: String.format(Locale.US, "%4d", d.audioHz), d.message),
-            fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = if (hit) Color(0xFFD32F2F) else Color.Unspecified)
+            fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = if (hit) Alp.RedSoft else Color.Unspecified)
     }
 }

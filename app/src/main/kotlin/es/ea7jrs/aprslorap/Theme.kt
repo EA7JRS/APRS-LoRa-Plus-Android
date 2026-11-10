@@ -78,9 +78,12 @@ fun AlpTheme(content: @Composable () -> Unit) {
             background = Alp.Bg, onBackground = Alp.Text, surface = Alp.Bg, onSurface = Alp.Text,
             surfaceVariant = Alp.Key, onSurfaceVariant = Alp.Muted, surfaceContainer = Alp.Panel, surfaceContainerHigh = Alp.Key,
             surfaceContainerHighest = Alp.Key, surfaceContainerLow = Alp.Panel, surfaceContainerLowest = Alp.Bg,
-            outline = Alp.KeyBorder, outlineVariant = Alp.PanelBorder, error = Alp.RedSoft, onError = Alp.Bg,
+            outline = Color(0xFF6A7F94), outlineVariant = Alp.PanelBorder, error = Alp.RedSoft, onError = Alp.Bg,   // text field and switch borders visible on the dark background
         ),
         typography = Typography().withFont(Barlow),
-        content = content,
-    )
+    ) {
+        // the content colour of the older screens (Config, Connect, Tracker...) comes from a Material surface: without one it
+        // would be black, unreadable on the dark background
+        androidx.compose.material3.Surface(color = Alp.Bg, contentColor = Alp.Text, content = content)
+    }
 }
