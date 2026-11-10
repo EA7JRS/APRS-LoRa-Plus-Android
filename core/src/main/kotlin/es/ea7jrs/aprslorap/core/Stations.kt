@@ -14,28 +14,50 @@ data class Station(
     val lastPositionMs: Long?,
     val packets: Int,
     val lastPath: String,
+    val courseDeg: Int? = null, val speedKmh: Double? = null, val altitudeM: Double? = null,
+    /** Last weather report and when it came. */
+    val wx: AprsWx? = null, val wxMs: Long? = null,
+    /** Object or item: the station that sends it. */
+    val owner: String? = null,
+    /** Mic-E status ("En route", "Emergency"...). */
+    val micE: String? = null,
 )
 
 /** Table of heard stations: one entry per callsign, updated with each frame. */
 class StationTable(private val maxStations: Int = 500) {
     private val map = LinkedHashMap<String, Station>()
 
+    /**
+     * Updates the table with a frame. Third-party frames (from APRS-IS through an iGate) count for the station inside;
+     * objects and items are stations of their own, named after the object; a killed object leaves the table.
+     */
     fun onFrame(frame: Ax25Frame, nowMs: Long): Station {
-        val call = frame.source.text()
+        val f = Aprs.unwrapThirdParty(frame)
+        val p = Aprs.parse(f.infoText, f.destination.call)
+        val pos = p as? AprsPacket.Position
+        val report = p as? AprsPacket.Weather
+        val call = pos?.objectName ?: f.source.text()
         val old = map[call]
-        val pos = Aprs.parse(frame.infoText) as? AprsPacket.Position
-        val path = frame.path.joinToString(",") { it.toString() }
+        val path = f.path.joinToString(",") { it.toString() }
+        val wx = pos?.wx ?: report?.wx
         val st = Station(
             call = call,
             lat = pos?.lat ?: old?.lat, lon = pos?.lon ?: old?.lon,
             symbolTable = pos?.symbolTable ?: old?.symbolTable, symbolCode = pos?.symbolCode ?: old?.symbolCode,
-            comment = pos?.comment ?: old?.comment ?: "",
+            comment = pos?.comment ?: report?.comment?.takeIf { old?.comment.isNullOrEmpty() } ?: old?.comment ?: "",
             lastHeardMs = nowMs,
             lastPositionMs = if (pos != null) nowMs else old?.lastPositionMs,
             packets = (old?.packets ?: 0) + 1,
             lastPath = path,
+            courseDeg = if (pos != null) pos.courseDeg else old?.courseDeg,
+            speedKmh = if (pos != null) pos.speedKmh else old?.speedKmh,
+            altitudeM = pos?.altitudeM ?: old?.altitudeM,
+            wx = wx ?: old?.wx, wxMs = if (wx != null) nowMs else old?.wxMs,
+            owner = if (pos?.objectName != null) f.source.text() else old?.owner,
+            micE = pos?.micE ?: old?.micE.takeIf { pos == null },
         )
         map.remove(call)
+        if (pos?.killed == true) return st
         map[call] = st
         while (map.size > maxStations) map.remove(map.keys.first())
         return st
@@ -45,6 +67,13 @@ class StationTable(private val maxStations: Int = 500) {
 
     /** Most recently heard first. */
     fun recent(): List<Station> = map.values.reversed()
+
+    /** Weather stations (with a report), nearest first when [lat] / [lon] are known, else the newest report first. */
+    fun weather(lat: Double?, lon: Double?): List<Station> {
+        val l = map.values.filter { it.wx != null }
+        return if (lat == null || lon == null) l.sortedByDescending { it.wxMs ?: 0 }
+        else l.sortedBy { if (it.lat == null || it.lon == null) Double.MAX_VALUE else Geo.distanceKm(lat, lon, it.lat, it.lon) }
+    }
 
     /** Stations with a position, nearest first. */
     fun nearest(lat: Double, lon: Double): List<Pair<Station, Double>> =

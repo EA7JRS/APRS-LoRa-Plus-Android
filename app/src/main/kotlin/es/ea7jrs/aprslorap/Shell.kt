@@ -65,7 +65,7 @@ enum class Tool(val title: String) {
     DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"),
 }
 
-/** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
+/** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
 class Navigator(initial: List<String>) {
     val stack = mutableStateListOf<String>().apply { addAll(initial.ifEmpty { listOf("RADIO") }) }
     val top: String get() = stack.last()
@@ -100,6 +100,12 @@ class FKey(val id: String, val label: String, val sub: String?, val lit: Int = 0
 @Composable
 private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
     val stations by AppState.stations.collectAsState()
+    val wxNearest = remember(stations) {
+        val me = Own.position()
+        val wx = stations.filter { it.wx != null }
+        if (me == null) wx.maxByOrNull { it.wxMs ?: 0L }
+        else wx.minByOrNull { s -> val la = s.lat; val lo = s.lon; if (la == null || lo == null) Double.MAX_VALUE else es.ea7jrs.aprslorap.core.Geo.distanceKm(me.first, me.second, la, lo) }
+    }
     val msgs by AppState.messages.collectAsState()
     val status by AppState.trackerStatus.collectAsState()
     val info by AppState.trackerInfo.collectAsState()
@@ -119,6 +125,8 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
     val profile = info?.profiles?.getOrNull(status?.profile ?: -1)?.label
     val keys = listOf(
         FKey("SLIST", "S.LIST", "${stations.size} heard") { nav.go("STATIONS") },
+        FKey("WX", "WX", wxNearest?.let { n -> n.wx?.tempC?.let { String.format(java.util.Locale.US, "%.0f° %s", it, n.call) } } ?: "${stations.count { it.wx != null }} stations",
+            if (stations.any { it.wx != null }) 1 else 0) { nav.go("WX") },
         FKey("MSG", "MSG", if (unread > 0) "$unread new" else "${msgs.size} msgs", if (unread > 0) 2 else 0) { nav.go("MESSAGES") },
         FKey("BEACON", "BEACON", if (status?.smartBeacon == true) "SMART" else profile ?: "profile", if (status?.smartBeacon == true) 2 else 0) { nav.tool(Tool.TRACKER) },
         FKey("BCN", "BCN", "TX now") { AppState.controller?.control("beacon") ?: run { AppState.error.value = "Start the link first (Connect)" } },
@@ -152,9 +160,9 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 }
 
 val FMENU_PAGES = listOf(
-    "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET"),
+    "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
     "RADIO" to listOf("DX", "SAT", "ROTOR", "SDR", "MODES", "CWKEY", "SPOTS", "AIS"),
-    "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "HEARD", "RXPLUS"),
+    "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT"),
 )
 
 /** The app after the welcome screen: radio-style screens, touch keys, [F] menu and side menu. */
@@ -191,6 +199,7 @@ fun App() {
                     "DISP" -> DispScreen(nav, openDrawer)
                     "MAP" -> MapScreen(nav)
                     "STATIONS" -> StationListScreen(nav)
+                    "WX" -> WxScreen(nav)
                     "STATION" -> StationDetailScreen(nav, nav.arg)
                     "MESSAGES" -> MessageListScreen(nav)
                     "THREAD" -> ThreadScreen(nav, nav.arg)
@@ -255,7 +264,7 @@ private fun TouchKeys(nav: Navigator, keys: Map<String, FKey>, ids: List<String>
         ) { Text("F", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Alp.Bg) }
         for (id in ids) {
             val k = keys[id] ?: continue
-            val active = when (id) { "SLIST" -> nav.kind == "STATIONS"; "MSG" -> nav.kind == "MESSAGES"; "MAP" -> nav.kind == "MAP"; "DISP" -> nav.kind == "DISP"; "DX" -> nav.kind == "DX"; else -> false }
+            val active = when (id) { "SLIST" -> nav.kind == "STATIONS"; "MSG" -> nav.kind == "MESSAGES"; "MAP" -> nav.kind == "MAP"; "DISP" -> nav.kind == "DISP"; "DX" -> nav.kind == "DX"; "WX" -> nav.kind == "WX"; else -> false }
             val sub = when (id) { "BCN" -> "TX"; "MSG" -> k.sub?.takeIf { k.lit == 2 }; else -> null }
             RadioKey(k.label, Modifier.weight(1f).fillMaxHeight(), sub = sub, border = if (active) Alp.Amber else Alp.KeyBorder,
                 color = if (active) Alp.Amber else Alp.Text, subColor = if (k.lit == 2) Alp.Amber else Alp.Muted, onClick = k.action)
@@ -368,6 +377,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             MenuItem("Radio", active = nav.kind == "RADIO") { open("RADIO") }
             MenuItem("Map", active = nav.kind == "MAP") { open("MAP") }
             MenuItem("Stations", right = "${stations.size}", active = nav.kind == "STATIONS") { open("STATIONS") }
+            MenuItem("Weather stations", right = "${stations.count { it.wx != null }}", active = nav.kind == "WX") { open("WX") }
             MenuItem("Messages", badge = unread, active = nav.kind == "MESSAGES") { open("MESSAGES") }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
             MenuItem("Log & QSL") { tool(Tool.LOG) }

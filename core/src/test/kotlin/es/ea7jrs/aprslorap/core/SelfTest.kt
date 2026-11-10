@@ -1215,9 +1215,87 @@ private fun testNetWeather() {
     eq(TrackerMode.name(TrackerMode.AIS), "AIS receiver", "AIS mode name")
 }
 
+private fun testAprsWx() {
+    // APRS 1.0.1, chapter 12: complete weather report with an uncompressed position
+    val w = Aprs.parse("!4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900wRSW") as AprsPacket.Position
+    val x = w.wx!!
+    eq(x.windDirDeg, 220, "wx wind direction"); near(x.windKmh!!, 6.437, 0.01, "wx wind mph → km/h"); near(x.gustKmh!!, 8.047, 0.01, "wx gust")
+    near(x.tempC!!, 25.0, 0.01, "wx °F → °C"); near(x.rain1hMm!!, 0.0, 1e-9, "wx rain 1 h"); eq(x.humidityPct, 50, "wx humidity"); near(x.pressureHpa!!, 990.0, 0.01, "wx pressure")
+    eq(w.comment, "wRSW", "wx rest of the comment"); check(w.courseDeg == null && w.speedKmh == null, "the wind is not the course / speed of the station")
+    // with a timestamp, negative temperature, humidity 00 = 100 %, rain, luminosity over 1000
+    val w2 = (Aprs.parse("@092345z4903.50N/07201.75W_090/000g000t-07r012p034P056h00b10132l123 Meteo Sevilla") as AprsPacket.Position).wx!!
+    near(w2.tempC!!, -21.667, 0.01, "wx negative °F"); eq(w2.humidityPct, 100, "wx h00 = 100 %"); near(w2.rain1hMm!!, 3.048, 0.001, "wx rain 1 h mm")
+    near(w2.rain24hMm!!, 8.636, 0.001, "wx rain 24 h"); near(w2.rainMidnightMm!!, 14.224, 0.001, "wx rain since midnight"); eq(w2.luminosityWm2, 1123, "wx luminosity l")
+    eq(w2.wind(), "calm", "wx calm"); near(w2.pressureHpa!!, 1013.2, 0.01, "wx pressure 2")
+    // missing values ("..." or spaces)
+    val w3 = (Aprs.parse("=3725.50N/00559.00W_.../...g...t068h  b.....") as AprsPacket.Position).wx!!
+    check(w3.windDirDeg == null && w3.windKmh == null && w3.humidityPct == null && w3.pressureHpa == null, "wx missing values"); near(w3.tempC!!, 20.0, 0.01, "wx temp alone")
+    // positionless report
+    val r = Aprs.parse("_10090556c220s004g005t077r000p000P000h50b09900wRSW") as AprsPacket.Weather
+    eq(r.wx.windDirDeg, 220, "positionless wind direction"); near(r.wx.windKmh!!, 6.437, 0.01, "positionless wind speed"); eq(r.comment, "wRSW", "positionless rest")
+    // compressed position with the wind in the course / speed bytes (APRS 1.0.1 example "/5L!!<*e7" = 49°30'N 72°45'W)
+    val c = Aprs.parse("=/5L!!<*e7_7P[g005t077r000p000P000h50b09900wRSW") as AprsPacket.Position
+    near(c.lat, 49.5, 1e-4, "compressed wx lat"); near(c.lon, -72.75, 1e-4, "compressed wx lon")
+    eq(c.wx!!.windDirDeg, 88, "compressed wx wind direction"); near(c.wx!!.windKmh!!, 36.24 * 1.852, 0.2, "compressed wx wind speed"); near(c.wx!!.tempC!!, 25.0, 0.01, "compressed wx temp")
+    check(c.courseDeg == null, "compressed wx: no course")
+    // compressed car: course / speed of the station
+    val car = Aprs.parse("=/5L!!<*e7>7P[") as AprsPacket.Position
+    eq(car.courseDeg, 88, "compressed course"); near(car.speedKmh!!, 36.24 * 1.852, 0.2, "compressed speed")
+    // the weather symbol with a plain comment: no weather, no course
+    val plain = Aprs.parse("!3725.50N/00559.00W_Estacion meteo de Paterna") as AprsPacket.Position
+    check(plain.wx == null && plain.comment == "Estacion meteo de Paterna", "wx symbol with a plain comment")
+    // uncompressed car: course / speed / altitude now in the position
+    val mv = Aprs.parse("!4903.50N/07201.75W>088/036/A=001234 hi") as AprsPacket.Position
+    eq(mv.courseDeg, 88, "uncompressed course"); near(mv.speedKmh!!, 66.672, 0.01, "uncompressed speed"); near(mv.altitudeM!!, 376.12, 0.01, "uncompressed altitude")
+    eq(x.summary(), "25.0 °C · SW 6 km/h · 50 % · 990 hPa", "wx summary"); eq(x.mapLabel(), "25° 6 km/h", "wx map label")
+
+    // Mic-E: 37°11.49'N 3°56.20'W, 36 kn, course 88, 690 m, "Off duty", Kenwood-free status "Hola"
+    val m = Aprs.parse("`yT0oXt>/\";L}Hola", "SWQQTY") as AprsPacket.Position
+    near(m.lat, 37.1915, 1e-5, "Mic-E lat"); near(m.lon, -3.936667, 1e-5, "Mic-E lon")
+    near(m.speedKmh!!, 66.672, 0.01, "Mic-E speed"); eq(m.courseDeg, 88, "Mic-E course"); near(m.altitudeM!!, 690.0, 1e-9, "Mic-E altitude")
+    eq(m.symbolCode, '>', "Mic-E symbol"); eq(m.symbolTable, '/', "Mic-E table"); eq(m.comment, "Hola", "Mic-E text"); eq(m.micE, "Off duty", "Mic-E status")
+    val emg = Aprs.parse("`yT0oXt>/]Help=", "371QTY") as AprsPacket.Position
+    eq(emg.micE, Aprs.MICE_EMERGENCY, "Mic-E emergency"); check(emg.isEmergency, "Mic-E emergency flag"); eq(emg.comment, "Help", "Kenwood marks removed")
+    eq((Aprs.parse("`yT0oXt>/", "SW1QTY") as AprsPacket.Position).micE, "En route", "Mic-E bits 110")
+    eq((Aprs.parse("`yT0oXt>/", "AW1QTY") as AprsPacket.Position).micE, "Custom-1", "Mic-E custom")
+    check(Aprs.parse("`yT0oXt>/", "N0CALL") is AprsPacket.Other, "Mic-E with an invalid destination")
+    check(Aprs.parse("`yT0oXt>/") is AprsPacket.Other, "Mic-E without destination")
+
+    // objects and items
+    val o = Aprs.parse(";LEADER   *092345z4903.50N/07201.75W>088/036") as AprsPacket.Position
+    eq(o.objectName, "LEADER", "object name"); check(!o.killed, "live object"); eq(o.courseDeg, 88, "object course")
+    check((Aprs.parse(";LEADER   _092345z4903.50N/07201.75W>") as AprsPacket.Position).killed, "killed object")
+    val wo = Aprs.parse(";WX-PTN   *111111z3725.50N/00559.00W_090/010g015t050") as AprsPacket.Position
+    eq(wo.objectName, "WX-PTN", "weather object"); near(wo.wx!!.tempC!!, 10.0, 0.01, "weather object temp")
+    val it = Aprs.parse(")AID #2!4903.50N/07201.75WA") as AprsPacket.Position
+    eq(it.objectName, "AID #2", "item name"); check(!it.killed, "live item")
+    check((Aprs.parse(")AID #2_4903.50N/07201.75WA") as AprsPacket.Position).killed, "killed item")
+
+    // table: weather, objects, third party, Mic-E
+    val st = StationTable()
+    st.onFrame(Tnc2.parse("EA7URS-13>APRS:!3725.50N/00559.00W_220/004g005t077h50b10132Davis")!!, 100)
+    st.onFrame(Tnc2.parse("EA7URS-13>APRS:>Weather station")!!, 200)
+    val ws = st.get("EA7URS-13")!!
+    check(ws.wx != null && ws.wxMs == 100L, "station keeps the weather"); eq(ws.comment, "Davis", "station comment without the weather")
+    st.onFrame(Tnc2.parse("EA7URS-13>APRS:_11101800c180s010g020t050")!!, 300)
+    eq(st.get("EA7URS-13")!!.wx!!.windDirDeg, 180, "positionless report updates the station"); eq(st.get("EA7URS-13")!!.wxMs, 300L, "report time")
+    check(st.get("EA7URS-13")!!.lat != null, "positionless report keeps the position")
+    st.onFrame(Tnc2.parse("EA7JRS-10>APRS:;LEADER   *092345z4903.50N/07201.75W>088/036")!!, 400)
+    eq(st.get("LEADER")?.owner, "EA7JRS-10", "object owner")
+    st.onFrame(Tnc2.parse("EA7JRS-10>APRS:;LEADER   _092345z4903.50N/07201.75W>")!!, 500)
+    check(st.get("LEADER") == null, "killed object leaves the table")
+    st.onFrame(Tnc2.parse("EA7JRS-10>APRS,WIDE1-1:}EA1ABC>APRS,TCPIP,EA7JRS-10*:!4000.00N/00300.00W-via IS")!!, 600)
+    check(st.get("EA1ABC")?.lat != null, "third party: the station inside"); eq(st.get("EA1ABC")?.comment, "via IS", "third party comment")
+    st.onFrame(Tnc2.parse("EA7XYZ-9>SWQQTY,WIDE1-1:`yT0oXt>/\";L}Hola")!!, 700)
+    eq(st.get("EA7XYZ-9")?.courseDeg, 88, "Mic-E in the table"); eq(st.get("EA7XYZ-9")?.micE, "Off duty", "Mic-E status in the table")
+    eq(st.weather(37.4, -5.98).map { it.call }, listOf("EA7URS-13"), "weather stations")
+    val tp = Aprs.unwrapThirdParty(Tnc2.parse("EA7JRS-10>APRS:}EA1ABC>APRS,TCPIP*::EA7JRS-7 :hola{12")!!)
+    eq(tp.source.text(), "EA1ABC", "third party source"); check((Aprs.parse(tp.infoText) as AprsPacket.Message).addressee == "EA7JRS-7", "third party message")
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

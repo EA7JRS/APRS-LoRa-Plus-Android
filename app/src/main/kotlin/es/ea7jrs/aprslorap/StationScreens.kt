@@ -48,7 +48,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import es.ea7jrs.aprslorap.core.Aprs
 import es.ea7jrs.aprslorap.core.AprsExtra
+import es.ea7jrs.aprslorap.core.AprsWeather
+import es.ea7jrs.aprslorap.core.AprsWx
 import es.ea7jrs.aprslorap.core.AprsSymbols
 import es.ea7jrs.aprslorap.core.Geo
 import es.ea7jrs.aprslorap.core.HeardStation
@@ -65,13 +68,14 @@ data class StationView(
     val call: String, val table: Char?, val code: Char?, val lat: Double?, val lon: Double?, val lastMs: Long, val positionMs: Long?,
     val comment: String, val path: String, val packets: Int, val rssi: Int?, val snr: Double?, val courseDeg: Int?, val speedKmh: Double?,
     val altitudeM: Double?, val device: String?, val status: String?,
+    val wx: AprsWx? = null, val wxMs: Long? = null, val owner: String? = null, val micE: String? = null,
 ) {
     val symbol: AprsSymbols.Symbol? get() = AprsSymbols.of(table, code)
     val kind: String get() = AprsSymbols.describe(table, code)
-    val isWx: Boolean get() = code == '_'
+    val isWx: Boolean get() = code == '_' || wx != null
     val isInfra: Boolean get() = code == '#' || code == '&' || code == 'r'
     val moving: Boolean get() = (speedKmh ?: 0.0) > 2.0
-    val emergency: Boolean get() = table == '\\' && code == '!'
+    val emergency: Boolean get() = (table == '\\' && code == '!') || micE == Aprs.MICE_EMERGENCY
 }
 
 fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: Long): List<StationView> {
@@ -79,19 +83,27 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
     val out = ArrayList<StationView>()
     for (s in stations) {
         val h = byCall[s.call]
-        val x = AprsExtra.parse(s.comment)
+        val wxStation = s.wx != null || s.symbolCode == '_'
         out.add(StationView(
             s.call, s.symbolTable, s.symbolCode, s.lat ?: h?.lat, s.lon ?: h?.lon, s.lastHeardMs, s.lastPositionMs,
-            AprsExtra.cleanComment(s.comment).ifEmpty { h?.comment ?: "" }, s.lastPath.ifEmpty { h?.path ?: "" }, s.packets,
-            h?.rssi, h?.snr, x.courseDeg ?: h?.course, x.speedKmh ?: h?.speedKmh?.toDouble(), x.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, h?.status,
+            AprsExtra.cleanComment(s.comment).ifEmpty { if (wxStation) "" else h?.comment ?: "" }, s.lastPath.ifEmpty { h?.path ?: "" }, s.packets,
+            h?.rssi, h?.snr,
+            s.courseDeg ?: if (wxStation) null else h?.course, s.speedKmh ?: if (wxStation) null else h?.speedKmh?.toDouble(),
+            s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, h?.status,
+            wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE,
         ))
     }
     val known = stations.map { it.call }.toSet()
     for (h in heard) if (h.call !in known) {
         val sym = AprsSymbols.of(h.symbol)
+        // a weather station heard only by the tracker: its comment carries the weather (and "course / speed" would be the wind)
+        val w = if (h.symbol.getOrNull(1) == '_') AprsWeather.parsePositioned(h.comment ?: "") else null
+        val at = heardAtMs - h.ageS * 1000
         out.add(StationView(
-            h.call, h.symbol.getOrNull(0), h.symbol.getOrNull(1), h.lat, h.lon, heardAtMs - h.ageS * 1000, h.posAgeS?.let { heardAtMs - it * 1000 },
-            h.comment ?: "", h.path ?: "", h.packets, h.rssi, h.snr, h.course, h.speedKmh?.toDouble(), h.altitudeM?.toDouble(), h.device, h.status,
+            h.call, h.symbol.getOrNull(0), h.symbol.getOrNull(1), h.lat, h.lon, at, h.posAgeS?.let { heardAtMs - it * 1000 },
+            w?.rest ?: h.comment ?: "", h.path ?: "", h.packets, h.rssi, h.snr,
+            if (w != null) null else h.course, if (w != null) null else h.speedKmh?.toDouble(), h.altitudeM?.toDouble(), h.device, h.status,
+            wx = w?.wx, wxMs = if (w != null) at else null,
         ).let { if (sym == null) it.copy(table = null, code = null) else it })
     }
     return out
@@ -169,8 +181,9 @@ fun StationListScreen(nav: Navigator) {
                         AprsSymbolIcon(s.symbol, 24.dp, if (s.emergency) Color(0xFF4A2326) else Alp.SymbolBg)
                         Column(Modifier.weight(1f)) {
                             Text(s.call, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = if (s.emergency) Alp.RedSoft else Alp.Text, maxLines = 1)
-                            Text(s.kind + (s.rssi?.let { " · " + SMeter.fromDbm(it.toDouble(), trackerFreqHz()).label } ?: ""), fontFamily = BarlowCondensed, fontSize = 13.sp,
-                                color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (s.wx != null) Text(s.wx.summary(), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Cyan, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            else Text(s.kind + (s.micE?.takeIf { it != "Off duty" }?.let { " · $it" } ?: "") + (s.rssi?.let { " · " + SMeter.fromDbm(it.toDouble(), trackerFreqHz()).label } ?: ""),
+                                fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Text(Fmt.hhmm(s.lastMs), fontFamily = BarlowCondensed, fontSize = 15.sp, color = Alp.Muted)
                         Text(Fmt.km(d?.first), fontFamily = BarlowCondensed, fontSize = 16.sp, color = Alp.Text, modifier = Modifier.width(66.dp), textAlign = TextAlign.End)
@@ -247,6 +260,7 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                         }
                     }
                 }
+                if (s.wx != null) WeatherPanel(s.wx, s.wxMs)
                 Panel(Modifier.fillMaxWidth(), padding = 10.dp) {
                     if (s.rssi != null) {
                         SectionLabel("SIGNAL AT THE TRACKER")
@@ -264,6 +278,8 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                     InfoRow("PACKETS", "${s.packets}" + (s.device?.let { " · $it" } ?: ""))
                     if (s.path.isNotEmpty()) InfoRow("PATH", s.path)
                     if (!s.status.isNullOrBlank()) InfoRow("STATUS", s.status)
+                    s.micE?.let { InfoRow("MIC-E", it, if (it == Aprs.MICE_EMERGENCY) Alp.RedSoft else Alp.Text) }
+                    s.owner?.let { InfoRow("OBJECT OF", it) }
                     if (s.comment.isNotBlank()) Text("“${s.comment}”", fontSize = 15.sp, color = Alp.SubText, modifier = Modifier.padding(top = 6.dp))
                 }
             }
@@ -279,6 +295,37 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                 }
             }
         }
+    }
+}
+
+/** Weather report of a station: wind with its direction, temperature, humidity, pressure, rain, light and snow. */
+@Composable
+fun WeatherPanel(wx: AprsWx, atMs: Long?) {
+    Panel(Modifier.fillMaxWidth(), border = Alp.Cyan.copy(alpha = 0.45f)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionLabel("WEATHER")
+            Spacer(Modifier.weight(1f))
+            Text(Fmt.ago(atMs), fontSize = 13.sp, color = Alp.Muted)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(vertical = 6.dp)) {
+            Text(wx.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 40.sp, color = Alp.Text)
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // the arrow points where the wind blows to (it comes from windDirDeg)
+                    val dir = wx.windDirDeg
+                    if (dir != null && (wx.windKmh ?: 1.0) >= 1.0) BearingArrow((dir + 180) % 360.0, Alp.Cyan, 22.dp)
+                    Text(wx.wind() ?: "no wind data", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Alp.Cyan)
+                }
+                wx.gustKmh?.let { Text(String.format(Locale.US, "gusts %.0f km/h", it) + (wx.windDirDeg?.let { d -> " · from " + Fmt.deg(d.toDouble()) } ?: ""), fontSize = 14.sp, color = Alp.Muted) }
+            }
+        }
+        wx.humidityPct?.let { InfoRow("HUMIDITY", "$it %") }
+        wx.pressureHpa?.let { InfoRow("PRESSURE", String.format(Locale.US, "%.1f hPa", it)) }
+        wx.rain1hMm?.let { InfoRow("RAIN 1 H", String.format(Locale.US, "%.1f mm", it)) }
+        wx.rain24hMm?.let { InfoRow("RAIN 24 H", String.format(Locale.US, "%.1f mm", it)) }
+        wx.rainMidnightMm?.let { InfoRow("RAIN TODAY", String.format(Locale.US, "%.1f mm", it)) }
+        wx.luminosityWm2?.let { InfoRow("SUNLIGHT", "$it W/m²") }
+        wx.snowCm?.let { InfoRow("SNOW 24 H", String.format(Locale.US, "%.1f cm", it)) }
     }
 }
 

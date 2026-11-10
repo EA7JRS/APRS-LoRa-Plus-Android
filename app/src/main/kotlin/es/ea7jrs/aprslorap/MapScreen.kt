@@ -127,8 +127,9 @@ object MapLayers {
 private object MarkerArt {
     private val cache = LruCache<String, Bitmap>(400)
 
-    fun station(ctx: Context, sym: AprsSymbols.Symbol?, call: String, selected: Boolean, emergency: Boolean): Bitmap {
-        val key = "$call|$sym|$selected|$emergency"
+    /** [sub]: a second line under the callsign (the weather of a weather station: "21° 12 km/h"). */
+    fun station(ctx: Context, sym: AprsSymbols.Symbol?, call: String, selected: Boolean, emergency: Boolean, sub: String? = null): Bitmap {
+        val key = "$call|$sym|$selected|$emergency|$sub"
         cache.get(key)?.let { return it }
         val d = ctx.resources.displayMetrics.density
         val symPx = (26 * d).toInt()
@@ -136,20 +137,25 @@ private object MarkerArt {
             color = if (emergency) 0xFFFF8A80.toInt() else 0xFFE8EEF3.toInt(); textSize = 13 * d; isFakeBoldText = true
             typeface = try { androidx.core.content.res.ResourcesCompat.getFont(ctx, R.font.barlow_condensed_bold) } catch (_: Exception) { null }
         }
-        val tw = text.measureText(call)
+        val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF28B5E1.toInt(); textSize = 11.5f * d; typeface = text.typeface }
+        val tw = maxOf(text.measureText(call), sub?.let { small.measureText(it) } ?: 0f)
         val pad = 5 * d
         val w = (symPx + 4 * d + tw + pad * 2).toInt()
         val h = (symPx + 4 * d).toInt()
-        val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val half = if (sub == null) 10 * d else 16 * d
+        val hb = maxOf(h, (2 * half + 2 * d).toInt())
+        val b = Bitmap.createBitmap(w, hb, Bitmap.Config.ARGB_8888)
         val c = Canvas(b)
+        c.translate(0f, (hb - h) / 2f)
         val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f * d; color = 0xFFFFB347.toInt() }
         if (selected) c.drawCircle(h / 2f, h / 2f, h / 2f - 1.5f * d, ring)
         if (sym != null) c.drawBitmap(AprsSprites.bitmap(ctx, sym, symPx), 2 * d, 2 * d, null)
         else c.drawCircle(h / 2f, h / 2f, 6 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE53935.toInt() })
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xD9131A22.toInt() }
         val left = symPx + 4 * d
-        c.drawRoundRect(RectF(left, h / 2f - 10 * d, left + tw + pad * 2, h / 2f + 10 * d), 4 * d, 4 * d, bg)
-        c.drawText(call, left + pad, h / 2f + 4.5f * d, text)
+        c.drawRoundRect(RectF(left, h / 2f - half, left + tw + pad * 2, h / 2f + half), 4 * d, 4 * d, bg)
+        if (sub == null) c.drawText(call, left + pad, h / 2f + 4.5f * d, text)
+        else { c.drawText(call, left + pad, h / 2f - 2 * d, text); c.drawText(sub, left + pad, h / 2f + 11.5f * d, small) }
         cache.put(key, b)
         return b
     }
@@ -266,7 +272,7 @@ fun MapScreen(nav: Navigator) {
                 val sel = s.call == holder.focused
                 holder.dynamic.add(Marker(map).apply {
                     position = GeoPoint(s.lat!!, s.lon!!)
-                    icon = BitmapDrawable(ctx.resources, MarkerArt.station(ctx, s.symbol, s.call, sel, s.emergency))
+                    icon = BitmapDrawable(ctx.resources, MarkerArt.station(ctx, s.symbol, s.call, sel, s.emergency, s.wx?.mapLabel()))
                     val d = ctx.resources.displayMetrics.density
                     setAnchor((15 * d) / icon.intrinsicWidth, 0.5f)
                     setOnMarkerClickListener { _, _ -> nav.go("STATION:" + s.call); true }

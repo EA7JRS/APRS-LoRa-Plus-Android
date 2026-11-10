@@ -147,16 +147,18 @@ class Controller(
         val now = System.currentTimeMillis()
         table.onFrame(frame, now)
         AppState.addLog("RX " + (via?.let { "[$it] " } ?: "") + frame.toTnc2())
-        val p = Aprs.parse(frame.infoText)
-        // emergency words in a message to anyone or in a beacon comment (Mic-E status: the tracker's alarm, event "led")
+        val inner = Aprs.unwrapThirdParty(frame)          // from APRS-IS through an iGate: the station inside counts
+        val from = inner.source.text()
+        val p = Aprs.parse(inner.infoText, inner.destination.call)
+        // emergency words in a message to anyone or in a beacon comment; emergency symbol or Mic-E "Emergency" status
         when (p) {
-            is AprsPacket.Message -> if (!p.isAck && !p.isRej) AlertCenter.onAprs(frame.source.text(), p.text, true)
-            is AprsPacket.Position -> if (p.symbolTable == '\\' && p.symbolCode == '!') AlertCenter.onAprs(frame.source.text(), "EMERGENCY " + p.comment, false)
-                else AlertCenter.onAprs(frame.source.text(), p.comment, false)
+            is AprsPacket.Message -> if (!p.isAck && !p.isRej) AlertCenter.onAprs(from, p.text, true)
+            is AprsPacket.Position -> if (p.isEmergency) AlertCenter.onAprs(p.objectName ?: from, "EMERGENCY " + p.comment, false)
+                else AlertCenter.onAprs(p.objectName ?: from, p.comment, false)
             else -> {}
         }
         if (p is AprsPacket.Message) {
-            engine.onMessage(frame.source.text(), p)?.let { msg ->
+            engine.onMessage(from, p)?.let { msg ->
                 notifier.incoming(msg, table.get(msg.peer))
             }
         }
