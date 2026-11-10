@@ -114,9 +114,9 @@ Código abierto (GPL-3.0). Sin anuncios ni seguimiento.
 - **Probadores**: en las pruebas internas y cerradas la instalan gratis.
 - **GPL-3**: se puede vender, pero quien la compre tiene derecho al código fuente y a redistribuirlo; con el repositorio privado hay que ofrecerlo (enlace o petición por correo). Precedente: APRSdroid es GPL y se vende en Google Play.
 - **Servicios de terceros con condiciones no comerciales** (revisar o quitar en la versión de pago):
-  - RainViewer: solo uso personal y educativo → quitar el radar de RainViewer o pedir licencia comercial; AEMET OpenData sí permite reutilización comercial con atribución.
+  - RainViewer: solo uso personal y educativo → **quitado** (2026-11-10); queda AEMET OpenData, que permite reutilización comercial con atribución.
   - Teselas de tile.openstreetmap.org: la política de uso de la OSMF no admite apps con muchos usuarios → proveedor de teselas propio o de pago (o IGN, CC BY 4.0).
-  - Base de señales de Artemis (sigidwiki): sin licencia explícita.
+  - Base de señales de Artemis (sigidwiki): sin licencia explícita → **opcional** (2026-11-10): no va en la app; el usuario la descarga de los servidores de Artemis tras un aviso y la puede quitar.
   - RepeaterBook, RadioID.net, DAPNET, APRS-IS: comprobar sus condiciones para apps de pago.
   - Símbolos APRS de aprs.fi (hessu/aprs-symbols) y logotipos de marcas entre ellos.
 
