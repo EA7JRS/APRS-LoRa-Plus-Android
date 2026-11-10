@@ -265,6 +265,10 @@ fun SensorsTab() {
             Field("Humidity", fmt(s.humidityPct, "%.0f", " %"))
             Field("Pressure", fmt(s.pressureHpa, "%.1f", " hPa"))
             Field("QNH", fmt(s.qnhHpa, "%.1f", " hPa") + when (s.qnhSource) { "net" -> " (internet)"; "man" -> " (manual)"; "gps" -> " (GNSS)"; else -> "" })
+            s.netForecast?.let { fc ->
+                val d3 = s.netDelta3h
+                Field("Forecast (internet)", fc + (d3?.let { String.format(java.util.Locale.US, " · %+.1f hPa / 3 h", it) } ?: ""))
+            }
             Field("Barometric altitude", fmt(s.baroAltitudeM, "%.0f", " m"))
             Field("Magnetic heading", fmt(s.headingDeg, "%.0f", "°"))
             Field("Moving (IMU)", s.moving?.let { if (it) "Yes" else "No" } ?: "—")

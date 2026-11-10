@@ -278,6 +278,9 @@ private fun testControl() {
 
     // full sensors event
     check((Control.parse("""{"e":"sensors","qnh":1016.0,"qs":"net"}""") as ControlEvent.SensorData).sensors.qnhSource == "net", "sensors qnh source")
+    (Control.parse("""{"e":"sensors","net":{"src":"OWM","p":1016.0,"fc":"Rain likely","d3":-2.1}}""") as ControlEvent.SensorData).sensors.let {
+        check(it.netForecast == "Rain likely" && it.netDelta3h == -2.1, "sensors net forecast")
+    }
     val fs = (Control.parse("""{"e":"sensors","batt":4.1,"battPct":87,"gas":120.3,"iaq":42,"iaqLabel":"Good","wxSensor":"BME680","accel":[0.01,0.02,1.0],"gyro":[0,0,0],"flat":true,"charging":true,"vbus":5.1,"pmuTemp":31.5,"battMa":-120,"heap":150000}""") as ControlEvent.SensorData).sensors
     eq(fs.batteryPct, 87, "battPct"); eq(fs.accelG?.size, 3, "accel"); eq(fs.charging, true, "charging"); eq(fs.iaqLabel, "Good", "iaq label"); eq(fs.humidityPct, null, "absent is null"); eq(fs.freeHeap, 150000L, "heap")
 
