@@ -109,7 +109,7 @@ fun FmSection() {
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Switch(checked = ch.high, onCheckedChange = { c?.control("fmset", "hp" to it) }); Text("High power")
-        Switch(checked = ch.wide, onCheckedChange = { c?.control("fmset", "w" to it) }); Text("Wide")
+        Switch(checked = ch.wide, onCheckedChange = { c?.control("fmset", "w" to it) }); Text(if (ch.wide) "FM (25 kHz)" else "NFM (12.5 kHz)")
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Switch(checked = s.squelchAuto, onCheckedChange = { c?.control("fmset", "sqa" to it) }); Text("Automatic squelch", Modifier.padding(start = 6.dp))

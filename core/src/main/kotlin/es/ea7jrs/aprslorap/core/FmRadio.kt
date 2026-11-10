@@ -36,9 +36,11 @@ data class FmChannel(
     val wide: Boolean, val high: Boolean, val name: String = "", val index: Int = -1,
 ) {
     val freqText: String get() = mhz(rxHz)
+    /** Modulation as radios name it: FM = wide channel (25 kHz), NFM = narrow (12.5 kHz). */
+    val modulation: String get() = if (wide) "FM" else "NFM"
     val shiftText: String get() = if (shift == 0) "simplex" else String.format(Locale.US, "%c%.3f MHz", if (shift > 0) '+' else '-', offsetHz / 1e6)
     val toneText: String get() = FmTone.text(toneMode, tone, dcs, dcsInv)
-    val summary: String get() = "$shiftText · $toneText · ${if (wide) "wide" else "narrow"} · ${if (high) "high" else "low"} power"
+    val summary: String get() = "$shiftText · $toneText · ${if (wide) "FM 25 kHz" else "NFM 12.5 kHz"} · ${if (high) "high" else "low"} power"
 
     companion object {
         fun mhz(hz: Long): String = String.format(Locale.US, "%.4f", hz / 1e6)

@@ -80,6 +80,7 @@ private fun BandA(nav: Navigator, big: Boolean) {
     val ble by AppState.bleStatus.collectAsState()
     val running by AppState.running.collectAsState()
     val heardAt by AppState.heardAtMs.collectAsState()
+    val fm by AppState.fmState.collectAsState()
     val cwOn by AppState.cwRxOn.collectAsState()
     val cwDbm by AppState.cwRxDbm.collectAsState()
     val lora = info?.loras?.getOrNull(status?.lora ?: -1)
@@ -87,28 +88,36 @@ private fun BandA(nav: Navigator, big: Boolean) {
     val modeName = info?.modes?.firstOrNull { it.mode == mode }?.name ?: TrackerMode.name(mode)
     val sa868 = info?.radio == "sa868"
     // modulation and frequency of the mode in use: from the status event; older firmware: the LoRa profile only in the APRS modes
-    val mod = status?.modulation ?: if (mode == TrackerMode.APRS_LORA && lora?.fsk == true) "FSK" else TrackerMode.modulation(mode, sa868)
+    val fmCh = fm?.channel?.takeIf { mode == TrackerMode.FM }
+    // FM voice of the T-TWR: wide channel (25 kHz) = FM, narrow (12.5 kHz) = NFM
+    val mod = if (fmCh != null) (if (fmCh.wide) "FM" else "NFM")
+        else status?.modulation ?: if (mode == TrackerMode.APRS_LORA && lora?.fsk == true) "FSK" else TrackerMode.modulation(mode, sa868)
     val aprsLike = mode == TrackerMode.APRS_LORA || mode == TrackerMode.APRS_FSK
-    val hz: Long? = status?.freqHz ?: if (aprsLike) lora?.freqHz else null
+    val hz: Long? = fmCh?.rxHz?.takeIf { it > 0 } ?: status?.freqHz ?: if (aprsLike) lora?.freqHz else null
+    LaunchedEffect(mode, status != null) { if (mode == TrackerMode.FM && status != null) AppState.controller?.control("fm") }
     val last = lastHeardWithSignal(heard)
     val detail = when (mod) {
         "LoRa" -> lora?.let { "SF${it.sf} · CR4/${it.cr}" } ?: "LoRa"
         "FSK" -> "G3RUH 9600"
         "AFSK" -> "AFSK 1200"
+        "FM", "NFM" -> fmCh?.let { listOfNotNull(if (fmCh.wide) "25 kHz" else "12.5 kHz", fmCh.toneText.takeIf { t -> t.isNotBlank() }, fmCh.name.ifBlank { null }).joinToString(" · ") } ?: modeName
         else -> modeName
     }
     // signal: APRS modes = last station the tracker heard; MORSE = the tracker's CW listening
     val reading = when {
+        fmCh != null -> fm?.takeIf { it.busy && it.rssi != 0 }?.let { SMeter.fromDbm(it.rssi.toDouble(), fmCh.rxHz) }
         mode == TrackerMode.MORSE -> cwDbm?.takeIf { cwOn }?.let { SMeter.fromDbm(it, hz ?: trackerFreqHz()) }
         TrackerMode.isAprs(mode) -> last?.rssi?.let { SMeter.fromDbm(it.toDouble(), hz ?: trackerFreqHz()) }
         else -> null
     }
     val readingText = when {
+        fmCh != null -> fm?.let { f -> listOfNotNull(if (f.ptt) "TX" else if (f.busy) "BUSY" else "squelch closed", if (f.busy && f.rssi != 0) "${f.rssi} dBm" else null,
+            fmCh.shiftText).joinToString(" · ") }
         mode == TrackerMode.MORSE -> if (cwOn) cwDbm?.let { String.format(Locale.US, "%.0f dBm · CW listening", it) } else "CW listening off"
         TrackerMode.isAprs(mode) -> last?.let { listOfNotNull(it.rssi?.let { r -> "$r dBm" }, it.snr?.let { s -> String.format(Locale.US, "SNR %.1f", s) }).joinToString(" · ") }
         else -> null
     }
-    val modColor = when (mod) { "CW" -> Alp.Amber; "POCSAG", "SAT", "AIS" -> Alp.Green; else -> Alp.Cyan }
+    val modColor = when (mod) { "CW" -> Alp.Amber; "POCSAG", "SAT", "AIS" -> Alp.Green; "FM", "NFM" -> Alp.Green; else -> Alp.Cyan }
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Alp.Panel).clickable { nav.tool(if (running) Tool.TRACKER else Tool.CONNECT) }) {
         Box(Modifier.padding(top = 14.dp).width(5.dp).height(if (big) 140.dp else 40.dp).clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)).background(Alp.Green))
         Column(Modifier.padding(start = 20.dp, end = 14.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -117,8 +126,12 @@ private fun BandA(nav: Navigator, big: Boolean) {
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Green).padding(horizontal = 7.dp))
                 Text("TRACKER", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Alp.Muted)
                 Spacer(Modifier.weight(1f))
-                Text(if (status == null) "—" else "$mod · ${modeName.uppercase(Locale.US)}", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                    color = modColor, maxLines = 1, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg).padding(horizontal = 6.dp))
+                // in FM, touching the modulation switches the channel between FM (wide) and NFM (narrow)
+                Text(if (status == null) "—" else if (fmCh != null) "$mod ⇄" else "$mod · ${modeName.uppercase(Locale.US)}", fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = modColor, maxLines = 1,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg)
+                        .let { m -> if (fmCh != null) m.clickable { AppState.controller?.control("fmset", "w" to !fmCh.wide) } else m }
+                        .padding(horizontal = 6.dp))
             }
             if (status == null) {
                 Text(if (running) ble else "Tracker not connected · touch to connect", fontSize = 15.sp, color = Alp.Muted)
