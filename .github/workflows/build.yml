@@ -17,7 +17,7 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.10.2
+          gradle-version: 8.13
       - name: Cache of the digital voice decoder build
         uses: actions/cache@v4
         with:
@@ -51,3 +51,23 @@ jobs:
         with:
           name: aprs-lora-plus-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+      # Google Play bundle: signed with the upload key from the repository secrets (ALP_UPLOAD_KEYSTORE = the .jks in base64,
+      # ALP_UPLOAD_STORE_PASSWORD, ALP_UPLOAD_KEY_ALIAS, ALP_UPLOAD_KEY_PASSWORD). Without them this step is skipped.
+      # -Palp.play=true leaves out the digital voice decoder (mbelib: possible DVSI patents).
+      - name: Google Play bundle (signed .aab)
+        env:
+          ALP_UPLOAD_KEYSTORE: ${{ secrets.ALP_UPLOAD_KEYSTORE }}
+          ALP_UPLOAD_STORE_PASSWORD: ${{ secrets.ALP_UPLOAD_STORE_PASSWORD }}
+          ALP_UPLOAD_KEY_ALIAS: ${{ secrets.ALP_UPLOAD_KEY_ALIAS }}
+          ALP_UPLOAD_KEY_PASSWORD: ${{ secrets.ALP_UPLOAD_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ALP_UPLOAD_KEYSTORE" ]; then echo "::notice::No upload key in the secrets: the Google Play bundle is not built"; exit 0; fi
+          echo "$ALP_UPLOAD_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export ALP_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
+          gradle :app:bundleRelease -Palp.play=true --no-daemon
+          rm -f "$RUNNER_TEMP/upload.jks"
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('app/build/outputs/bundle/release/*.aab') != ''
+        with:
+          name: aprs-lora-plus-play-aab
+          path: app/build/outputs/bundle/release/*.aab

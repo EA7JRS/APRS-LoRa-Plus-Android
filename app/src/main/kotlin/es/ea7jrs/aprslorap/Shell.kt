@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -413,6 +414,24 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             }
             Text("The phone as a buzzer: alarm tone (sounds in silent mode, alarm volume), vibration and the torch flashing.",
                 fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+            // Android 14+: full-screen alerts over the lock screen only if the user allows them (Google grants them by default
+            // only to calling and alarm apps); without it the alert is an ordinary notification
+            val ctx = LocalContext.current
+            var fsiOk by remember { mutableStateOf(true) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    fsiOk = android.os.Build.VERSION.SDK_INT < 34 ||
+                        ctx.getSystemService(android.app.NotificationManager::class.java)?.canUseFullScreenIntent() != false
+                    kotlinx.coroutines.delay(2000)
+                }
+            }
+            if (!fsiOk) RadioKey("ALLOW FULL-SCREEN ALERTS", Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp).height(44.dp), labelSize = 14,
+                color = Alp.Amber, border = Alp.Amber) {
+                try {
+                    ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                        android.net.Uri.parse("package:" + ctx.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) { AppState.error.value = "Open Android Settings > Apps > APRS LoRa+ > Notifications to allow full-screen alerts" }
+            }
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

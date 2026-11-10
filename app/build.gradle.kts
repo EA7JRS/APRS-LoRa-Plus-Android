@@ -6,19 +6,30 @@ plugins {
 
 android {
     namespace = "es.ea7jrs.aprslorap"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "es.ea7jrs.aprslorap"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 50401
         versionName = "5.4.1"
     }
 
+    // Google Play upload key (Play App Signing re-signs the final app): only from the environment (CI secrets), never in the repository
+    val uploadStore = System.getenv("ALP_UPLOAD_STORE_FILE")
+    signingConfigs {
+        if (uploadStore != null) create("upload") {
+            storeFile = file(uploadStore)
+            storePassword = System.getenv("ALP_UPLOAD_STORE_PASSWORD")
+            keyAlias = System.getenv("ALP_UPLOAD_KEY_ALIAS")
+            keyPassword = System.getenv("ALP_UPLOAD_KEY_PASSWORD")
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (uploadStore != null) signingConfig = signingConfigs.getByName("upload")
         }
     }
     compileOptions {
@@ -38,6 +49,8 @@ android {
     packaging {
         jniLibs { useLegacyPackaging = true }
         resources { excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF" }
+        // Google Play build (-Palp.play=true): without the digital voice decoder (mbelib, possible DVSI patents); the app hides it
+        if (project.findProperty("alp.play") == "true") jniLibs { excludes += "**/libdsdfme.so" }
     }
 }
 
