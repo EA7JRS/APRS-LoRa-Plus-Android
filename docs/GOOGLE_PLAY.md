@@ -10,7 +10,7 @@ Copyright (C) 2026 Manuel - EA7JRS · GPL-3.0-or-later. Comprobado con la docume
 | Paquete `.aab` firmado en la CI | app | hecho; falta la clave de subida en los secretos |
 | Versión de Google Play sin voz digital (mbelib) | app | hecho (`-Palp.play=true`) |
 | Botón para permitir alertas a pantalla completa | app | hecho (menú lateral > Emergency alerts) |
-| Política de privacidad | tracker | `web/privacy.html` → `https://ea7jrs.github.io/APRS-LoRa-Plus/privacy.html` al publicar la release del tracker; falta el correo de contacto |
+| Política de privacidad | tracker | `web/privacy.html` → `https://ea7jrs.github.io/APRS-LoRa-Plus/privacy.html` al publicar la release del tracker; contacto ea7jrs.manuel@gmail.com |
 | Cuenta de desarrollador | Manuel | creada el 2026-11-10 (nombre de desarrollador «EA7JRS»); verificación de identidad en curso |
 | Clave de subida y secretos | Manuel | pendiente |
 | 12 probadores 14 días | Manuel | pendiente |
@@ -40,7 +40,7 @@ Con eso cada ejecución de la CI deja el artefacto **aprs-lora-plus-play-aab** (
 ## 3. Crear la app en Play Console
 - Nombre: **APRS LoRa+** · Idioma por defecto: inglés (EE. UU.); traducción al español · App · Gratuita.
 - Categoría: **Comunicación** (o Herramientas). Etiquetas: radioafición, APRS.
-- Contacto: tu correo (lo verán los usuarios). Política de privacidad: la dirección de arriba.
+- Contacto: ea7jrs.manuel@gmail.com (lo verán los usuarios). Política de privacidad: la dirección de arriba.
 
 ### Textos de la ficha
 **Descripción breve (≤ 80)**
