@@ -92,6 +92,7 @@ fun TrackerTab() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Field("Firmware", "${i.firmware} (${i.board})")
+        if (i.lastReset.isNotBlank()) Field("Last reset", "${i.lastReset} (check the power supply or send the USB log)")
         i.sa868?.let { Field("Radio", it.text); if (it.modem.isNotBlank()) Field("Channel", it.channel) }    // LilyGO T-TWR: FM radio; settings in Config > sa868
         Field("Mode", if (i.radio == "sa868" && mode == 0) "APRS AFSK 1200" else TrackerMode.name(mode))
         status?.let { s ->

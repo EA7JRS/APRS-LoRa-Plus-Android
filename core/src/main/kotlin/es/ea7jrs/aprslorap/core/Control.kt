@@ -75,6 +75,7 @@ data class TrackerInfo(
     val hasSatFm: Boolean = false,              // T-TWR: the FM VFO follows the satellite ("satrx" / "sattx" also in FM mode, "sattx pos")
     val hasWxNet: Boolean = false,              // weather from the internet for the TELEMETRY page ("wxnet")
     val hasAis: Boolean = false,                // AIS receiver: "ais" / "aislist" events, "aisin", "aisset"
+    val lastReset: String = "",                 // abnormal last reset of the tracker ("CRASH", "WDT", "LOW VOLTAGE"...); empty = normal
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -434,6 +435,7 @@ object Control {
             caps.bool("satFm") ?: false,
             caps.bool("wxnet") ?: false,
             caps.bool("ais") ?: false,
+            o.str("rst") ?: "",
         )
     }
 }
