@@ -11,7 +11,7 @@ Copyright (C) 2026 Manuel - EA7JRS · GPL-3.0-or-later. Comprobado con la docume
 | Versión de Google Play sin voz digital (mbelib) | app | hecho (`-Palp.play=true`) |
 | Botón para permitir alertas a pantalla completa | app | hecho (menú lateral > Emergency alerts) |
 | Política de privacidad | tracker | `web/privacy.html` → `https://ea7jrs.github.io/APRS-LoRa-Plus/privacy.html` al publicar la release del tracker; falta el correo de contacto |
-| Cuenta de desarrollador | Manuel | pendiente |
+| Cuenta de desarrollador | Manuel | creada el 2026-11-10 (nombre de desarrollador «EA7JRS»); verificación de identidad en curso |
 | Clave de subida y secretos | Manuel | pendiente |
 | 12 probadores 14 días | Manuel | pendiente |
 | Vídeo del servicio en primer plano | Manuel | pendiente |
