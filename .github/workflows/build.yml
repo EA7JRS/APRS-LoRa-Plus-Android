@@ -61,11 +61,15 @@ jobs:
           ALP_UPLOAD_KEY_ALIAS: ${{ secrets.ALP_UPLOAD_KEY_ALIAS }}
           ALP_UPLOAD_KEY_PASSWORD: ${{ secrets.ALP_UPLOAD_KEY_PASSWORD }}
         run: |
-          if [ -z "$ALP_UPLOAD_KEYSTORE" ]; then echo "::notice::No upload key in the secrets: the Google Play bundle is not built"; exit 0; fi
-          echo "$ALP_UPLOAD_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          export ALP_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
+          if [ -n "$ALP_UPLOAD_KEYSTORE" ]; then
+              echo "$ALP_UPLOAD_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+              export ALP_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
+          else
+              echo "::notice::No upload key in the secrets: the bundle is built unsigned (only to check the release build)"
+          fi
           gradle :app:bundleRelease -Palp.play=true --no-daemon
           rm -f "$RUNNER_TEMP/upload.jks"
+          [ -n "$ALP_UPLOAD_KEYSTORE" ] || rm -f app/build/outputs/bundle/release/*.aab
       - uses: actions/upload-artifact@v4
         if: hashFiles('app/build/outputs/bundle/release/*.aab') != ''
         with:
