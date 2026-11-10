@@ -63,7 +63,10 @@ jobs:
         run: |
           if [ -n "$ALP_UPLOAD_KEYSTORE" ]; then
               # only base64 characters: a copy from Windows brings CR / LF, spaces or a BOM
-              printf '%s' "$ALP_UPLOAD_KEYSTORE" | tr -dc 'A-Za-z0-9+/=' | base64 -d > "$RUNNER_TEMP/upload.jks"
+              k=$(printf '%s' "$ALP_UPLOAD_KEYSTORE" | tr -dc 'A-Za-z0-9+/=')
+              # diagnosis without showing the key: length, length mod 4, first 3 characters (a PKCS12 / JKS file starts "MII" / "/u3")
+              echo "keystore secret: ${#ALP_UPLOAD_KEYSTORE} characters, ${#k} base64 characters, mod 4 = $(( ${#k} % 4 )), starts '${k:0:3}'"
+              printf '%s' "$k" | base64 -d > "$RUNNER_TEMP/upload.jks"
               export ALP_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
           else
               echo "::notice::No upload key in the secrets: the bundle is built unsigned (only to check the release build)"
