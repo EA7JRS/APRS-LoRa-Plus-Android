@@ -93,6 +93,7 @@ fun TrackerTab() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Field("Firmware", "${i.firmware} (${i.board})")
         if (i.lastReset.isNotBlank()) Field("Last reset", "${i.lastReset} (check the power supply or send the USB log)")
+        if (i.pmuOff.isNotBlank()) Field("PMU power off", "${i.pmuOff} (charge the battery or check the USB supply)")
         i.sa868?.let { Field("Radio", it.text); if (it.modem.isNotBlank()) Field("Channel", it.channel) }    // LilyGO T-TWR: FM radio; settings in Config > sa868
         Field("Mode", if (i.radio == "sa868" && mode == 0) "APRS AFSK 1200" else TrackerMode.name(mode))
         status?.let { s ->
@@ -291,6 +292,7 @@ fun SensorsTab() {
         if (pw == null) Text("No data yet") else {
             Field("Battery", fmt(pw.batteryV, "%.2f", " V") + (pw.batteryPct?.let { "  ($it %)" } ?: ""))
             if (pw.charging != null) Field("Charging", if (pw.charging == true) "Yes" else "No")
+            pw.chargerState?.let { Field("Charger", chargerText(it)) }
             if (pw.batteryMa != null) Field("Battery current", fmt(pw.batteryMa, "%.0f", " mA"))
             if (pw.vbusV != null) Field("USB / external", fmt(pw.vbusV, "%.2f", " V"))
             if (pw.pmuTemperatureC != null) Field("PMU temperature", fmt(pw.pmuTemperatureC, "%.1f", " °C"))
@@ -429,4 +431,14 @@ private fun TxRangeSection(sa: es.ea7jrs.aprslorap.core.Sa868Info?) {
             Button(enabled = code.count { it.isLetterOrDigit() } == 128, onClick = { c?.control("txunlock", "code" to code.filter { it.isLetterOrDigit() }); code = ""; c?.control("info") }) { Text("Unlock TX range") }
         }
     }
+}
+
+private fun chargerText(s: String): String = when (s) {
+    "trickle" -> "Trickle (battery very low)"
+    "pre" -> "Pre-charge"
+    "cc" -> "Constant current"
+    "cv" -> "Constant voltage (almost full)"
+    "done" -> "Charged"
+    "stop" -> "Not charging"
+    else -> s
 }

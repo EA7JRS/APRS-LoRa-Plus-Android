@@ -76,6 +76,7 @@ data class TrackerInfo(
     val hasWxNet: Boolean = false,              // weather from the internet for the TELEMETRY page ("wxnet")
     val hasAis: Boolean = false,                // AIS receiver: "ais" / "aislist" events, "aisin", "aisset"
     val lastReset: String = "",                 // abnormal last reset of the tracker ("CRASH", "WDT", "LOW VOLTAGE"...); empty = normal
+    val pmuOff: String = "",                    // the PMU switched itself off last time ("VSYS LOW", "DC UNDER VOLTAGE"...); empty = normal
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -115,6 +116,8 @@ data class Sensors(
     val qnhSource: String? = null,
     /** Forecast of the tracker with the internet weather (sensors.net.fc) and the 3 h pressure change of that data (hPa, net.d3). */
     val netForecast: String? = null, val netDelta3h: Double? = null,
+    /** AXP2101 charger state: "trickle", "pre", "cc", "cv", "done" or "stop" (not charging). */
+    val chargerState: String? = null,
 )
 
 data class Gnss(
@@ -265,6 +268,7 @@ object Control {
                     o.num("gas"), o.num("iaq"), o.str("iaqLabel"), o.str("wxSensor"), numList(o, "accel"), numList(o, "gyro"), o.bool("flat"),
                     o.bool("magCal"), o.bool("magAlign"), o.bool("charging"), o.num("vbus"), o.num("pmuTemp"), o.num("battMa"),
                     o.int("battPct"), o.long("heap"), o.str("qs"), o.obj("net")?.str("fc"), o.obj("net")?.num("d3"),
+                    o.str("chg"),
                 ),
             )
             "gnss" -> ControlEvent.Position(
@@ -436,6 +440,7 @@ object Control {
             caps.bool("wxnet") ?: false,
             caps.bool("ais") ?: false,
             o.str("rst") ?: "",
+            o.str("pmuOff") ?: "",
         )
     }
 }
