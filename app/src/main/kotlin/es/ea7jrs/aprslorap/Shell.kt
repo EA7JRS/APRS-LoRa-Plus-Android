@@ -389,7 +389,18 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
                 }
             }
         }
- Spacer(Modifier.height(8.dp))
+        MenuGroup("THEME") {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                for ((id, label) in ThemeMode.MODES) Chip(label, ThemeMode.mode == id, Modifier.weight(1f), height = 34.dp) { ThemeMode.set(settings, id) }
+            }
+            Text(when (ThemeMode.mode) {
+                "light" -> "Light, for daylight."
+                "system" -> "As Android's dark theme setting."
+                "auto" -> "Light from sunrise to sunset at our position (tracker GNSS or locator), dark at night."
+                else -> "Dark, for night and the car."
+            }, fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+        }
+        Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for ((label, t) in listOf("Remote" to Tool.REMOTE, "Config" to Tool.CONFIG, "Firmware" to Tool.FIRMWARE, "About" to Tool.ABOUT)) {
                 RadioKey(label, Modifier.weight(1f).height(44.dp), bg = Color.Transparent, labelSize = 14) { tool(t) }

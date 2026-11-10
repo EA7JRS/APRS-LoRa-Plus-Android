@@ -450,6 +450,11 @@ class Settings(ctx: Context) {
         get() = p.getString("ui_keys", "BCN,MSG,SLIST,MAP")!!.split(',').filter { it.isNotEmpty() }.let { if (it.size == 4) it else listOf("BCN", "MSG", "SLIST", "MAP") }
         set(v) { p.edit().putString("ui_keys", v.joinToString(",")).apply() }
 
+    /** Theme: "dark" (default), "light", "system" (as Android) or "auto" (by the Sun at our position). */
+    var uiTheme: String
+        get() = p.getString("ui_theme", "dark")!!
+        set(v) { p.edit().putString("ui_theme", v).apply() }
+
     var uiDispPage: Int
         get() = p.getInt("ui_disp", 0)
         set(v) { p.edit().putInt("ui_disp", v).apply() }

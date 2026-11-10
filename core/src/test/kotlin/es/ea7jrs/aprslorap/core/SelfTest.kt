@@ -1212,7 +1212,7 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1335,4 +1335,16 @@ private fun testStatusRadio() {
     val old = (Control.parse("""{"e":"status","mode":2,"profile":0,"lora":0,"up":60}""") as ControlEvent.Status).status
     eq(old.freqHz, null, "older firmware: no frequency"); eq(TrackerMode.modulation(old.mode), "CW", "fallback modulation")
     eq(TrackerMode.modulation(TrackerMode.APRS_LORA, sa868 = true), "AFSK", "T-TWR APRS")
+}
+
+private fun testSun() {
+    val utc = { y: Int, mo: Int, d: Int, h: Int, mi: Int -> java.time.ZonedDateTime.of(y, mo, d, h, mi, 0, 0, java.time.ZoneOffset.UTC).toInstant().toEpochMilli() }
+    // Seville 37.39 N 5.99 W: noon of the June solstice ~ 76°, of the December one ~ 29°
+    near(Sun.elevationDeg(37.39, -5.99, utc(2026, 6, 21, 12, 24)), 76.0, 0.6, "sun elevation June noon")
+    near(Sun.elevationDeg(37.39, -5.99, utc(2026, 12, 21, 12, 24)), 29.2, 0.6, "sun elevation December noon")
+    check(!Sun.isDay(37.39, -5.99, utc(2026, 11, 10, 4, 58)), "night before dawn in Seville")
+    check(Sun.isDay(37.39, -5.99, utc(2026, 11, 10, 12, 0)), "day at noon")
+    // sunrise in Seville on 2026-11-10 is ~08:10 CET (07:10 UTC)
+    check(!Sun.isDay(37.39, -5.99, utc(2026, 11, 10, 6, 55)), "before sunrise")
+    check(Sun.isDay(37.39, -5.99, utc(2026, 11, 10, 7, 25)), "after sunrise")
 }

@@ -112,25 +112,25 @@ fun GpsStatusPage() {
         Chip(if (headingUp) "HDG-UP" else "N-UP", headingUp, color = Alp.Green, height = 32.dp) { headingUp = !headingUp }
     }
 
-    Panel(Modifier.fillMaxWidth(), bg = Color.Black, border = Alp.PanelBorder, padding = 10.dp) {
+    Panel(Modifier.fillMaxWidth(), bg = Alp.SkyBg, border = Alp.PanelBorder, padding = 10.dp) {
         Row {
             Column(Modifier.weight(1f)) {
                 Text(if (isPhone) "Course (GPS)" else "Course (tracker)", color = GpsLabel, fontSize = 15.sp)
-                Text(course?.let { String.format(Locale.US, "%.0f°", it) } ?: "—", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
+                Text(course?.let { String.format(Locale.US, "%.0f°", it) } ?: "—", color = Alp.Text, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text("Orientation", color = GpsLabel, fontSize = 15.sp)
-                Text(heading?.let { cardinalText(it) } ?: "—", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
+                Text(heading?.let { cardinalText(it) } ?: "—", color = Alp.Text, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         SkyPlot(sky, up, heading, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 6.dp))
         Row(verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
-                Text(sky.errorM?.let { String.format(Locale.US, "%.1f", it) } ?: "—", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
+                Text(sky.errorM?.let { String.format(Locale.US, "%.1f", it) } ?: "—", color = Alp.Text, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
                 Text("Error (m)", color = GpsLabel, fontSize = 15.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("${sky.used}/${if (sky.inView > 0) sky.inView else "—"}", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
+                Text("${sky.used}/${if (sky.inView > 0) sky.inView else "—"}", color = Alp.Text, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
                 Text("Used/Sats", color = GpsLabel, fontSize = 15.sp)
             }
         }
@@ -190,12 +190,12 @@ fun GpsStatusPage() {
             "Temp (°C)" to (s?.temperatureC?.let { String.format(Locale.US, "%.1f", it) } ?: "—"),
         )
     }
-    Panel(Modifier.fillMaxWidth(), bg = Color.Black, padding = 8.dp) {
+    Panel(Modifier.fillMaxWidth(), bg = Alp.SkyBg, padding = 8.dp) {
         for (row in cells.chunked(3)) {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 for ((label, value) in row) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(label, color = GpsLabel, fontSize = 13.sp, maxLines = 1, textAlign = TextAlign.Center)
-                    Text(value, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, textAlign = TextAlign.Center)
+                    Text(value, color = Alp.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -240,7 +240,7 @@ private fun SkyPlot(sky: SkyView, upDeg: Double, heading: Double?, modifier: Mod
             drawLine(RingColor.copy(alpha = 0.6f), at(c, r, Math.toRadians(90.0)), at(c, r, Math.toRadians(270.0)), 1.dp.toPx())
             for ((t, a) in listOf("N" to 0, "NE" to 45, "E" to 90, "SE" to 135, "S" to 180, "SW" to 225, "W" to 270, "NW" to 315)) {
                 val p = at(c, r * 1.1f, Math.toRadians(a.toDouble()))
-                val l = tm.measure(t, TextStyle(color = Color.White, fontSize = if (t.length == 1) 17.sp else 13.sp, fontWeight = FontWeight.Bold))
+                val l = tm.measure(t, TextStyle(color = Alp.Text, fontSize = if (t.length == 1) 17.sp else 13.sp, fontWeight = FontWeight.Bold))
                 rotate(a.toFloat(), p) { drawText(l, topLeft = Offset(p.x - l.size.width / 2f, p.y - l.size.height / 2f)) }
             }
             if (heading != null) {
