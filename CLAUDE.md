@@ -105,7 +105,7 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 5. Distancia y rumbo desde la posición propia; avisos de balizas de estaciones favoritas y emergencias (SOS / EAI) con **Ir a**.
 6. Balizas de posición desde el móvil.
 7. Comprobar en un coche o con el emulador de Android Auto cómo aparece la app y que la respuesta por voz llega al tracker.
-8. Lista de estaciones en el coche (si Google lo permite).
+8. Lista de estaciones en el coche (si Google lo permite). **Aparcado para el futuro** (Manuel, 2026-11-10, «tiene buena pinta»): app del coche con la Car App Library, maqueta en el panel 13 del lienzo (inicio MSG / S.LIST / MAP, conversaciones con escuchar y responder, lista de estaciones con mapa numerado, detalle con Go to / Message / Rotor). MSG = mensajería con plantillas (beta: solo pruebas internas o cerradas en Google Play, Car API 7, `androidx.car.app.category.MESSAGING`, `automotive_app_desc` con `notification` y `template`); S.LIST = categoría de puntos de interés (no se sabe si Google admite estaciones APRS ni las dos categorías en una app). Para uso personal basta «Fuentes desconocidas» en los ajustes de desarrollador de Android Auto.
 
 ## Cómo trabajar
 - Núcleo sin Android: se puede compilar y ejecutar en cualquier sitio con JDK y `kotlinc`. En la sesión de la nube no hay acceso a Maven, Google ni Gradle; el compilador de Kotlin se obtuvo de `https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip`.
