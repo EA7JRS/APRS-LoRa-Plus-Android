@@ -62,7 +62,8 @@ jobs:
           ALP_UPLOAD_KEY_PASSWORD: ${{ secrets.ALP_UPLOAD_KEY_PASSWORD }}
         run: |
           if [ -n "$ALP_UPLOAD_KEYSTORE" ]; then
-              echo "$ALP_UPLOAD_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+              # only base64 characters: a copy from Windows brings CR / LF, spaces or a BOM
+              printf '%s' "$ALP_UPLOAD_KEYSTORE" | tr -dc 'A-Za-z0-9+/=' | base64 -d > "$RUNNER_TEMP/upload.jks"
               export ALP_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
           else
               echo "::notice::No upload key in the secrets: the bundle is built unsigned (only to check the release build)"
