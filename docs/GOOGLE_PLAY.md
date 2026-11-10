@@ -38,7 +38,7 @@ En GitHub: `EA7JRS/APRS-LoRa-Plus-Android` > Settings > Secrets and variables > 
 Con eso cada ejecución de la CI deja el artefacto **aprs-lora-plus-play-aab** (`app-release.aab`). En Play Console activa **Play App Signing** (Google guarda la clave de firma final).
 
 ## 3. Crear la app en Play Console
-- Nombre: **APRS LoRa+** · Idioma por defecto: inglés (EE. UU.); traducción al español · App · Gratuita.
+- Nombre: **APRS LoRa+** · Idioma por defecto: inglés (EE. UU.); traducción al español · App · **De pago** (decidido por Manuel el 2026-11-10; una app publicada gratis no puede pasar a ser de pago, al revés sí).
 - Categoría: **Comunicación** (o Herramientas). Etiquetas: radioafición, APRS.
 - Contacto: ea7jrs.manuel@gmail.com (lo verán los usuarios). Política de privacidad: la dirección de arriba.
 
@@ -106,6 +106,19 @@ Código abierto (GPL-3.0). Sin anuncios ni seguimiento.
 2. Volver a la pantalla Radio: el tracker conectado, una estación recibida (luz RX).
 3. Bloquear la pantalla, mandar un mensaje APRS al tracker desde otra estación → la notificación llega con la pantalla apagada.
 4. Responder desde la notificación.
+
+## App de pago (Manuel, 2026-11-10)
+- **Perfil de pagos** en Play Console (*Configuración > Perfil de pagos*): cuenta de comerciante de Google con cuenta bancaria y datos fiscales; sin él no se puede poner precio.
+- **Estado de comerciante (UE)**: vendiendo, se declara «comerciante» y Google publica en la ficha dirección, teléfono y correo de contacto.
+- **Precio**: por país (Google convierte); el IVA de la UE lo cobra e ingresa Google. Los ingresos tributan en tu IRPF: consultar con un gestor.
+- **Probadores**: en las pruebas internas y cerradas la instalan gratis.
+- **GPL-3**: se puede vender, pero quien la compre tiene derecho al código fuente y a redistribuirlo; con el repositorio privado hay que ofrecerlo (enlace o petición por correo). Precedente: APRSdroid es GPL y se vende en Google Play.
+- **Servicios de terceros con condiciones no comerciales** (revisar o quitar en la versión de pago):
+  - RainViewer: solo uso personal y educativo → quitar el radar de RainViewer o pedir licencia comercial; AEMET OpenData sí permite reutilización comercial con atribución.
+  - Teselas de tile.openstreetmap.org: la política de uso de la OSMF no admite apps con muchos usuarios → proveedor de teselas propio o de pago (o IGN, CC BY 4.0).
+  - Base de señales de Artemis (sigidwiki): sin licencia explícita.
+  - RepeaterBook, RadioID.net, DAPNET, APRS-IS: comprobar sus condiciones para apps de pago.
+  - Símbolos APRS de aprs.fi (hessu/aprs-symbols) y logotipos de marcas entre ellos.
 
 ## 5. Pruebas y producción
 1. **Prueba interna** (hasta 100 personas, sin revisión larga): subir el `.aab`, probar tú.
