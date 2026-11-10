@@ -389,6 +389,18 @@ fun Lamp(on: Boolean, color: Color = Alp.Green) {
     Box(Modifier.size(8.dp).clip(CircleShape).background(if (on) color else Alp.Off))
 }
 
+/** Light of the band header (TX, RX, MSG, EMG): glows when on, [halo] = white ring (the tracker's flash). */
+@Composable
+fun RadioLed(label: String, on: Boolean, color: Color, halo: Boolean = false) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(14.dp).clip(CircleShape).background(if (on) color.copy(alpha = 0.35f) else Color.Transparent), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(9.dp).clip(CircleShape).background(if (on) color else Alp.Off)
+                .let { if (on && halo) it.border(1.5.dp, Color.White, CircleShape) else it })
+        }
+        Text(label, fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, lineHeight = 10.sp, color = if (on) color else Alp.Muted)
+    }
+}
+
 /** Text with a label above, for the data tiles. */
 @Composable
 fun DataTile(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color = Alp.Text, unit: String? = null) {

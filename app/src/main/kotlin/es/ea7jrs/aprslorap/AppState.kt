@@ -5,6 +5,7 @@
  */
 package es.ea7jrs.aprslorap
 
+import es.ea7jrs.aprslorap.core.ControlEvent
 import es.ea7jrs.aprslorap.core.ChatMessage
 import es.ea7jrs.aprslorap.core.BcastState
 import es.ea7jrs.aprslorap.core.FmChannel
@@ -128,6 +129,9 @@ object AppState {
     val cwRxText = MutableStateFlow("")
     val cwRxLevel = MutableStateFlow("")
     val cwRxDbm = MutableStateFlow<Double?>(null)                                  // level of the tracker's CW listening (S-meter of band A)
+    val rfTxSinceMs = MutableStateFlow(0L)                                        // band A TX light: the tracker is sending a frame since (0 = not)
+    val rfRxAtMs = MutableStateFlow(0L)                                           // band A RX light: last frame heard by the tracker
+    val trackerLeds = MutableStateFlow<ControlEvent.Led?>(null)                   // MSG / EMG lights and the white flash of the tracker
     val packetStatus = MutableStateFlow("Off")                                   // packet FSK (G3RUH) from the app receiver
     val packetLog = MutableStateFlow<List<String>>(emptyList())
     val dvStatus = MutableStateFlow("Off")                                       // digital voice decoder (dsd-fme)

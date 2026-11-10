@@ -323,6 +323,12 @@ class Controller(
                     else -> AppState.addLog("The tracker asked for '${ev.what}': not known by this app")
                 }
             }
+            is ControlEvent.Rf -> when (ev.state) {
+                "tx" -> AppState.rfTxSinceMs.value = System.currentTimeMillis()
+                "rx" -> AppState.rfRxAtMs.value = System.currentTimeMillis()
+                else -> AppState.rfTxSinceMs.value = 0L
+            }
+            is ControlEvent.Led -> AppState.trackerLeds.value = ev
             is ControlEvent.CwRx -> {
                 AppState.cwRxOn.value = ev.on
                 AppState.cwRxDbm.value = if (ev.on) ev.dbm ?: AppState.cwRxDbm.value else null

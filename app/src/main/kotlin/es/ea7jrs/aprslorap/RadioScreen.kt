@@ -5,6 +5,8 @@
  */
 package es.ea7jrs.aprslorap
 
+import androidx.compose.runtime.mutableLongStateOf
+import es.ea7jrs.aprslorap.core.FmState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,6 +74,50 @@ fun trackerFreqHz(): Long = AppState.trackerInfo.value?.loras?.getOrNull(AppStat
 fun lastHeardWithSignal(list: List<HeardStation>): HeardStation? = list.filter { it.rssi != null }.minByOrNull { it.ageS }
 
 /** Band A: the tracker (LoRa / FSK APRS). */
+/** TX / RX of the tracker's radio and its MSG / EMG lights (events `rf` and `led`; FM voice of the T-TWR: `ptt` and `busy`). */
+@Composable
+private fun BandLights(linked: Boolean, fm: FmState?) {
+    val txSince by AppState.rfTxSinceMs.collectAsState()
+    val rxAt by AppState.rfRxAtMs.collectAsState()
+    val leds by AppState.trackerLeds.collectAsState()
+    val led = leds.takeIf { linked }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // ticks only while something is lit or blinking
+    LaunchedEffect(linked, led, txSince, rxAt) {
+        while (true) {
+            now = System.currentTimeMillis()
+            val active = linked && (led?.msg == true || led?.emg == true || (txSince > 0 && now - txSince < 15_000) || now - rxAt < 600)
+            if (!active) break
+            delay(100)
+        }
+    }
+    val tx = linked && (fm?.ptt ?: (txSince > 0 && now - txSince < 15_000))          // a lost "idle" goes out after 15 s
+    val rx = linked && !tx && (fm?.let { it.busy } ?: (rxAt > 0 && now - rxAt < 600))
+    val msgOn = led?.msg == true && now % 5000 < 1000                                // 1 s on every 5 s, like the tracker's LED
+    val emgOn = led?.emg == true && now % 500 < 250
+    Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        RadioLed("TX", tx, Alp.Red)
+        RadioLed("RX", rx, Alp.Green)
+        RadioLed("MSG", msgOn, Alp.Amber)
+        RadioLed("EMG", emgOn, Alp.Red, halo = led?.flash == true)
+    }
+}
+
+/** Line under the band header while the tracker has an emergency alarm or unread messages. */
+@Composable
+private fun BandAlert(linked: Boolean, nav: Navigator) {
+    val leds by AppState.trackerLeds.collectAsState()
+    val led = leds?.takeIf { linked } ?: return
+    when {
+        led.emg -> Text(listOf("EMERGENCY", led.emgCall, led.emgText).filter { it.isNotBlank() }.joinToString(" · "), fontFamily = BarlowCondensed,
+            fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Alp.Red, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clickable { nav.tool(Tool.TRACKER) })
+        led.msg -> Text(if (led.unread > 0) "${led.unread} message${if (led.unread == 1) "" else "s"} on the tracker" else "New message on the tracker",
+            fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Alp.Amber, maxLines = 1,
+            modifier = Modifier.clickable { nav.tool(Tool.HEARD) })
+    }
+}
+
 @Composable
 private fun BandA(nav: Navigator, big: Boolean) {
     val info by AppState.trackerInfo.collectAsState()
@@ -121,18 +167,23 @@ private fun BandA(nav: Navigator, big: Boolean) {
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Alp.Panel).clickable { nav.tool(if (running) Tool.TRACKER else Tool.CONNECT) }) {
         Box(Modifier.padding(top = 14.dp).width(5.dp).height(if (big) 140.dp else 40.dp).clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)).background(Alp.Green))
         Column(Modifier.padding(start = 20.dp, end = 14.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("A", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Alp.Bg,
-                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Green).padding(horizontal = 7.dp))
-                Text("TRACKER", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Alp.Muted)
-                Spacer(Modifier.weight(1f))
-                // in FM, touching the modulation switches the channel between FM (wide) and NFM (narrow)
-                Text(if (status == null) "—" else if (fmCh != null) "$mod ⇄" else "$mod · ${modeName.uppercase(Locale.US)}", fontFamily = BarlowCondensed,
-                    fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = modColor, maxLines = 1,
-                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg)
-                        .let { m -> if (fmCh != null) m.clickable { AppState.controller?.control("fmset", "w" to !fmCh.wide) } else m }
-                        .padding(horizontal = 6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("A", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Alp.Bg,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Green).padding(horizontal = 7.dp))
+                    Text("TRACKER", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Alp.Muted, maxLines = 1)
+                }
+                BandLights(linked = running && status != null, fm = fm.takeIf { fmCh != null })
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+                    // in FM, touching the modulation switches the channel between FM (wide) and NFM (narrow)
+                    Text(if (status == null) "—" else if (fmCh != null) "$mod ⇄" else "$mod · ${modeName.uppercase(Locale.US)}", fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = modColor, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg)
+                            .let { m -> if (fmCh != null) m.clickable { AppState.controller?.control("fmset", "w" to !fmCh.wide) } else m }
+                            .padding(horizontal = 6.dp))
+                }
             }
+            BandAlert(running && status != null, nav)
             if (status == null) {
                 Text(if (running) ble else "Tracker not connected · touch to connect", fontSize = 15.sp, color = Alp.Muted)
                 if (!big) return@Column

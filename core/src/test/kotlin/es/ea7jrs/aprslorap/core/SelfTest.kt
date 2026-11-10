@@ -1215,7 +1215,7 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1357,6 +1357,16 @@ private fun testRtlUsb() {
     eq(RtlUsb.find(0x1a86, 0x7523), null, "CH340 is not an RTL-SDR")
     eq(RtlUsb.id(0x0bda, 0x2838), "0bda:2838", "USB id text")
     eq(RtlUsb.KNOWN.map { it.vid to it.pid }.toSet().size, RtlUsb.KNOWN.size, "no repeated ids")
+}
+
+private fun testLights() {
+    val rx = Control.parse("""{"e":"rf","s":"rx","rssi":-97,"snr":7.5}""") as ControlEvent.Rf
+    eq(rx.state, "rx", "rf rx"); eq(rx.rssi, -97, "rf rssi"); eq(rx.snr, 7.5, "rf snr")
+    eq((Control.parse("""{"e":"rf","s":"tx"}""") as ControlEvent.Rf).state, "tx", "rf tx")
+    val l = Control.parse("""{"e":"led","msg":true,"unread":2,"emg":true,"ec":"EA7ZZZ-9","et":"SOS 9.6 km","fl":true}""") as ControlEvent.Led
+    eq(l.msg && l.emg && l.flash, true, "led flags"); eq(l.unread, 2, "led unread"); eq(l.emgCall, "EA7ZZZ-9", "led call"); eq(l.emgText, "SOS 9.6 km", "led text")
+    val o = Control.parse("""{"e":"led","msg":false,"unread":0,"emg":false,"fl":false}""") as ControlEvent.Led
+    eq(o.emg || o.msg || o.flash, false, "led off"); eq(o.emgCall, "", "led no call")
 }
 
 private fun testHeardSymbol() {

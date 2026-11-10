@@ -215,6 +215,10 @@ sealed class ControlEvent {
     data class Ais(val vessel: AisVessel) : ControlEvent()
     data class AisList(val total: Int, val from: Int, val messages: Int, val source: String, val channel: String, val items: List<AisVessel>) : ControlEvent()
     data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?, val freqHz: Long? = null) : ControlEvent()
+    /** Radio activity for the TX / RX lights: "tx" while a frame is being sent, "idle" after it, "rx" for each frame heard. */
+    data class Rf(val state: String, val rssi: Int?, val snr: Double?) : ControlEvent()
+    /** Tracker lights: unread-message LED, emergency alarm sounding (station, detail) and the white flash. */
+    data class Led(val msg: Boolean, val unread: Int, val emg: Boolean, val emgCall: String, val emgText: String, val flash: Boolean) : ControlEvent()
     data class Targets(
         val selected: Int, val source: Int, val items: List<RotorTarget>,
         // rotor following what the tracker hears (firmware with sources 4 / 5): callsign filter, max age, moving-station estimate
@@ -329,6 +333,8 @@ object Control {
             "aislist" -> ControlEvent.AisList(o.int("tot") ?: 0, o.int("from") ?: 0, o.int("msgs") ?: 0, o.str("src") ?: "", o.str("ch") ?: "",
                 o.objList("items").mapNotNull { AisVessel.parse(it, System.currentTimeMillis()) })
             "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"), o.long("f"))
+            "rf" -> ControlEvent.Rf(o.str("s") ?: "idle", o.int("rssi"), o.num("snr"))
+            "led" -> ControlEvent.Led(o.bool("msg") ?: false, o.int("unread") ?: 0, o.bool("emg") ?: false, o.str("ec") ?: "", o.str("et") ?: "", o.bool("fl") ?: false)
             "targets" -> ControlEvent.Targets(
                 o.int("sel") ?: 0, o.int("src") ?: 0,
                 o.objList("items").mapNotNull { t ->
