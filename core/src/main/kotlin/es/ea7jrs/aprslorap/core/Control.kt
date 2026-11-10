@@ -77,6 +77,8 @@ data class TrackerInfo(
     val hasAis: Boolean = false,                // AIS receiver: "ais" / "aislist" events, "aisin", "aisset"
     val lastReset: String = "",                 // abnormal last reset of the tracker ("CRASH", "WDT", "LOW VOLTAGE"...); empty = normal
     val pmuOff: String = "",                    // the PMU switched itself off last time ("VSYS LOW", "DC UNDER VOLTAGE"...); empty = normal
+    val lastResetAt: String = "",               // mode and seconds running before that reset ("mode 11, 12 s", "during boot")
+    val lastResetTasks: String = "",            // task watchdog: task running on core 0 / core 1 ("afskRx / loopTask")
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -441,6 +443,8 @@ object Control {
             caps.bool("ais") ?: false,
             o.str("rst") ?: "",
             o.str("pmuOff") ?: "",
+            o.str("rstAt") ?: "",
+            o.str("rstTask") ?: "",
         )
     }
 }

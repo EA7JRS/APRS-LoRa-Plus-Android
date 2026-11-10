@@ -235,6 +235,9 @@ private fun testControl() {
     eq(ttwr.hasM17, false, "no m17 cap = false")
     eq(ttwr.lastReset, "", "no rst = normal reset")
     eq((Control.parse("""{"e":"info","v":1,"fw":"5.4.1","board":"lilygo_t_twr_plus","pmuOff":"VSYS LOW","caps":{}}""") as ControlEvent.Info).info.pmuOff, "VSYS LOW", "info pmuOff")
+    (Control.parse("""{"e":"info","v":1,"fw":"5.4.1","board":"lilygo_t_twr_plus","rst":"TASK WDT","rstAt":"mode 11, 12 s","rstTask":"afskRx / loopTask","caps":{}}""") as ControlEvent.Info).info.let {
+        eq(it.lastResetAt, "mode 11, 12 s", "info rstAt"); eq(it.lastResetTasks, "afskRx / loopTask", "info rstTask")
+    }
     eq((Control.parse("""{"e":"sensors","charging":false,"chg":"stop"}""") as ControlEvent.SensorData).sensors.chargerState, "stop", "sensors chg = charger state")
     eq((Control.parse("""{"e":"info","v":1,"fw":"5.4.0","board":"lilygo_t_twr_plus","rst":"LOW VOLTAGE","caps":{}}""") as ControlEvent.Info).info.lastReset, "LOW VOLTAGE", "info rst = abnormal last reset")
     val m17 = (Control.parse("""{"e":"info","v":1,"fw":"5.3.5","board":"lilygo_t_twr_plus","caps":{"radio":"sa868","modes":true,"m17":true},"sa868":{"rev":20,"fw":"OpenRTX","band":"UHF","ok":true,"modem":"M17","rx":433475000,"tx":433475000,"m17":433475000},"mode":10,"modes":[{"m":0,"n":"APRS AFSK 1200"},{"m":1,"n":"APRS FSK 9600"},{"m":10,"n":"M17"}]}""") as ControlEvent.Info).info
