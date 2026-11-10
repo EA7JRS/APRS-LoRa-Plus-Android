@@ -7,12 +7,14 @@ Copyright (C) 2026 Manuel - EA7JRS · GPL-3.0-or-later. Comprobado con la docume
 | Paso | Quién | Estado |
 |---|---|---|
 | Objetivo Android 16 (API 36) | app | hecho (AGP 8.11.1, Gradle 8.13) |
-| Paquete `.aab` firmado en la CI | app | hecho; falta la clave de subida en los secretos |
+| Paquete `.aab` firmado en la CI | app | hecho; artefacto `aprs-lora-plus-play-aab` con la clave de subida de Manuel (2026-11-10) |
 | Versión de Google Play sin voz digital (mbelib) | app | hecho (`-Palp.play=true`) |
 | Botón para permitir alertas a pantalla completa | app | hecho (menú lateral > Emergency alerts) |
 | Política de privacidad | tracker | `web/privacy.html` → `https://ea7jrs.github.io/APRS-LoRa-Plus/privacy.html` al publicar la release del tracker; contacto ea7jrs.manuel@gmail.com |
 | Cuenta de desarrollador | Manuel | creada y verificada el 2026-11-10 (nombre de desarrollador «EA7JRS»), datos de desarrollador completos |
-| Clave de subida y secretos | Manuel | pendiente |
+| Clave de subida y secretos | Manuel | hechos el 2026-11-10 (la CI quita del base64 lo que no sea base64: CR/LF de Windows) |
+| App creada en Play Console | Manuel | 2026-11-10: «APRS LoRa+», `es.ea7jrs.aprslorap`, **de pago**, firma de aplicaciones de Play |
+| Prueba interna | Manuel | **funcionando** desde el 2026-11-10 (versión 5.4.1, 50401); acceso a la app declarado: «Listen only», indicativo en RadioID, tracker por Bluetooth |
 | 12 probadores 14 días | Manuel | pendiente |
 | Vídeo del servicio en primer plano | Manuel | pendiente |
 
