@@ -298,6 +298,15 @@ fun StationDetailScreen(nav: Navigator, call: String) {
     }
 }
 
+/** Colour of a temperature: amber from 24 °C, red from 30 °C, light blue at 5 °C or less. */
+fun tempColor(c: Double?): Color = when {
+    c == null -> Alp.Text
+    c >= 30.0 -> Alp.RedSoft
+    c >= 24.0 -> Alp.Amber
+    c <= 5.0 -> Color(0xFF7FD3F0)
+    else -> Alp.Text
+}
+
 /** Weather report of a station: wind with its direction, temperature, humidity, pressure, rain, light and snow. */
 @Composable
 fun WeatherPanel(wx: AprsWx, atMs: Long?) {
@@ -308,7 +317,7 @@ fun WeatherPanel(wx: AprsWx, atMs: Long?) {
             Text(Fmt.ago(atMs), fontSize = 13.sp, color = Alp.Muted)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-            Text(wx.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 40.sp, color = Alp.Text)
+            Text(wx.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 40.sp, color = tempColor(wx.tempC))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     // the arrow points where the wind blows to (it comes from windDirDeg)

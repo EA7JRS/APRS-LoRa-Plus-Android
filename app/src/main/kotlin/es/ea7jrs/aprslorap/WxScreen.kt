@@ -102,7 +102,7 @@ private fun WxRow(s: StationView, d: Pair<Double, Double>?, onClick: () -> Unit)
             ).joinToString(" · "), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(w.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 24.sp, color = Alp.Text)
+            Text(w.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 24.sp, color = tempColor(w.tempC))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (d == null) "—" else Fmt.km(d.first) + " " + Geo.cardinal16(d.second), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted,
                     textAlign = TextAlign.End)
