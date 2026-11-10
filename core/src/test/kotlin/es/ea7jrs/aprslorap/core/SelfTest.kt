@@ -1397,16 +1397,8 @@ private fun testAlerts() {
 }
 
 private fun testWxRadar() {
-    val f = WxRadar.parseFrames("""{"version":"2.0","generated":1609402525,"host":"https://tilecache.rainviewer.com","radar":{"past":[{"time":1609402200,"path":"/v2/radar/1609402200"},{"time":1609401600,"path":"/v2/radar/1609401600"}]}}""")!!
-    eq(f.past.size, 2, "radar frames"); eq(f.past.last().timeS, 1609402200L, "frames sorted, last = newest")
-    eq(WxRadar.tileUrl(f.host, f.past.last(), 7, 62, 49), "https://tilecache.rainviewer.com/v2/radar/1609402200/256/7/62/49/2/1_1.png", "tile url")
-    eq(WxRadar.tileZoom(11.4), 7, "tiles at most zoom 7"); eq(WxRadar.tileZoom(5.9), 5, "map zoom 5")
-    eq(WxRadar.tileX(-5.98, 7), 61, "Seville tile x"); eq(WxRadar.tileY(37.39, 7), 49, "Seville tile y")
-    check(WxRadar.tileLon(61, 7) <= -5.98 && WxRadar.tileLon(62, 7) > -5.98, "tile lon bounds")
-    check(WxRadar.tileLat(49, 7) >= 37.39 && WxRadar.tileLat(50, 7) < 37.39, "tile lat bounds")
     eq(WxRadar.aemetData("""{"descripcion":"exito","estado":200,"datos":"https://opendata.aemet.es/opendata/sh/abc"}""").getOrNull(), "https://opendata.aemet.es/opendata/sh/abc", "aemet data url")
     eq(WxRadar.aemetData("""{"descripcion":"API key invalido","estado":401}""").exceptionOrNull()?.message, "AEMET: API key invalido", "aemet error")
-    eq(WxRadar.ago(1609402200 + 1200, f.past.last()), "−20 min", "frame age")
 }
 
 private fun testLights() {

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
@@ -63,6 +64,7 @@ fun SigIdTab() {
     var bw by rememberSaveable { mutableStateOf("") }
     var cat by rememberSaveable { mutableStateOf("") }
     var openId by rememberSaveable { mutableStateOf(-1) }
+    var askDownload by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { if (AppState.sigIdInfo.value == null) withContext(Dispatchers.IO) { SigIdDb.load(ctx) } }
 
     val open = SigIdDb.signals.firstOrNull { it.id == openId }
@@ -78,11 +80,23 @@ fun SigIdTab() {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         item {
             Section("Signal identification")
-            Text(info?.let { "Database version ${it.version} (${it.date}), ${it.signals} signals" } ?: "No database yet: download it (about 1 MB).", fontSize = 13.sp)
+            Text(info?.let { "Database version ${it.version} (${it.date}), ${it.signals} signals" }
+                ?: "Optional: the signal database is not part of the app. Download it if you want to use this tab (about 1 MB).", fontSize = 13.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { SigIdDb.update(ctx) }, enabled = !busy) { Text(if (info == null) "Download" else "Check for update") }
+                Button(onClick = { if (info == null) askDownload = true else SigIdDb.update(ctx) }, enabled = !busy) { Text(if (info == null) "Download" else "Check for update") }
                 if (info != null) OutlinedButton(onClick = { SigIdDb.update(ctx, force = true) }, enabled = !busy) { Text("Download again") }
+                if (info != null) OutlinedButton(onClick = { SigIdDb.delete(ctx) }, enabled = !busy) { Text("Remove") }
             }
+            if (askDownload) AlertDialog(
+                onDismissRequest = { askDownload = false },
+                title = { Text("Signal database (optional)") },
+                text = {
+                    Text("The database comes from the Artemis project (AresValley), with the signals of sigidwiki.com. It is not part of APRS LoRa+ and " +
+                        "has no explicit licence: it is downloaded from Artemis' own servers to your phone, for your own use. You can remove it at any time.")
+                },
+                confirmButton = { TextButton(onClick = { askDownload = false; SigIdDb.update(ctx) }) { Text("Download") } },
+                dismissButton = { TextButton(onClick = { askDownload = false }) { Text("Cancel") } },
+            )
             if (msg.isNotBlank()) Text(msg, fontSize = 12.sp)
             Text("${SigId.ATTRIBUTION}. Images and audio are downloaded when you open them.", fontSize = 11.sp)
             HorizontalDivider(Modifier.padding(vertical = 8.dp))

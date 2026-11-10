@@ -51,6 +51,14 @@ object SigIdDb {
         throw IllegalStateException("too many redirects")
     }
 
+    /** Removes the database and its images / audio from the phone (the Artemis data is optional: the user downloads it). */
+    fun delete(ctx: Context) {
+        dir(ctx).deleteRecursively()
+        signals = emptyList()
+        AppState.sigIdInfo.value = null
+        AppState.sigIdMessage.value = "Signal database removed."
+    }
+
     /** Loads the database already on the phone (any thread). */
     fun load(ctx: Context): Info? {
         val f = dbFile(ctx)
