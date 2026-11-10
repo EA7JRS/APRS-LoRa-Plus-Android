@@ -287,7 +287,7 @@ private fun testControl() {
     val mc = Control.parse("""{"e":"msg","tot":3,"unread":2,"i":0,"d":"R","ep":5,"st":0,"c":"EA1CCC","t":"nuevo"}""") as ControlEvent.MessageChanged
     eq(mc.newest?.call, "EA1CCC", "msg change newest"); eq(mc.unread, 2, "msg change unread")
     eq((Control.parse("""{"e":"msg","tot":0,"unread":0}""") as ControlEvent.MessageChanged).newest, null, "msg change without messages")
-    val hd = Control.parse("""{"e":"heard","tot":1,"pkts":9,"from":0,"items":[{"c":"EA1WX","sym":"/_","k":"WX","lat":40.1,"lon":-3.2,"alt":600,"age":30,"n":4,"dev":"X","wx":{"t":21,"h":50}}]}""") as ControlEvent.Heard
+    val hd = Control.parse("""{"e":"heard","tot":1,"pkts":9,"from":0,"items":[{"c":"EA1WX","sym":"_/","k":"WX","lat":40.1,"lon":-3.2,"alt":600,"age":30,"n":4,"dev":"X","wx":{"t":21,"h":50}}]}""") as ControlEvent.Heard
     eq(hd.items.single().call, "EA1WX", "heard call"); eq(hd.items.single().wx?.int("t"), 21, "heard wx"); eq(hd.items.single().path, null, "heard path absent")
     val sc = (Control.parse("""{"e":"screen","p":1,"cur":1,"t":"MESSAGES","r":"","age":120,"on":true,"rows":["a","","c"]}""") as ControlEvent.Screen).screen
     eq(sc.rows, listOf("a", "", "c"), "screen rows"); eq(sc.title, "MESSAGES", "screen title")
@@ -1212,7 +1212,7 @@ private fun testNetWeather() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1354,4 +1354,14 @@ private fun testRtlUsb() {
     eq(RtlUsb.find(0x1a86, 0x7523), null, "CH340 is not an RTL-SDR")
     eq(RtlUsb.id(0x0bda, 0x2838), "0bda:2838", "USB id text")
     eq(RtlUsb.KNOWN.map { it.vid to it.pid }.toSet().size, RtlUsb.KNOWN.size, "no repeated ids")
+}
+
+private fun testHeardSymbol() {
+    // the tracker sends code then table; the app keeps table then code
+    eq(heardSymbol("&L"), "L&", "LoRa iGate from the tracker")
+    eq(heardSymbol(">/"), "/>", "car from the tracker")
+    eq(AprsSymbols.describe('L', '&'), "LoRa iGate", "not the lighthouse")
+    val h = (Control.parse("""{"e":"heard","tot":1,"pkts":1,"from":0,"items":[{"c":"EA7XYZ-9","sym":">/","age":5}]}""") as ControlEvent.Heard).items[0]
+    eq(h.symbol, "/>", "heard event symbol in APRS order")
+    eq(AprsSymbols.of(h.symbol)?.base, AprsSymbols.Cell(0, 13, 1), "car icon")
 }

@@ -126,6 +126,12 @@ data class Page(val ric: Long, val function: Int, val own: Boolean, val corrupt:
 data class TrackerMessage(val index: Int, val incoming: Boolean, val epoch: Long, val state: Int, val ackId: Int, val call: String, val text: String)
 
 /** A station heard by the tracker. */
+/**
+ * The tracker sends `sym` as symbol code then table ("&L" = LoRa iGate, ">/" = car: `{st->symbol, st->table}` in ble_control.cpp);
+ * the app keeps the APRS order, table then code ("L&", "/>").
+ */
+fun heardSymbol(sym: String?): String = if (sym != null && sym.length == 2) "" + sym[1] + sym[0] else sym ?: ""
+
 data class HeardStation(
     val call: String, val symbol: String, val kind: String, val lat: Double?, val lon: Double?, val altitudeM: Int?, val speedKmh: Int?, val course: Int?,
     val rssi: Int?, val snr: Double?, val ageS: Long, val packets: Int, val device: String?, val path: String?, val comment: String?, val status: String?,
@@ -343,7 +349,7 @@ object Control {
     private fun heard(o: Map<String, Any?>): HeardStation? {
         val call = o.str("c") ?: return null
         return HeardStation(
-            call, o.str("sym") ?: "", o.str("k") ?: "", o.num("lat"), o.num("lon"), o.int("alt"), o.int("spd"), o.int("crs"), o.int("rssi"), o.num("snr"),
+            call, heardSymbol(o.str("sym")), o.str("k") ?: "", o.num("lat"), o.num("lon"), o.int("alt"), o.int("spd"), o.int("crs"), o.int("rssi"), o.num("snr"),
             o.long("age") ?: 0, o.int("n") ?: 0, o.str("dev"), o.str("path"), o.str("cmt"), o.str("sts"), o.obj("wx"), o.long("pa"),
         )
     }
