@@ -1310,9 +1310,60 @@ private fun testAprsWx() {
     eq(tp.source.text(), "EA1ABC", "third party source"); check((Aprs.parse(tp.infoText) as AprsPacket.Message).addressee == "EA7JRS-7", "third party message")
 }
 
+private fun testWxCalc() {
+    eq(listOf(0.0, 3.0, 17.0, 34.0, 70.0).map { WxCalc.beaufort(it) }, listOf(0, 1, 5, 8, 12), "Beaufort from knots")
+    eq(WxCalc.beaufortName(8), "Gale", "Beaufort name")
+    near(WxCalc.dewPointC(20.0, 50.0)!!, 9.3, 0.15, "dew point, psychrometric tables")
+    near(WxCalc.dewPointC(30.0, 100.0)!!, 30.0, 0.01, "saturated air")
+    eq(WxCalc.dewPointC(20.0, null), null, "no humidity, no dew point")
+    near(WxCalc.windChillC(-10.0, 30.0)!!, -19.5, 0.1, "wind chill, Environment Canada table says -20")
+    eq(WxCalc.windChillC(15.0, 30.0), null, "no wind chill above 10 C")
+    near(WxCalc.heatIndexC(32.2222, 70.0)!!, 41.1, 0.3, "heat index, NWS table: 90 F and 70 % = 105-106 F")
+    eq(WxCalc.heatIndexC(20.0, 80.0), null, "no heat index below 27 C")
+    eq(WxCalc.feelsLikeC(-10.0, 50.0, 30.0)?.second, "wind chill", "feels like: cold")
+    eq(WxCalc.feelsLikeC(32.2222, 70.0, 5.0)?.second, "heat index", "feels like: heat")
+    eq(WxCalc.feelsLikeC(18.0, 50.0, 10.0), null, "feels like the temperature")
+    near(WxCalc.cloudBaseM(20.0, 12.0)!!, 1000.0, 0.5, "cloud base")
+    val tr = WxCalc.PressureTrend()
+    eq(tr.delta3h(0), null, "no readings")
+    for (i in 0..36) tr.add(i * 300L, 1015.0 - i * 0.05)
+    near(tr.delta3h(36 * 300L)!!, -1.8, 0.05, "3 h falling 1.8 hPa")
+    eq(WxCalc.trendName(-1.8), "falling", "trend name"); eq(WxCalc.trendName(0.4), "steady", "steady"); eq(WxCalc.trendName(4.0), "rising fast", "fast")
+    eq(tr.delta3h(36 * 300L + 4000), null, "the last reading is old")
+    val t2 = WxCalc.PressureTrend(); t2.add(0, 1010.0); t2.add(1800, 1011.0)
+    eq(t2.delta3h(1800), null, "less than an hour")
+    t2.add(3600, 1012.0); near(t2.delta3h(3600)!!, 6.0, 0.01, "2 hPa in 1 h = 6 in 3 h")
+    eq(WxCalc.speedFactor(2).second, "mph", "imperial speed"); near(WxCalc.tempShown(100.0, 2), 212.0, 1e-9, "Fahrenheit")
+    near(WxCalc.distFactor(1).first * 1.852, 1.0, 1e-12, "nautical mile")
+    // the station table keeps the pressure trend of each weather station
+    val tbl = StationTable()
+    fun wxFrame(hpa: Int) = Ax25Frame(Ax25Address("APRS", 0), Ax25Address("EA7WX", 13), emptyList(), "!3723.00N/00559.00W_090/005g010t068h50b%05d".format(hpa * 10).toByteArray())
+    var st: Station? = null
+    for (i in 0..12) st = tbl.onFrame(wxFrame(1015 - i / 6), i * 600_000L)
+    check(st?.wxPressD3h != null && st!!.wxPressD3h!! < -0.5, "pressure trend in the station: ${st?.wxPressD3h}")
+}
+
+private fun testAstro() {
+    eq(Astro.dayOfYear(2026, 11, 11), 315, "day of year"); eq(Astro.dayOfYear(2024, 3, 1), 61, "leap year")
+    val (r, s) = Astro.sunTimes(2026, 3, 20, 0.0, 0.0)!!
+    near(s - r, 12 * 60 + 7.0, 3.0, "equinox at the equator")
+    val (r1, s1) = Astro.sunTimes(2026, 11, 11, 36.53, -6.28)!!
+    near(s1 - r1, 10 * 60 + 21.0, 4.0, "Cadiz, 11 November: day length")
+    near((r1 + s1) / 2, Astro.solarNoonUtcMin(2026, 11, 11, -6.28), 1e-9, "noon in the middle")
+    val (r2, s2) = Astro.sunTimes(2026, 11, 11, 36.53, -6.28, -12.0)!!
+    check(r2 < r1 && s2 > s1, "nautical twilight is wider")
+    eq(Astro.sunTimes(2026, 12, 21, 80.0, 0.0), null, "polar night"); eq(Astro.sunTimes(2026, 6, 21, 80.0, 0.0), null, "midnight sun")
+    val noon = Astro.solarNoonUtcMin(2026, 11, 11, -6.28) / 60
+    val (alt, az) = Astro.sunPosition(2026, 11, 11, noon, 36.53, -6.28)
+    near(az, 180.0, 0.2, "sun in the south at noon"); near(alt, 90 - 36.53 - 17.3, 0.3, "altitude at noon")
+    val age = Astro.moonAgeDays(2026, 11, 9, 7.0)
+    check(age < 0.7 || age > Astro.SYNODIC - 0.7, "new moon of 9 November 2026: $age")
+    near(Astro.moonIllumination(Astro.SYNODIC / 2), 1.0, 1e-12, "full moon"); eq(Astro.moonPhaseName(14.8), "full", "phase name")
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxCalc(); testAstro()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

@@ -459,6 +459,23 @@ private fun ClockPage() {
         Text(Fmt.hhmm(now), fontFamily = TechMono, fontSize = 40.sp, color = Alp.Text)
         Spacer(Modifier.height(8.dp))
         InfoRow("LOCATOR", Spotter.locator().ifEmpty { "—" })
+        // sun and moon at our position (Astro, from the core of APRS LoRa+ Plotter: NOAA's series, about a minute)
+        Own.position()?.let { (lat, lon) ->
+            val astro = es.ea7jrs.aprslorap.core.Astro
+            val y = utc.get(java.util.Calendar.YEAR); val mo = utc.get(java.util.Calendar.MONTH) + 1; val d = utc.get(java.util.Calendar.DAY_OF_MONTH)
+            val uh = utc.get(java.util.Calendar.HOUR_OF_DAY) + utc.get(java.util.Calendar.MINUTE) / 60.0 + utc.get(java.util.Calendar.SECOND) / 3600.0
+            fun hm(min: Double): String { val t = ((Math.round(min).toInt() % 1440) + 1440) % 1440; return String.format(Locale.US, "%02d:%02d", t / 60, t % 60) }
+            val sun = astro.sunTimes(y, mo, d, lat, lon)
+            if (sun != null) {
+                InfoRow("SUN UP / DOWN", hm(sun.first) + " / " + hm(sun.second) + " UTC", Alp.Amber)
+                InfoRow("DAYLIGHT", String.format(Locale.US, "%d h %02d min", (sun.second - sun.first).toInt() / 60, (sun.second - sun.first).toInt() % 60))
+            } else InfoRow("SUN UP / DOWN", "none today")
+            astro.sunTimes(y, mo, d, lat, lon, -6.0)?.let { InfoRow("TWILIGHT", hm(it.first) + " / " + hm(it.second) + " UTC") }
+            val (alt, az) = astro.sunPosition(y, mo, d, uh, lat, lon)
+            InfoRow("SUN NOW", String.format(Locale.US, "alt %.0f° az %s", alt, Fmt.deg(az)), if (alt > 0) Alp.Text else Alp.Muted)
+            val age = astro.moonAgeDays(y, mo, d, uh)
+            InfoRow("MOON", String.format(Locale.US, "%s · %.0f %%", astro.moonPhaseName(age), astro.moonIllumination(age) * 100))
+        }
         InfoRow("TRACKER UP", status?.uptimeS?.let { String.format(Locale.US, "%d h %02d min", it / 3600, (it / 60) % 60) } ?: "—")
     }
 }

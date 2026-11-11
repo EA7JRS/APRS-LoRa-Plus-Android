@@ -260,7 +260,7 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                         }
                     }
                 }
-                if (s.wx != null) WeatherPanel(s.wx, s.wxMs)
+                if (s.wx != null) WeatherPanel(s.wx, s.wxMs, s.wxPressD3h)
                 Panel(Modifier.fillMaxWidth(), padding = 10.dp) {
                     if (s.rssi != null) {
                         SectionLabel("SIGNAL AT THE TRACKER")
@@ -268,7 +268,7 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                             extra = listOfNotNull("${s.rssi} dBm", s.snr?.let { String.format(Locale.US, "SNR %.1f", it) }).joinToString(" · "),
                             modifier = Modifier.padding(bottom = 6.dp))
                     }
-                    InfoRow("SPEED", s.speedKmh?.let { String.format(Locale.US, "%.0f km/h", it) } ?: "—")
+                    InfoRow("SPEED", Fmt.speed(s.speedKmh))
                     InfoRow("COURSE", s.courseDeg?.let { Fmt.deg(it.toDouble()) } ?: "—")
                     InfoRow("ALTITUDE", s.altitudeM?.let { String.format(Locale.US, "%.0f m", it) } ?: "—")
                     InfoRow("LAT", s.lat?.let { Fmt.latLon(it, true) } ?: "—")
@@ -309,7 +309,11 @@ fun tempColor(c: Double?): Color = when {
 
 /** Weather report of a station: wind with its direction, temperature, humidity, pressure, rain, light and snow. */
 @Composable
-fun WeatherPanel(wx: AprsWx, atMs: Long?) {
+fun WeatherPanel(wx: AprsWx, atMs: Long?, pressD3h: Double? = null) {
+    val calc = es.ea7jrs.aprslorap.core.WxCalc
+    val hum = wx.humidityPct?.toString()?.toDoubleOrNull()
+    val dew = calc.dewPointC(wx.tempC, hum)
+    val feels = calc.feelsLikeC(wx.tempC, hum, wx.windKmh)
     Panel(Modifier.fillMaxWidth(), border = Alp.Cyan.copy(alpha = 0.45f)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionLabel("WEATHER")
@@ -317,7 +321,7 @@ fun WeatherPanel(wx: AprsWx, atMs: Long?) {
             Text(Fmt.ago(atMs), fontSize = 13.sp, color = Alp.Muted)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-            Text(wx.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 40.sp, color = tempColor(wx.tempC))
+            Text(Fmt.temp(wx.tempC, unit = false), fontFamily = TechMono, fontSize = 40.sp, color = tempColor(wx.tempC))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     // the arrow points where the wind blows to (it comes from windDirDeg)
@@ -325,11 +329,20 @@ fun WeatherPanel(wx: AprsWx, atMs: Long?) {
                     if (dir != null && (wx.windKmh ?: 1.0) >= 1.0) BearingArrow((dir + 180) % 360.0, Alp.Cyan, 22.dp)
                     Text(wx.wind() ?: "no wind data", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Alp.Cyan)
                 }
-                wx.gustKmh?.let { Text(String.format(Locale.US, "gusts %.0f km/h", it) + (wx.windDirDeg?.let { d -> " · from " + Fmt.deg(d.toDouble()) } ?: ""), fontSize = 14.sp, color = Alp.Muted) }
+                wx.gustKmh?.let { Text("gusts " + Fmt.speed(it) + (wx.windDirDeg?.let { d -> " · from " + Fmt.deg(d.toDouble()) } ?: ""), fontSize = 14.sp, color = Alp.Muted) }
             }
         }
+        wx.windKmh?.takeIf { it >= 1.0 }?.let {
+            val f = calc.beaufort(calc.kmhToKn(it))
+            InfoRow("BEAUFORT", "Force $f · ${calc.beaufortName(f)} · ${Fmt.speed(it)}", if (f >= 8) Alp.Red else if (f >= 6) Alp.Amber else Alp.Text)
+        }
+        feels?.let { InfoRow("FEELS LIKE", Fmt.temp(it.first) + " (" + it.second + ")", tempColor(it.first)) }
         wx.humidityPct?.let { InfoRow("HUMIDITY", "$it %") }
-        wx.pressureHpa?.let { InfoRow("PRESSURE", String.format(Locale.US, "%.1f hPa", it)) }
+        dew?.let { d -> InfoRow("DEW POINT", Fmt.temp(d) + (calc.cloudBaseM(wx.tempC, d)?.let { String.format(Locale.US, " · cloud base ~%.0f m", it) } ?: "")) }
+        wx.pressureHpa?.let {
+            InfoRow("PRESSURE", String.format(Locale.US, "%.1f hPa", it) + (pressD3h?.let { d -> String.format(Locale.US, " · %s (%+.1f in 3 h)", calc.trendName(d), d) } ?: ""),
+                if ((pressD3h ?: 0.0) <= -3.5) Alp.Amber else Alp.Text)
+        }
         wx.rain1hMm?.let { InfoRow("RAIN 1 H", String.format(Locale.US, "%.1f mm", it)) }
         wx.rain24hMm?.let { InfoRow("RAIN 24 H", String.format(Locale.US, "%.1f mm", it)) }
         wx.rainMidnightMm?.let { InfoRow("RAIN TODAY", String.format(Locale.US, "%.1f mm", it)) }

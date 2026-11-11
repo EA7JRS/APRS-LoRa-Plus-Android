@@ -413,6 +413,16 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
                 else -> "Dark, for night and the car."
             }, fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
         }
+        MenuGroup("UNITS") {
+            var units by remember { mutableStateOf(settings.units) }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                listOf("METRIC", "NAUTICAL", "IMPERIAL").forEachIndexed { i, name ->
+                    Chip(name, units == i, Modifier.weight(1f)) { units = i; settings.units = i }
+                }
+            }
+            Text("Distances, speeds and temperatures: km and km/h, nautical miles and knots, or miles, mph and °F.",
+                fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+        }
         MenuGroup("EMERGENCY ALERTS") {
             var snd by remember { mutableStateOf(settings.alertSound) }
             var vib by remember { mutableStateOf(settings.alertVibrate) }

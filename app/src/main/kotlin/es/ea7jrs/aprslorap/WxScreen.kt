@@ -97,12 +97,15 @@ private fun WxRow(s: StationView, d: Pair<Double, Double>?, onClick: () -> Unit)
                     fontFamily = BarlowCondensed, fontSize = 15.sp, color = Alp.Cyan, maxLines = 1)
             }
             Text(listOfNotNull(
-                w.humidityPct?.let { "$it %" }, w.pressureHpa?.let { String.format(Locale.US, "%.0f hPa", it) },
+                w.windKmh?.takeIf { it >= 1.0 }?.let { "F" + es.ea7jrs.aprslorap.core.WxCalc.beaufort(es.ea7jrs.aprslorap.core.WxCalc.kmhToKn(it)) },
+                w.humidityPct?.let { "$it %" },
+                w.pressureHpa?.let { String.format(Locale.US, "%.0f hPa", it) + (s.wxPressD3h?.let { d -> " " + es.ea7jrs.aprslorap.core.WxCalc.trendName(d) } ?: "") },
+                es.ea7jrs.aprslorap.core.WxCalc.dewPointC(w.tempC, w.humidityPct?.toString()?.toDoubleOrNull())?.let { "dew " + Fmt.temp(it, 0, unit = false) },
                 (w.rain1hMm ?: w.rainMidnightMm)?.takeIf { it > 0 }?.let { String.format(Locale.US, "rain %.1f mm", it) + if ((w.rain1hMm ?: 0.0) > 0) "/h" else " today" },
             ).joinToString(" · "), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(w.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 24.sp, color = tempColor(w.tempC))
+            Text(Fmt.temp(w.tempC, unit = false), fontFamily = TechMono, fontSize = 24.sp, color = tempColor(w.tempC))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (d == null) "—" else Fmt.km(d.first) + " " + Geo.cardinal16(d.second), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted,
                     textAlign = TextAlign.End)
