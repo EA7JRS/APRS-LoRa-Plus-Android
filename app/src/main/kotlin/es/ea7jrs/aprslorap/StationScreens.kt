@@ -69,6 +69,7 @@ data class StationView(
     val comment: String, val path: String, val packets: Int, val rssi: Int?, val snr: Double?, val courseDeg: Int?, val speedKmh: Double?,
     val altitudeM: Double?, val device: String?, val status: String?,
     val wx: AprsWx? = null, val wxMs: Long? = null, val owner: String? = null, val micE: String? = null,
+    val wxPressD3h: Double? = null,     // only for stations whose frames the app decodes itself (not the ones heard only by the tracker)
 ) {
     val symbol: AprsSymbols.Symbol? get() = AprsSymbols.of(table, code)
     val kind: String get() = AprsSymbols.describe(table, code)
@@ -90,7 +91,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             h?.rssi, h?.snr,
             s.courseDeg ?: if (wxStation) null else h?.course, s.speedKmh ?: if (wxStation) null else h?.speedKmh?.toDouble(),
             s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, h?.status,
-            wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE,
+            wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE, wxPressD3h = s.wxPressD3h,
         ))
     }
     val known = stations.map { it.call }.toSet()
