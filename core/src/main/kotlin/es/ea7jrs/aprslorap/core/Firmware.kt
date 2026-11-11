@@ -7,14 +7,32 @@ package es.ea7jrs.aprslorap.core
 
 /**
  * Firmware of the tracker: the release site published by the firmware CI (tools/make_web_assets.py), with the web installer
- * (USB, esp-web-tools) at its root and one ota/<board>.json per board: {"version","size","sha256","url","ota"}.
+ * (USB, esp-web-tools) at its root and one ota/<board>.json per board: {"version","size","sha256","elfSha","url","ota"}.
  */
 object FirmwareSite {
     const val BASE = "https://ea7jrs.github.io/APRS-LoRa-Plus/"
     const val INSTALLER = BASE
     const val RELEASES = "https://github.com/EA7JRS/APRS-LoRa-Plus/releases"
 
-    data class Release(val version: String, val size: Long, val sha256: String, val url: String, val secondSlot: Boolean)
+    data class Release(
+        val version: String, val size: Long, val sha256: String, val url: String, val secondSlot: Boolean,
+        /** app_elf_sha256 of the published build (tools/make_web_assets.py); null on sites published before it existed. */
+        val elfSha: String? = null,
+    )
+
+    /** Whether the firmware in the tracker is the build published by EA7JRS (informative: a modified firmware could fake it). */
+    enum class Origin { OFFICIAL, CUSTOM, UNKNOWN }
+
+    /**
+     * Compares the ELF hash the tracker reports (event info "elf") with the published one. Only the latest release is published,
+     * so another version cannot be checked (UNKNOWN), and neither can a tracker or a site without the hash.
+     */
+    fun origin(installedVersion: String, trackerElf: String, latest: Release?): Origin {
+        val pub = latest?.elfSha ?: return Origin.UNKNOWN
+        if (!trackerElf.lowercase().matches(Regex("[0-9a-f]{64}"))) return Origin.UNKNOWN
+        if (versionNumber(installedVersion) != versionNumber(latest.version)) return Origin.UNKNOWN
+        return if (trackerElf.equals(pub, ignoreCase = true)) Origin.OFFICIAL else Origin.CUSTOM
+    }
 
     fun manifestUrl(board: String): String = BASE + "ota/" + java.net.URLEncoder.encode(board, "UTF-8") + ".json"
 
@@ -27,7 +45,8 @@ object FirmwareSite {
         val sha = o.str("sha256")?.lowercase() ?: return null
         val url = o.str("url") ?: return null
         if (!sha.matches(Regex("[0-9a-f]{64}")) || size < 100_000) return null
-        return Release(version, size, sha, absolute(url), o.bool("ota") ?: false)
+        val elf = o.str("elfSha")?.lowercase()?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+        return Release(version, size, sha, absolute(url), o.bool("ota") ?: false, elf)
     }
 
     /** "5.3.2" -> 5003002, the same rule as the firmware (three numbers, the rest ignored). */

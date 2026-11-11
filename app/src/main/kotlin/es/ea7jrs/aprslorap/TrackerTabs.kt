@@ -28,6 +28,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +93,9 @@ fun TrackerTab() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Field("Firmware", "${i.firmware} (${i.board})")
+        val fwLatest by AppState.fwLatest.collectAsState()
+        LaunchedEffect(i.board) { if (AppState.fwLatest.value == null) FirmwareUpdater.check(i.board) }
+        FirmwareOriginLine(i, fwLatest)
         if (i.lastReset.isNotBlank()) Field("Last reset", listOf(i.lastReset, i.lastResetAt, i.lastResetTasks.takeIf { it.isNotBlank() }?.let { "tasks $it" })
             .filter { !it.isNullOrBlank() }.joinToString(" · ") + " (check the power supply or send the USB log)")
         if (i.pmuOff.isNotBlank()) Field("PMU power off", "${i.pmuOff} (charge the battery or check the USB supply)")

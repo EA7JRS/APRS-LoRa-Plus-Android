@@ -235,6 +235,18 @@ private fun testControl() {
     eq(ttwr.hasM17, false, "no m17 cap = false")
     eq(ttwr.lastReset, "", "no rst = normal reset")
     eq((Control.parse("""{"e":"info","v":1,"fw":"5.4.1","board":"lilygo_t_twr_plus","pmuOff":"VSYS LOW","caps":{}}""") as ControlEvent.Info).info.pmuOff, "VSYS LOW", "info pmuOff")
+    run {
+        val elf = "dc77508fc77e2f229c7126e66f58611cb6bc2157c54d23d06765c2828ff0cf66"
+        val i = (Control.parse("""{"e":"info","v":1,"fw":"5.4.1","board":"lilygo_t_twr_plus","elf":"$elf","caps":{}}""") as ControlEvent.Info).info
+        eq(i.elfSha, elf, "info elf")
+        val rel = FirmwareSite.parse("""{"version":"5.4.1","size":1500000,"sha256":"${"a".repeat(64)}","elfSha":"$elf","url":"firmware/x/firmware.bin","ota":true}""")
+        eq(rel?.elfSha, elf, "ota json elfSha")
+        eq(FirmwareSite.origin("5.4.1", elf, rel), FirmwareSite.Origin.OFFICIAL, "same build = OFFICIAL")
+        eq(FirmwareSite.origin("5.4.1", "b".repeat(64), rel), FirmwareSite.Origin.CUSTOM, "other build of the same version = CUSTOM")
+        eq(FirmwareSite.origin("5.4.0", elf, rel), FirmwareSite.Origin.UNKNOWN, "other version = UNKNOWN")
+        eq(FirmwareSite.origin("5.4.1", "", rel), FirmwareSite.Origin.UNKNOWN, "tracker without elf = UNKNOWN")
+        eq(FirmwareSite.origin("5.4.1", elf, rel?.copy(elfSha = null)), FirmwareSite.Origin.UNKNOWN, "site without elfSha = UNKNOWN")
+    }
     (Control.parse("""{"e":"info","v":1,"fw":"5.4.1","board":"lilygo_t_twr_plus","rst":"TASK WDT","rstAt":"mode 11, 12 s","rstTask":"afskRx / loopTask","caps":{}}""") as ControlEvent.Info).info.let {
         eq(it.lastResetAt, "mode 11, 12 s", "info rstAt"); eq(it.lastResetTasks, "afskRx / loopTask", "info rstTask")
     }

@@ -29,11 +29,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import es.ea7jrs.aprslorap.core.FirmwareSite
+import es.ea7jrs.aprslorap.core.TrackerInfo
 
 /** Firmware of the tracker: installed and published versions, update over Bluetooth or the tracker's WiFi, web installer. */
 @Composable
@@ -56,6 +58,7 @@ fun FirmwareTab() {
             Text("Connect to the tracker to see its version (Connect tab). The web installer below works without the link.", fontSize = 13.sp)
         } else {
             Text("Version ${i.firmware}, board ${i.board}")
+            FirmwareOriginLine(i, latest)
             Text(
                 if (i.hasSecondSlot) "Second firmware slot: it can be updated from here, over Bluetooth."
                 else "No second firmware slot: update it with the web installer (USB cable).",
@@ -110,4 +113,20 @@ fun FirmwareTab() {
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** OFFICIAL / CUSTOM FIRMWARE / not checkable, from the ELF hash of the tracker and the published one. Informative only. */
+@Composable
+fun FirmwareOriginLine(i: TrackerInfo, latest: FirmwareSite.Release?) {
+    val (text, color) = when (FirmwareSite.origin(i.firmware, i.elfSha, latest)) {
+        FirmwareSite.Origin.OFFICIAL -> "OFFICIAL · build published by EA7JRS" to Color(0xFF3CE68A)
+        FirmwareSite.Origin.CUSTOM -> "CUSTOM FIRMWARE · not the published build of ${i.firmware}" to Color(0xFFFFB347)
+        FirmwareSite.Origin.UNKNOWN -> when {
+            i.elfSha.isBlank() -> "Origin not reported (firmware older than this check)"
+            latest == null -> "Origin: checking the release site..."
+            latest.elfSha == null -> "Origin: the release site does not publish the build hash yet"
+            else -> "Origin: only the published version (${latest.version}) can be checked"
+        } to Color(0xFF9FB0BF)
+    }
+    Text(text, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
 }

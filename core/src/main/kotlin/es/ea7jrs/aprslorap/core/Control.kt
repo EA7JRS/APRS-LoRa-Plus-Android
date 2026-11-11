@@ -79,6 +79,7 @@ data class TrackerInfo(
     val pmuOff: String = "",                    // the PMU switched itself off last time ("VSYS LOW", "DC UNDER VOLTAGE"...); empty = normal
     val lastResetAt: String = "",               // mode and seconds running before that reset ("mode 11, 12 s", "during boot")
     val lastResetTasks: String = "",            // task watchdog: task running on core 0 / core 1 ("afskRx / loopTask")
+    val elfSha: String = "",                    // app_elf_sha256 of the running firmware (FirmwareSite.origin)
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -445,6 +446,7 @@ object Control {
             o.str("pmuOff") ?: "",
             o.str("rstAt") ?: "",
             o.str("rstTask") ?: "",
+            o.str("elf") ?: "",
         )
     }
 }
