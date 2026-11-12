@@ -1234,6 +1234,18 @@ private fun testNetWeather() {
     eq(TrackerMode.name(TrackerMode.AIS), "AIS receiver", "AIS mode name")
 }
 
+private fun testRepeaterBookConnect() {
+    // RepeaterBook Connect content provider row (column names of the RepeaterBookConnect demo): RX = output, TX = input
+    val r = RepeaterBook.fromConnect(mapOf("Call" to "ED7ZAB", "RX" to 145.6375, "TX" to 145.0375, "CTCSS" to 88.5, "DCS" to 0L,
+        "Location" to "Sevilla", "Province" to "Andalucía", "Country" to "Spain", "Lat" to 37.38, "Lng" to -5.97, "ServiceTxt" to "Open"))
+    eq(r.callsign, "ED7ZAB", "Connect callsign"); near(r.freqMhz!!, 145.6375, 1e-9, "Connect output"); near(r.inputMhz!!, 145.0375, 1e-9, "Connect input")
+    eq(r.tone, "88.5", "Connect CTCSS"); eq(r.region, "Andalucía", "Connect region"); check(r.hasPosition, "Connect position"); eq(r.freqHz, 145_637_500L, "Connect Hz")
+    eq(RepeaterBook.fromConnect(mapOf("Call" to "X", "CTCSS" to 0.0, "DCS" to 23L)).tone, "D023", "Connect DCS")
+    check(!RepeaterBook.fromConnect(mapOf("Call" to "X", "Lat" to 0.0, "Lng" to 0.0)).hasPosition, "Connect without position")
+    eq(RepeaterBook.explain("ua_mismatch"), "RepeaterBook: the User-Agent does not match the one approved with the token", "Export API error code")
+    check(RepeaterBook.parse("""{"code":"auth_scope_denied","message":"Scope"}""").exceptionOrNull()?.message?.contains("region") == true, "Export API error message")
+}
+
 private fun testAprsWx() {
     // APRS 1.0.1, chapter 12: complete weather report with an uncompressed position
     val w = Aprs.parse("!4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900wRSW") as AprsPacket.Position
@@ -1314,7 +1326,7 @@ private fun testAprsWx() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

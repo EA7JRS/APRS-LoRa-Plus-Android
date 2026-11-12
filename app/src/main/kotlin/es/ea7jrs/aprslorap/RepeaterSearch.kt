@@ -16,6 +16,7 @@ import java.net.URL
 object RepeaterSearch {
     fun search(s: Settings, callsign: String, city: String, country: String, freqMhz: String) {
         if (AppState.rbBusy.value) return
+        if (BuildConfig.PLAY) { AppState.rbMessage.value = "Use the RepeaterBook app (Connect) in this version"; return }
         val token = s.rbToken.trim()
         val agent = s.rbUserAgent.trim()
         if (token.isEmpty()) { AppState.rbMessage.value = "Put your RepeaterBook token (rbuapp_...) first"; return }

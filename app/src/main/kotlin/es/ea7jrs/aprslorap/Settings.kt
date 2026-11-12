@@ -240,8 +240,12 @@ class Settings(ctx: Context) {
         get() = p.getString("rb_token", "")!!
         set(v) { p.edit().putString("rb_token", v.trim()).apply() }
     var rbUserAgent: String
-        get() = p.getString("rb_agent", "APRS-LoRa-Plus-Android/1.0 (personal use; contact: )")!!
+        get() = p.getString("rb_agent", "APRSLoRaPlus/${BuildConfig.VERSION_NAME} (+https://ea7jrs.github.io/APRS-LoRa-Plus/; ea7jrs.manuel@gmail.com)")!!
         set(v) { p.edit().putString("rb_agent", v.trim()).apply() }
+    /** Source of the repeater search: the RepeaterBook app (Connect, no token) or the Export API with the user's token. */
+    var rbUseConnect: Boolean
+        get() = BuildConfig.PLAY || p.getBoolean("rb_connect", true)
+        set(v) { p.edit().putBoolean("rb_connect", v).apply() }
     var rbNorthAmerica: Boolean
         get() = p.getBoolean("rb_na", false)
         set(v) { p.edit().putBoolean("rb_na", v).apply() }

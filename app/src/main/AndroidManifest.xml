@@ -36,6 +36,8 @@
     <!-- RTL-SDR driver app (marto.rtl_tcp_andro): opened with an iqsrc:// address -->
     <queries>
         <package android:name="marto.rtl_tcp_andro" />
+        <!-- RepeaterBook app: its RepeaterBook Connect content provider (repeaters near a position, user's own subscription) -->
+        <package android:name="com.zbm2.repeaterbook" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="iqsrc" />

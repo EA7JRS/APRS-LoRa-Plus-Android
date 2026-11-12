@@ -137,6 +137,37 @@ object PhoneMath {
 object RepeaterBook {
     const val ATTRIBUTION = "Data courtesy of RepeaterBook.com"
     const val TOKEN_PAGE = "https://www.repeaterbook.com/user/api_apps.php"
+    /** RepeaterBook Connect Data API: the RepeaterBook app's content provider (needs that app and the user's Connect subscription). */
+    const val CONNECT_PACKAGE = "com.zbm2.repeaterbook"
+    const val CONNECT_URI = "content://com.zbm2.repeaterbook.RBContentProvider/repeaters"
+    const val CONNECT_STORE = "https://play.google.com/store/apps/details?id=com.zbm2.repeaterbook"
+
+    /** Readable message for the error codes of the Export API (auth_*, ua_mismatch, rate_limited); others as they come. */
+    fun explain(code: String): String = when (code.trim().lowercase()) {
+        "auth_missing" -> "RepeaterBook: no token sent"
+        "auth_invalid" -> "RepeaterBook: the token is not valid (copy it again, it starts rbuapp_)"
+        "auth_inactive" -> "RepeaterBook: the token or the application is not active yet"
+        "auth_revoked" -> "RepeaterBook: the token was revoked: make a new one"
+        "auth_scope_denied" -> "RepeaterBook: the token is not approved for this region (North America / rest of the world)"
+        "ua_mismatch" -> "RepeaterBook: the User-Agent does not match the one approved with the token"
+        "rate_limited" -> "RepeaterBook: too many searches, wait before searching again"
+        else -> code
+    }
+
+    /**
+     * One row of the RepeaterBook Connect content provider (column name → value): RX is what the user receives (the repeater's
+     * output), TX what the user sends; CTCSS in Hz or DCS code when not zero.
+     */
+    fun fromConnect(r: Map<String, Any?>): Repeater {
+        val ctcss = r.dbl("CTCSS")?.takeIf { it > 0 }
+        val dcs = r.dbl("DCS")?.toInt()?.takeIf { it > 0 }
+        val tone = ctcss?.let { String.format(Locale.US, "%.1f", it) } ?: dcs?.let { String.format(Locale.US, "D%03d", it) } ?: ""
+        return Repeater(
+            r.text("Call"), r.dbl("RX"), r.dbl("TX"), tone, r.text("Location"),
+            r.text("Region").ifEmpty { r.text("Province") }.ifEmpty { r.text("State") }, r.text("Country"),
+            r.dbl("Lat"), r.dbl("Lng"), r.text("ServiceTxt"), "",
+        )
+    }
     private const val NA = "https://www.repeaterbook.com/api/export.php"
     private const val ROW = "https://www.repeaterbook.com/api/exportROW.php"
 
@@ -165,7 +196,7 @@ object RepeaterBook {
     fun parse(text: String): Result<List<Repeater>> {
         val o = try { Json.parseObject(text.trim()) } catch (e: Exception) { null }
             ?: return Result.failure(IllegalStateException("not a RepeaterBook answer: " + text.trim().take(80)))
-        val msg = o.text("message").ifEmpty { o.text("error") }.ifEmpty { o.text("code") }
+        val msg = explain(o.text("code").ifEmpty { o.text("error") }).let { c -> listOf(c, o.text("message")).filter { it.isNotEmpty() }.distinct().joinToString(": ") }
         val results = o.objList("results")
         if (results.isEmpty() && msg.isNotEmpty()) return Result.failure(IllegalStateException(msg))
         return Result.success(results.map { r ->

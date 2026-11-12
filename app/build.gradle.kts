@@ -14,6 +14,8 @@ android {
         targetSdk = 36
         versionCode = 50403
         versionName = "5.4.3"
+        // Google Play build (-Palp.play=true): features whose terms do not allow a paid app are hidden (BuildConfig.PLAY)
+        buildConfigField("boolean", "PLAY", if (project.findProperty("alp.play") == "true") "true" else "false")
     }
 
     // Google Play upload key (Play App Signing re-signs the final app): only from the environment (CI secrets), never in the repository
@@ -41,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     sourceSets["main"].java.srcDirs("src/main/kotlin")
     // Digital voice decoder (dsd-fme), built by native/dsd/build.sh into native/dsd/out/<abi>/libdsdfme.so (the CI does it).
