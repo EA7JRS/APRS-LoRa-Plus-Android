@@ -79,6 +79,12 @@ object OfficialAlertsFetcher {
         fun near(a: Pair<Double, Double>, lat: Double, lon: Double) = kotlin.math.abs(a.first - lat) < 0.5 && kotlin.math.abs(a.second - lon) < 0.5
     }
 
+    private fun within(pos: Pair<Double, Double>?, a: OfficialAlert, km: Double): Boolean {
+        val la = a.lat ?: return false
+        val lo = a.lon ?: return false
+        return pos != null && es.ea7jrs.aprslorap.core.Geo.distanceKm(pos.first, pos.second, la, lo) < km
+    }
+
     /** Controller tick: downloads when the interval is due. */
     fun maybeFetch(ctx: Context, settings: Settings) {
         if (!settings.alertsOn || busy) return
@@ -118,7 +124,7 @@ object OfficialAlertsFetcher {
                     val t = (OfficialAlerts.xmlBlocks(text(OfficialAlerts.TSUNAMI_PTWC), "entry") + OfficialAlerts.xmlBlocks(text(OfficialAlerts.TSUNAMI_NTWC), "entry"))
                         .mapNotNull { OfficialAlerts.tsunamiEntry(it) }.filter { it.activeAt(nowS) }
                     // information messages only near (they are for every quake of M6.5+ around the ocean)
-                    bySource[AlertSrc.TSUNAMI] = t.filter { a -> a.level >= 1 || (pos != null && a.lat != null && a.lon != null && es.ea7jrs.aprslorap.core.Geo.distanceKm(pos.first, pos.second, a.lat, a.lon) < 1500) }
+                    bySource[AlertSrc.TSUNAMI] = t.filter { a -> a.level >= 1 || within(pos, a, 1500.0) }
                 } else bySource.remove(AlertSrc.TSUNAMI)
                 if (settings.alertQuakes) run("earthquakes") {
                     val q = ArrayList<OfficialAlert>()
@@ -126,7 +132,7 @@ object OfficialAlertsFetcher {
                     if (pos != null) runCatching { q.addAll(OfficialAlerts.emsc(text(OfficialAlerts.emscUrl(pos.first, pos.second, nowS - 86400)))) }.onFailure { errors.add("EMSC: ${it.message}") }
                     val all = OfficialAlerts.quakeLevels(q, pos?.first, pos?.second)
                     // the list keeps the ones that matter here: yellow or more, and the information ones closer than 1000 km
-                    val near = all.filter { a -> a.level >= 1 || (pos != null && a.lat != null && a.lon != null && es.ea7jrs.aprslorap.core.Geo.distanceKm(pos.first, pos.second, a.lat, a.lon) < 1000) }
+                    val near = all.filter { a -> a.level >= 1 || within(pos, a, 1000.0) }
                     bySource[AlertSrc.USGS] = near.filter { it.src == AlertSrc.USGS }
                     bySource[AlertSrc.EMSC] = near.filter { it.src == AlertSrc.EMSC }
                 } else { bySource.remove(AlertSrc.USGS); bySource.remove(AlertSrc.EMSC) }
