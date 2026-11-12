@@ -121,6 +121,10 @@ data class Sensors(
     val netForecast: String? = null, val netDelta3h: Double? = null,
     /** AXP2101 charger state: "trickle", "pre", "cc", "cv", "done" or "stop" (not charging). */
     val chargerState: String? = null,
+    /** Battery state (also without a PMU, from the voltage trend): "none", "unknown", "discharging", "charging", "full". */
+    val batteryState: String? = null,
+    /** Hours until empty (discharging) or full (charging), %/h of the last half hour, automatic power saving active. */
+    val batteryHoursLeft: Double? = null, val batteryPctPerHour: Double? = null, val batterySaving: Boolean? = null,
 )
 
 data class Gnss(
@@ -273,7 +277,7 @@ object Control {
                     o.num("gas"), o.num("iaq"), o.str("iaqLabel"), o.str("wxSensor"), numList(o, "accel"), numList(o, "gyro"), o.bool("flat"),
                     o.bool("magCal"), o.bool("magAlign"), o.bool("charging"), o.num("vbus"), o.num("pmuTemp"), o.num("battMa"),
                     o.int("battPct"), o.long("heap"), o.str("qs"), o.obj("net")?.str("fc"), o.obj("net")?.num("d3"),
-                    o.str("chg"),
+                    o.str("chg"), o.str("bst"), o.num("bLeftH"), o.num("bPctH"), o.bool("bSave"),
                 ),
             )
             "gnss" -> ControlEvent.Position(

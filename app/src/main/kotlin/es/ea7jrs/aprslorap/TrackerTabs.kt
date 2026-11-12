@@ -299,6 +299,15 @@ fun SensorsTab() {
             Field("Battery", fmt(pw.batteryV, "%.2f", " V") + (pw.batteryPct?.let { "  ($it %)" } ?: ""))
             if (pw.charging != null) Field("Charging", if (pw.charging == true) "Yes" else "No")
             pw.chargerState?.let { Field("Charger", chargerText(it)) }
+            pw.batteryState?.let { st ->
+                val name = when (st) { "none" -> "No battery"; "discharging" -> "Discharging"; "charging" -> "Charging"; "full" -> "Full / USB"; else -> "Measuring..." }
+                Field("Battery state", name + (pw.batteryPctPerHour?.let { String.format(Locale.US, "  (%+.1f %%/h)", it) } ?: ""))
+            }
+            pw.batteryHoursLeft?.let { h ->
+                val text = String.format(Locale.US, "%d h %02d min", h.toInt(), ((h - h.toInt()) * 60).toInt())
+                Field(if (pw.batteryState == "charging") "Full in" else "Time left", "~$text")
+            }
+            if (pw.batterySaving == true) Field("Power saving", "On (low battery: the screen turns off by itself)")
             if (pw.batteryMa != null) Field("Battery current", fmt(pw.batteryMa, "%.0f", " mA"))
             if (pw.vbusV != null) Field("USB / external", fmt(pw.vbusV, "%.2f", " V"))
             if (pw.pmuTemperatureC != null) Field("PMU temperature", fmt(pw.pmuTemperatureC, "%.1f", " °C"))

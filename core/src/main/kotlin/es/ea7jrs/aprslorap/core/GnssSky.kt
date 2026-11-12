@@ -10,7 +10,14 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** One satellite in view. [system]: G GPS, R GLONASS, E Galileo, C BeiDou, J QZSS, S SBAS, I NavIC, N other. */
-data class SkySat(val system: Char, val svid: Int, val elevationDeg: Int?, val azimuthDeg: Int?, val snr: Int?, val used: Boolean)
+data class SkySat(
+    val system: Char, val svid: Int, val elevationDeg: Int?, val azimuthDeg: Int?, val snr: Int?, val used: Boolean,
+    /** Signals received (tracker, NMEA 4.10+): bit 0 = L1 / E1 / B1 / G1, bit 1 = L5 / E5a / B2a, bit 2 = others (L2, E5b, E6, B3...). null = unknown. */
+    val bands: Int? = null,
+) {
+    val l1: Boolean get() = bands != null && bands and 1 != 0
+    val l5: Boolean get() = bands != null && bands and 2 != 0
+}
 
 /** Sky of a GNSS receiver (the tracker's, event `sky`, or the phone's): satellites, DOP and the estimated error. */
 data class SkyView(
@@ -57,7 +64,7 @@ object GnssSky {
             val sys = (a[0] as? String)?.firstOrNull() ?: 'N'
             val svid = (a[1] as? Number)?.toInt() ?: return@mapNotNull null
             fun opt(i: Int) = (a[i] as? Number)?.toInt()?.takeIf { it >= 0 }
-            SkySat(sys, svid, opt(2), opt(3), opt(4), ((a[5] as? Number)?.toInt() ?: 0) != 0)
+            SkySat(sys, svid, opt(2), opt(3), opt(4), ((a[5] as? Number)?.toInt() ?: 0) != 0, (a.getOrNull(6) as? Number)?.toInt())
         } ?: emptyList()
         return SkyView(sats, o.num("pd"), o.num("hd"), o.num("vd"), o.num("err"), o.int("used"))
     }

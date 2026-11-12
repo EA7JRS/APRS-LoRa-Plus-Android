@@ -253,6 +253,15 @@ private fun testControl() {
         eq(it.lastResetAt, "mode 11, 12 s", "info rstAt"); eq(it.lastResetTasks, "afskRx / loopTask", "info rstTask")
     }
     eq((Control.parse("""{"e":"sensors","charging":false,"chg":"stop"}""") as ControlEvent.SensorData).sensors.chargerState, "stop", "sensors chg = charger state")
+    run {
+        val bs = (Control.parse("""{"e":"sensors","bst":"discharging","bLeftH":5.5,"bPctH":-9.4,"bSave":true}""") as ControlEvent.SensorData).sensors
+        eq(bs.batteryState, "discharging", "sensors bst")
+        eq(bs.batteryHoursLeft, 5.5, "sensors bLeftH")
+        eq(bs.batterySaving, true, "sensors bSave")
+        val sky = (Control.parse("""{"e":"sky","s":[["G",5,45,310,38,1,3],["E",16,55,330,42,1]]}""") as ControlEvent.Sky).sky
+        eq(sky.sats[0].l5, true, "sky bands: L5")
+        eq(sky.sats[1].bands, null, "sky without bands (older firmware)")
+    }
     eq((Control.parse("""{"e":"info","v":1,"fw":"5.4.0","board":"lilygo_t_twr_plus","rst":"LOW VOLTAGE","caps":{}}""") as ControlEvent.Info).info.lastReset, "LOW VOLTAGE", "info rst = abnormal last reset")
     val m17 = (Control.parse("""{"e":"info","v":1,"fw":"5.3.5","board":"lilygo_t_twr_plus","caps":{"radio":"sa868","modes":true,"m17":true},"sa868":{"rev":20,"fw":"OpenRTX","band":"UHF","ok":true,"modem":"M17","rx":433475000,"tx":433475000,"m17":433475000},"mode":10,"modes":[{"m":0,"n":"APRS AFSK 1200"},{"m":1,"n":"APRS FSK 9600"},{"m":10,"n":"M17"}]}""") as ControlEvent.Info).info
     eq(m17.hasM17, true, "T-TWR m17 cap"); eq(m17.sa868?.m17Hz, 433_475_000L, "M17 frequency")

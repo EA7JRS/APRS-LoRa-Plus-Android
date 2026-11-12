@@ -137,6 +137,13 @@ fun GpsStatusPage() {
         Spacer(Modifier.height(6.dp))
         SignalBars(sky.sats, Modifier.fillMaxWidth().height(56.dp))
         Legend(sky.sats)
+        if (sky.sats.any { it.bands != null }) {                // tracker with NMEA 4.10+ (UC6580...): satellites per band
+            val l1 = sky.sats.count { it.l1 }
+            val l5 = sky.sats.count { it.l5 }
+            val other = sky.sats.count { (it.bands ?: 0) and 4 != 0 }
+            Text(listOfNotNull("L1 $l1", if (l5 > 0) "L5 $l5" else null, if (other > 0) "L2/E5b/E6 $other" else null).joinToString("   "),
+                color = Alp.SubText, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+        }
         if (!isPhone && trackerSky == null) Text(
             if (control) "Waiting for the satellite list... (tracker firmware with the `sky` command)" else "Connect the tracker to see its satellites, or choose PHONE.",
             color = Alp.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
