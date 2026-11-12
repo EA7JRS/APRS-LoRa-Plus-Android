@@ -100,6 +100,7 @@ class FKey(val id: String, val label: String, val sub: String?, val lit: Int = 0
 @Composable
 private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
     val stations by AppState.stations.collectAsState()
+    val warnings by AppState.wxWarnings.collectAsState()
     val wxNearest = remember(stations) {
         val me = Own.position()
         val wx = stations.filter { it.wx != null }
@@ -127,6 +128,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
         FKey("SLIST", "S.LIST", "${stations.size} heard") { nav.go("STATIONS") },
         FKey("WX", "WX", wxNearest?.let { n -> n.wx?.tempC?.let { String.format(java.util.Locale.US, "%.0f° %s", it, n.call) } } ?: "${stations.count { it.wx != null }} stations",
             if (stations.any { it.wx != null }) 1 else 0) { nav.go("WX") },
+        FKey("WARN", "WARN", if (warnings.isEmpty()) "weather" else "${warnings.size} in force", when (warnings.maxOfOrNull { it.level } ?: 0) { 0 -> 0; 1 -> 1; else -> 2 }) { nav.go("WARN") },
         FKey("MSG", "MSG", if (unread > 0) "$unread new" else "${msgs.size} msgs", if (unread > 0) 2 else 0) { nav.go("MESSAGES") },
         FKey("BEACON", "BEACON", if (status?.smartBeacon == true) "SMART" else profile ?: "profile", if (status?.smartBeacon == true) 2 else 0) { nav.tool(Tool.TRACKER) },
         FKey("BCN", "BCN", "TX now") { AppState.controller?.control("beacon") ?: run { AppState.error.value = "Start the link first (Connect)" } },
@@ -161,7 +163,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 
 val FMENU_PAGES = listOf(
     "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
-    "RADIO" to listOf("DX", "SAT", "ROTOR", "SDR", "MODES", "CWKEY", "SPOTS", "AIS"),
+    "RADIO" to listOf("DX", "SAT", "ROTOR", "SDR", "MODES", "CWKEY", "SPOTS", "AIS", "WARN"),
     "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT"),
 )
 
@@ -200,6 +202,7 @@ fun App() {
                     "MAP" -> MapScreen(nav)
                     "STATIONS" -> StationListScreen(nav)
                     "WX" -> WxScreen(nav)
+                    "WARN" -> WxWarnScreen(nav)
                     "STATION" -> StationDetailScreen(nav, nav.arg)
                     "MESSAGES" -> MessageListScreen(nav)
                     "THREAD" -> ThreadScreen(nav, nav.arg)
@@ -213,6 +216,7 @@ fun App() {
     }
 
     AlertOverlay(nav)
+    WxWarnOverlay(nav)
 
     assign?.let { k ->
         AlertDialog(
@@ -350,6 +354,7 @@ private fun FunctionMenu(nav: Navigator, keys: Map<String, FKey>, openDrawer: ()
 @Composable
 private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
     val stations by AppState.stations.collectAsState()
+    val menuWarnings by AppState.wxWarnings.collectAsState()
     val msgs by AppState.messages.collectAsState()
     val ble by AppState.bleStatus.collectAsState()
     val running by AppState.running.collectAsState()
@@ -378,6 +383,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             MenuItem("Map", active = nav.kind == "MAP") { open("MAP") }
             MenuItem("Stations", right = "${stations.size}", active = nav.kind == "STATIONS") { open("STATIONS") }
             MenuItem("Weather stations", right = "${stations.count { it.wx != null }}", active = nav.kind == "WX") { open("WX") }
+            MenuItem("Weather warnings", right = if (menuWarnings.isEmpty()) "" else "${menuWarnings.size}", active = nav.kind == "WARN") { open("WARN") }
             MenuItem("Messages", badge = unread, active = nav.kind == "MESSAGES") { open("MESSAGES") }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
             MenuItem("Log & QSL") { tool(Tool.LOG) }

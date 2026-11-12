@@ -637,10 +637,12 @@ class Controller(
     // ------------------------------------------------------------------
 
     private var netWxCheckMs = 0L
+    private var warnCheckMs = 0L
 
     private fun tick() {
         if (engine.tick().isNotEmpty()) publish()
         val nowWx = System.currentTimeMillis()
+        if (nowWx - warnCheckMs > 30_000) { warnCheckMs = nowWx; WxWarnFetcher.maybeFetch(settings) }
         if (controlOn && nowWx - netWxCheckMs > 30_000) { netWxCheckMs = nowWx; AppState.appContext?.let { NetWeatherFetcher.maybeFetch(it, settings) } }
         drainTx()
         val now = System.currentTimeMillis()

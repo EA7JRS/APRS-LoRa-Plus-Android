@@ -1364,9 +1364,53 @@ private fun testAstro() {
     near(Astro.moonIllumination(Astro.SYNODIC / 2), 1.0, 1e-12, "full moon"); eq(Astro.moonPhaseName(14.8), "full", "phase name")
 }
 
+private fun testWxWarn() {
+    // a CAP message shaped like AEMET's (fields seen in a real one of September 2026)
+    val cap = """<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2"><identifier>2.49.0.0.724.0.ES.20261112082714.610402PRP1</identifier><sender>http://www.aemet.es</sender>
+<sent>2026-11-12T08:27:14-00:00</sent><status>Actual</status><msgType>Alert</msgType><scope>Public</scope>
+<info><language>es-ES</language><category>Met</category><event>Aviso de lluvias de nivel naranja</event><severity>Severe</severity>
+<eventCode><valueName>AEMET-Meteoalerta fenomeno</valueName><value>PR;Lluvias</value></eventCode>
+<effective>2026-11-12T09:27:14+01:00</effective><onset>2026-11-13T00:00:00+01:00</onset><expires>2026-11-13T03:59:59+01:00</expires>
+<description>Precipitaci&#243;n acumulada en una hora: 30 mm.</description><instruction>Est&#233; preparado.</instruction>
+<parameter><valueName>AEMET-Meteoalerta nivel</valueName><value>naranja</value></parameter>
+<parameter><valueName>AEMET-Meteoalerta probabilidad</valueName><value>40%-70%</value></parameter>
+<area><areaDesc>Campi&#241;a sevillana</areaDesc><polygon>37.0,-6.3 37.0,-5.5 37.7,-5.5 37.7,-6.3 37.0,-6.3</polygon>
+<geocode><valueName>AEMET-Meteoalerta zona</valueName><value>614102</value></geocode></area></info>
+<info><language>en-GB</language><event>Severe rain warning</event><severity>Severe</severity></info></alert>"""
+    val alert = cap.substring(cap.indexOf("<alert"))
+    val w = WxWarn.parse(alert, 37.389 to -5.984)!!
+    eq(w.level, WxWarn.ORANGE, "AEMET level"); eq(w.event, "Aviso de lluvias de nivel naranja", "event"); eq(w.phenomenon, "Lluvias", "phenomenon")
+    eq(w.area, "Campiña sevillana", "numeric entities"); eq(w.probability, "40%-70%", "probability"); eq(w.source, "AEMET", "source")
+    check(w.hasArea && w.inside && w.distanceKm == 0.0, "inside the outline")
+    eq(w.onsetS, WxWarn.isoToEpoch("2026-11-12T23:00:00Z"), "onset in UTC"); eq(w.expiresS - w.onsetS, 4 * 3600L - 1, "span")
+    eq(WxWarn.shortTime(w.onset), "13 00:00", "short time")
+    val far = WxWarn.parse(alert, 36.53 to -6.29)!!
+    check(!far.inside && far.distanceKm!! > 40 && far.distanceKm!! < 70, "Cadiz is outside: ${far.distanceKm}")
+    check(WxWarn.mine(w, 30.0, "", true) && !WxWarn.mine(far, 30.0, "", true) && WxWarn.mine(far, 80.0, "", true), "by outline and distance")
+    check(!w.expired(w.expiresS - 10) && w.expired(w.expiresS + 10), "expiry")
+    eq(WxWarn.isoToEpoch("1970-01-02T00:00:00Z"), 86400L, "epoch"); eq(WxWarn.isoToEpoch("garbage"), 0L, "not a date")
+    eq(WxWarn.isoToEpoch("2026-11-12T01:00:00+01:00"), WxWarn.isoToEpoch("2026-11-12T00:00:00-00:00"), "offsets")
+    val m = WxWarn.parse("<entry><cap:areaDesc>Cádiz - Estrecho</cap:areaDesc><cap:event>Severe wind warning</cap:event><cap:severity>Severe</cap:severity>" +
+        "<cap:onset>2026-11-12T10:00:00+01:00</cap:onset><cap:expires>2026-11-12T20:00:00+01:00</cap:expires><cap:status>Actual</cap:status>" +
+        "<cap:message_type>Alert</cap:message_type><cap:identifier>2.49.0.0.724.0.ES.X</cap:identifier></entry>", null)!!
+    check(m.level == WxWarn.ORANGE && m.source == "Meteoalarm" && !m.hasArea && m.id == "2.49.0.0.724.0.ES.X", "Meteoalarm entry")
+    check(WxWarn.areaMatches(m.area, "sevilla, cadiz") && WxWarn.areaMatches(m.area, "ESTRECHO") && !WxWarn.areaMatches(m.area, "huelva") && WxWarn.areaMatches(m.area, ""), "zone names")
+    check(WxWarn.mine(m, 30.0, "cadiz", true) && !WxWarn.mine(m, 30.0, "", true) && WxWarn.mine(m, 30.0, "", false), "by zone name")
+    eq(WxWarn.parse("<entry><cap:event>x</cap:event><cap:severity>Minor</cap:severity></entry>", null), null, "green level does not count")
+    eq(WxWarn.parse("<entry><cap:event>x</cap:event><cap:severity>Severe</cap:severity><cap:message_type>Cancel</cap:message_type></entry>", null), null, "cancelled")
+    eq(listOf(far, w).sortedWith(WxWarn.ORDER).first().inside, true, "inside first")
+    // the stream in 7-byte pieces, with archive padding before and between
+    val stream = (String(CharArray(512)) + cap + String(CharArray(300)) + "Z_CAP.xml" + String(CharArray(200)) + cap).toByteArray(Charsets.UTF_8)
+    val sc = WxWarn.Scanner(); var got = 0; var i = 0
+    while (i < stream.size) { val n = minOf(7, stream.size - i); for (b in sc.feed(stream.copyOfRange(i, i + n), n)) if (WxWarn.parse(b, null)?.level == WxWarn.ORANGE) got++; i += n }
+    check(got == 2 && sc.blocks == 2 && !sc.gzip, "two warnings out of the stream: $got")
+    val gz = WxWarn.Scanner(); check(gz.feed(byteArrayOf(0x1F, 0x8B.toByte(), 8, 0), 4).isEmpty() && gz.gzip, "compressed stream noticed")
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxCalc(); testAstro()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxCalc(); testAstro(); testWxWarn()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

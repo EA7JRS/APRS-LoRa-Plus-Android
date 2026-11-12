@@ -450,6 +450,21 @@ class Settings(ctx: Context) {
         get() = p.getString("ui_keys", "BCN,MSG,SLIST,MAP")!!.split(',').filter { it.isNotEmpty() }.let { if (it.size == 4) it else listOf("BCN", "MSG", "SLIST", "MAP") }
         set(v) { p.edit().putString("ui_keys", v.joinToString(",")).apply() }
 
+    /** Official weather warnings: 0 off, 1 AEMET (Spain, with [aemetKey], by position), 2 Meteoalarm (a country's feed, zones by name). */
+    var warnSource: Int
+        get() = p.getInt("warn_src", 0).coerceIn(0, 2)
+        set(v) { p.edit().putInt("warn_src", v.coerceIn(0, 2)).apply() }
+    /** Level from which a new warning opens its window: 1 yellow, 2 orange, 3 red, 0 never. */
+    var warnPopup: Int
+        get() = p.getInt("warn_popup", 1).coerceIn(0, 3)
+        set(v) { p.edit().putInt("warn_popup", v.coerceIn(0, 3)).apply() }
+    var warnCountry: String
+        get() = p.getString("warn_country", "spain")!!
+        set(v) { p.edit().putString("warn_country", v.trim()).apply() }
+    var warnArea: String
+        get() = p.getString("warn_area", "")!!
+        set(v) { p.edit().putString("warn_area", v).apply() }
+
     /** Units of distances, speeds and temperatures: 0 metric, 1 nautical (nm, kn), 2 imperial (mi, mph, °F). */
     var units: Int
         get() = p.getInt("units", 0).coerceIn(0, 2)
