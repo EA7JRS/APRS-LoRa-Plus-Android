@@ -12,8 +12,8 @@ android {
         applicationId = "es.ea7jrs.aprslorap"
         minSdk = 26
         targetSdk = 36
-        versionCode = 50402
-        versionName = "5.4.2"
+        versionCode = 50403
+        versionName = "5.4.3"
     }
 
     // Google Play upload key (Play App Signing re-signs the final app): only from the environment (CI secrets), never in the repository
