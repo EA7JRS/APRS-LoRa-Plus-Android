@@ -14,6 +14,8 @@ enum class AlertKind(val title: String, val distress: Boolean) {
     AIS_COLLISION("COLLISION WARNING", false),
     EAI("EAI ACTIVE", true),
     MAN_DOWN("MAN DOWN", false),
+    /** Weather, tsunami, earthquake, space weather or NOAA Weather Radio: the [EmergencyAlert.official] alert. */
+    OFFICIAL("OFFICIAL ALERT", false),
 }
 
 /**
@@ -23,6 +25,7 @@ enum class AlertKind(val title: String, val distress: Boolean) {
 data class EmergencyAlert(
     val key: String, val kind: AlertKind, val who: String, val text: String, val fromMsg: Boolean, val mmsi: Long?, val atMs: Long,
     val fromTracker: Boolean,
+    val official: OfficialAlert? = null,
 )
 
 object Alerts {

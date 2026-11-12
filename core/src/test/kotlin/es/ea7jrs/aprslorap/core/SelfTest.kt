@@ -1335,9 +1335,108 @@ private fun testAprsWx() {
     eq(tp.source.text(), "EA1ABC", "third party source"); check((Aprs.parse(tp.infoText) as AprsPacket.Message).addressee == "EA7JRS-7", "third party message")
 }
 
+private fun testOfficialAlerts() {
+    val O = OfficialAlerts
+    eq(O.parseIso("2026-11-04T23:00:00+00:00"), O.unixFromUtc(2026, 11, 4, 23), "iso utc")
+    eq(O.parseIso("2026-11-04T16:50:00-06:00"), O.unixFromUtc(2026, 11, 4, 22, 50), "iso -06:00")
+    eq(O.parseIso("2026-11-05 00:00:00.000"), O.unixFromUtc(2026, 11, 5), "iso with space")
+    val ma = "<entry><cap:geocode><valueName>EMMA_ID</valueName><value>DE103</value></cap:geocode>" +
+        "<cap:areaDesc>Kreis Aurich - Küste</cap:areaDesc><cap:event>heavy thunderstorms with gale- or storm-force gusts</cap:event>" +
+        "<cap:sent>2026-11-12T16:09:00+00:00</cap:sent><cap:expires>2026-11-12T20:00:00+00:00</cap:expires>" +
+        "<cap:onset>2026-11-12T16:30:00+00:00</cap:onset><cap:severity>Moderate</cap:severity><cap:message_type>Alert</cap:message_type>" +
+        "<cap:status>Actual</cap:status><cap:identifier>2.49.0.0.276.0.DWD.PVW.1794499740000.4aff.MUL</cap:identifier>" +
+        "<title>Orange Thunderstorm Warning issued for Germany - Kreis Aurich - Küste</title></entry>"
+    val a = O.meteoAlarmEntry(ma)
+    check(a != null && a.level == 2 && a.area == "Kreis Aurich - Küste" && a.expires == O.unixFromUtc(2026, 11, 12, 20), "MeteoAlarm entry (orange title, Moderate severity)")
+    eq(a?.id, "2.49.0.0.276.0.DWD.PVW.1794499740000.4aff.MUL/DE103", "MeteoAlarm id"); eq(O.asciiFold("Küste Almería"), "Kuste Almeria", "ascii fold")
+    eq(O.meteoAlarmFeedName("es"), "spain", "MeteoAlarm feed")
+    val it = "<item><title>Aviso. Nivel amarillo. Lluvias. Poniente y Almería Capital</title>" +
+        "<description>Aviso de precipitación acumulada en una hora de nivel amarillo de 18:00 04-11-2026 CET (UTC+1) a 07:59 05-11-2026 CET (UTC+1).</description>" +
+        "<guid isPermaLink=\"false\">Z_CAP_C_LEMM_20261104171224_AFAZ610403PRP10507.xml</guid></item>"
+    val r = O.aemetRssItem(it)
+    check(r != null && r.level == 1 && r.event == "Rain" && r.area == "Poniente y Almería Capital" && r.text == "precipitación acumulada en una hora", "AEMET RSS item")
+    check(r?.onset == O.unixFromUtc(2026, 11, 4, 17) && r.expires == O.unixFromUtc(2026, 11, 5, 6, 59), "AEMET RSS times")
+    check(O.aemetRssItem("<item><title>Estado completo de avisos para España</title></item>") == null, "AEMET bundle item")
+    check(O.zoneMatch("Poniente y Almería Capital", "huelva, almeria") && !O.zoneMatch("Costa granadina", "Huelva") && O.zoneMatch("x", " "), "zone match")
+    check(O.levelFromColour("Nivel rojo") == 3 && O.levelFromColour("reduced visibility") == -1, "colour words")
+    val cap = "<alert xmlns=\"urn:oasis:names:tc:emergency:cap:1.2\"><identifier>2.49.0.0.724.0.ES.1</identifier><sent>2026-11-03T10:27:59-00:00</sent><status>Actual</status>" +
+        "<info><language>es-ES</language><event>Aviso de lluvias de nivel amarillo</event><severity>Moderate</severity><onset>2026-11-04T11:00:00-00:00</onset>" +
+        "<expires>2026-11-04T19:59:59-00:00</expires><parameter><valueName>AEMET-Meteoalerta nivel</valueName><value>amarillo</value></parameter>" +
+        "<area><areaDesc>Norte de Gran Canaria</areaDesc><polygon>28.05,-15.74 28.09,-15.71 28.16,-15.7 28.17,-15.63 28.15,-15.61 28.14,-15.54 28.13,-15.43 28.06,-15.42 28.01,-15.51 28.05,-15.74</polygon></area></info>" +
+        "<info><language>en-GB</language><event>Yellow warning for rain</event><severity>Moderate</severity><onset>2026-11-04T11:00:00-00:00</onset>" +
+        "<expires>2026-11-04T19:59:59-00:00</expires><description>Accumulated precipitation in one hour: 15 mm.</description>" +
+        "<parameter><valueName>AEMET-Meteoalerta nivel</valueName><value>amarillo</value></parameter>" +
+        "<area><areaDesc>Norte de Gran Canaria</areaDesc><polygon>28.05,-15.74 28.09,-15.71 28.16,-15.7 28.17,-15.63 28.15,-15.61 28.14,-15.54 28.13,-15.43 28.06,-15.42 28.01,-15.51 28.05,-15.74</polygon></area></info></alert>"
+    val c = O.capParse(cap)
+    check(c.size == 1 && c[0].first.event == "Yellow warning for rain" && c[0].first.level == 1 && c[0].second.size == 10, "AEMET CAP")
+    check(O.pointInPolygon(28.10, -15.60, c[0].second) && !O.pointInPolygon(28.0, -15.3, c[0].second), "point in polygon")
+    val nws = "{\"type\":\"FeatureCollection\",\"features\":[{\"id\":\"x\",\"type\":\"Feature\",\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[-93.14,30.38],[-93.03,30.31],[-93.08,30.25],[-93.21,30.19],[-93.29,30.3],[-93.14,30.38]]]}," +
+        "\"properties\":{\"id\":\"urn:oid:2.49.0.1.840.0.4ecd.001.1\",\"areaDesc\":\"Calcasieu, LA\",\"sent\":\"2026-11-04T16:50:00-06:00\",\"onset\":\"2026-11-04T16:50:00-06:00\"," +
+        "\"expires\":\"2026-11-05T05:00:00-06:00\",\"ends\":\"2026-11-07T06:00:00-06:00\",\"status\":\"Actual\",\"messageType\":\"Alert\",\"severity\":\"Severe\",\"event\":\"Flood Warning\"," +
+        "\"headline\":\"Flood Warning issued\",\"instruction\":\"Turn around, don't drown when encountering flooded roads.\"}}]}"
+    val n = O.nws(nws)
+    check(n.size == 1 && n[0].level == 2 && n[0].expires == O.unixFromUtc(2026, 11, 7, 12) && kotlin.math.abs((n[0].lat ?: 0.0) - 30.3) < 0.1, "NWS GeoJSON")
+    val tsu = "<entry><title>BONIN ISLANDS  JAPAN REGION</title><updated>2026-10-25T02:27:01Z</updated><geo:lat>28.</geo:lat><geo:long>139.9</geo:long>" +
+        "<summary type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><strong>Category:</strong> Information<br/><strong>Bulletin Issue Time: </strong> 2026.10.25 02:27:01 UTC <br/>" +
+        "<strong>Preliminary Magnitude: </strong>7.0(Mwp)<br/><strong>Lat/Lon: </strong>28. / 139.9<br/><strong>Affected Region: </strong>BONIN ISLANDS  JAPAN REGION<br/></div></summary>" +
+        "<id>urn:uuid:ba64bc82</id></entry>"
+    val ts = O.tsunamiEntry(tsu)
+    check(ts != null && ts.level == 0 && ts.event == "Tsunami Information" && ts.text == "M7.0(Mwp) BONIN ISLANDS JAPAN REGION" && ts.sent == O.unixFromUtc(2026, 10, 25, 2, 27, 1), "tsunami entry")
+    eq(O.tsunamiEntry(tsu.replace("Information", "Warning"))?.level, 3, "tsunami warning")
+    val q = O.usgs("{\"features\":[{\"type\":\"Feature\",\"properties\":{\"mag\":5,\"place\":\"south of the Fiji Islands\",\"time\":1793827465643,\"type\":\"earthquake\"}," +
+        "\"geometry\":{\"type\":\"Point\",\"coordinates\":[179.8078,-25.3174,508.132]},\"id\":\"us7000tw43\"}]}") +
+        O.emsc("{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"id\":\"20261104_0000300\",\"properties\":{\"time\":\"2026-11-04T21:24:25.643Z\",\"flynn_region\":\"SOUTH OF FIJI ISLANDS\"," +
+            "\"lat\":-25.3174,\"lon\":179.8078,\"depth\":508.1,\"mag\":5.0,\"unid\":\"20261104_0000300\"}},{\"type\":\"Feature\",\"properties\":{\"time\":\"2026-11-04T16:14:39.4Z\"," +
+            "\"flynn_region\":\"STRAIT OF GIBRALTAR\",\"lat\":36.0,\"lon\":-5.5,\"depth\":10,\"mag\":4.6,\"unid\":\"b\"}}]}")
+    check(q.size == 3 && O.quakeSame(q[0], q[1]) && !O.quakeSame(q[0], q[2]), "quakes USGS / EMSC")
+    val ql = O.quakeLevels(q, 36.5, -6.0)
+    check(ql.size == 2 && ql[0].src == AlertSrc.EMSC && ql[0].level == 0 && ql[1].level == 1 && ql[1].text.startsWith("Depth 10 km, ") && ql[1].text.endsWith(" km SE"), "quake levels")
+    check(O.quakeLevel(5.4, 186.0) == 2 && O.quakeLevel(7.1, 9842.0) == 0 && O.quakeLevel(7.6, 2500.0) == 2 && O.quakeLevel(6.2, 250.0) == 3, "quake level rule")
+    var w = O.swpcScales("{\"0\":{\"R\":{\"Scale\":\"1\"},\"S\":{\"Scale\":\"0\"},\"G\":{\"Scale\":\"3\"}},\"1\":{\"G\":{\"Scale\":\"2\"}},\"2\":{\"G\":{\"Scale\":\"1\"}},\"3\":{\"G\":{\"Scale\":null}}}", SpaceWx())!!
+    check(w.g == 3 && w.r == 1 && w.s == 0 && w.gMax == 2, "SWPC scales")
+    w = O.swpcKp("[[\"time_tag\",\"Kp\",\"a_running\",\"station_count\"],[\"2026-11-11 21:00:00.000\",\"2.33\",\"9\",\"8\"],[\"2026-11-12 00:00:00.000\",\"5.00\",\"48\",\"8\"]]", w)!!
+    check(w.kp.size == 2 && w.kpNow == 5.0 && w.kpTime == O.unixFromUtc(2026, 11, 12) && O.kpToG(5.0) == 1, "SWPC Kp rows")
+    check(O.swpcKp("[{\"time_tag\":\"2026-11-12T03:00:00\",\"Kp\":6.67},{\"time_tag\":\"2026-11-12T00:00:00\",\"Kp\":5.0}]", w)?.kpNow == 6.67, "SWPC Kp objects")
+    w = O.swpcSummary("{\"Flux\":\"182\"}", w)!!; w = O.swpcSummary("{\"Bt\":\"14\",\"Bz\":\"-12\"}", w)!!
+    check(w.sfi == 182.0 && w.bz == -12.0 && w.bt == 14.0, "SWPC summaries")
+    eq(O.swpcXray("[{\"flux\":1.2e-6,\"energy\":\"0.1-0.8nm\"},{\"flux\":2.4e-5,\"energy\":\"0.1-0.8nm\"},{\"flux\":1e-7,\"energy\":\"0.05-0.4nm\"}]", w)?.xray, "M2.4", "X-ray class")
+    check(O.xrayClass(3.1e-4) == "X3.1" && O.xrayClass(5e-8) == "A5.0", "X-ray classes")
+    val now = O.unixFromUtc(2026, 8, 27, 9)
+    val sa = O.swpcAlerts("[{\"issue_datetime\":\"2026-08-27 06:15:00.000\",\"message\":\"Space Weather Message Code: ALTK07\\r\\nSerial Number: 123\\r\\n\\r\\nALERT: Geomagnetic K-index of 7\\r\\nNOAA Scale: G3 - Strong\\r\\n\"}," +
+        "{\"issue_datetime\":\"2026-08-27 05:00:00.000\",\"message\":\"Space Weather Message Code: WATA20\\r\\nSerial Number: 99\\r\\n\\r\\nWATCH: Geomagnetic Storm Category G1 Predicted\\r\\n\"}," +
+        "{\"issue_datetime\":\"2026-08-27 04:00:00.000\",\"message\":\"Space Weather Message Code: WARK05\\r\\nSerial Number: 50\\r\\n\\r\\nWARNING: Geomagnetic K-index of 5 expected\\r\\nValid To: 2026 Aug 27 1200 UTC\\r\\nNOAA Scale: G1 - Minor\\r\\n\"}," +
+        "{\"issue_datetime\":\"2026-08-27 08:00:00.000\",\"message\":\"Space Weather Message Code: WARK05\\r\\nSerial Number: 51\\r\\n\\r\\nCANCEL WARNING: Geomagnetic K-index of 5 expected\\r\\nCancel Serial Number: 50\\r\\n\"}," +
+        "{\"issue_datetime\":\"2026-08-20 04:00:00.000\",\"message\":\"Space Weather Message Code: ALTK04\\r\\nSerial Number: 7\\r\\n\\r\\nALERT: Geomagnetic K-index of 4\\r\\n\"}]", now)
+    check(sa.size == 2 && sa[0].level == 2 && sa[0].area == "G3 Geomagnetic storm" && sa[0].text == "Alert" && sa[1].level == 1 && sa[1].text == "Watch", "SWPC alerts")
+    val cmd = O.command(a!!)
+    check(Json.encode(cmd).length < 230 && (cmd["ev"] as String).length <= 32 && cmd["ar"] == "Kreis Aurich - Kuste", "tracker alert command")
+    check(O.fromEvent(Json.parseObject("{\"e\":\"alert\",\"id\":\"same/1\",\"s\":\"same\",\"lv\":3,\"ev\":\"Tornado Warning\",\"ar\":\"048201\",\"on\":1,\"ex\":2}")!!)?.src == AlertSrc.SAME, "alert event")
+}
+
+private fun testSame() {
+    val m = Same.parse("ZCZC-WXR-TOR-048201-048157+0030-3171845-KHGX/NWS-")
+    check(m != null && m.org == "WXR" && m.event == "TOR" && m.fips.size == 2 && m.durationMin == 30 && m.julianDay == 317 && m.sender == "KHGX/NWS", "SAME header")
+    check(Same.parse("ZCZC-WXR-TOR-04820+0030-3171845-KHGX/NWS-") == null && Same.headerEnd("ZCZC-WXR-SVR-048201+0100-3171845-KHGX/NWS-xx") == 42, "SAME header end")
+    check(Same.eventName("SVR") == "Severe Thunderstorm Warning" && Same.eventLevel("TOR") == 3 && Same.eventLevel("XYW") == 2, "SAME events")
+    check(Same.nwrChannel(162.400) == 2 && Same.nwrChannel(162.41) == 0, "NOAA Weather Radio channels")
+    val al = Same.toAlert(m!!, OfficialAlerts.unixFromUtc(2026, 11, 13, 19))
+    check(al.onset == OfficialAlerts.unixFromUtc(2026, 11, 13, 18, 45) && al.expires == al.onset + 1800 && al.level == 3, "SAME alert")
+    val hdr = "ZCZC-WXR-SVR-048201-048157-048339+0045-3171902-KHGX/NWS-"
+    for (fs in listOf(12000.0, 48000.0)) {
+        val sig = (Same.synth(hdr, fs * 1.005).toList() + Same.synth("NNNN", fs).toList()).toFloatArray()
+        var seed = 12345L
+        for (i in sig.indices) { seed = (seed * 1103515245L + 12345L) and 0xFFFFFFFFL; sig[i] += (((seed shr 8) and 0xFFFF) / 65535f - 0.5f) * 0.55f }
+        val d = SameDecoder(fs)
+        val got = ArrayList<String>()
+        var i = 0
+        while (i < sig.size) { val k = minOf(256, sig.size - i); d.feed(sig, i, k); i += k; while (true) { got.add(d.poll() ?: break) } }
+        eq(got, listOf(hdr, "NNNN"), "SAME decoder at ${fs.toInt()} Hz")
+    }
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testOfficialAlerts(); testSame()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

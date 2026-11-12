@@ -69,6 +69,10 @@ object AppState {
     /** Weather from the internet (OpenWeatherMap / IQAir) for the tracker's TELEMETRY page, and the last message of the download. */
     val netWx = MutableStateFlow<es.ea7jrs.aprslorap.core.NetWeather.Data?>(null)
     val netWxMessage = MutableStateFlow("")
+    /** Official alerts in force (OfficialAlertsFetcher + SAME), the most severe first; space weather; status line. */
+    val officialAlerts = MutableStateFlow<List<es.ea7jrs.aprslorap.core.OfficialAlert>>(emptyList())
+    val spaceWx = MutableStateFlow<es.ea7jrs.aprslorap.core.SpaceWx?>(null)
+    val officialMessage = MutableStateFlow("")
     /** AIS vessels received by the tracker (by MMSI) and the state of its receiver. */
     val aisVessels = MutableStateFlow<Map<Long, es.ea7jrs.aprslorap.core.AisVessel>>(emptyMap())
     val aisSource = MutableStateFlow("")

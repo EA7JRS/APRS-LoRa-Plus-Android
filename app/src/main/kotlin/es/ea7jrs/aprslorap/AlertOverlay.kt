@@ -93,7 +93,7 @@ fun AlertOverlay(nav: Navigator) {
 @Composable
 private fun AlertWindow(nav: Navigator, a: EmergencyAlert, i: Int, n: Int, onPrev: () -> Unit, onNext: () -> Unit) {
     val ctx = LocalContext.current
-    val accent = if (a.kind.distress) Alp.Red else Alp.Amber
+    val accent = a.official?.let { officialColor(it.level) } ?: if (a.kind.distress) Alp.Red else Alp.Amber
     val pulse by rememberInfiniteTransition(label = "ring").animateFloat(0.25f, 1f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "ring")
     val sounding by AlertCenter.sounding.collectAsState()
     val leds by AppState.trackerLeds.collectAsState()
@@ -115,7 +115,7 @@ private fun AlertWindow(nav: Navigator, a: EmergencyAlert, i: Int, n: Int, onPre
                 drawCircle(Color(0xFF131A22), s * 0.05f, androidx.compose.ui.geometry.Offset(s / 2, s * 0.74f))
             }
             Column(Modifier.weight(1f)) {
-                Text(a.kind.title, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 24.sp, color = Color(0xFF131A22), maxLines = 1)
+                Text(a.official?.title ?: a.kind.title, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 24.sp, color = Color(0xFF131A22), maxLines = 1)
                 Text(kindLine(a), fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF131A22), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (n > 1) {
@@ -136,6 +136,8 @@ private fun AlertWindow(nav: Navigator, a: EmergencyAlert, i: Int, n: Int, onPre
                             drawPath(p, accent, style = Stroke(width = s * 0.08f))
                             drawCircle(accent, s * 0.07f, androidx.compose.ui.geometry.Offset(s / 2, s * 0.86f))
                         }
+                        "official" -> Text(when { a.official?.src?.quake == true -> "≋"; a.official?.src == es.ea7jrs.aprslorap.core.AlertSrc.SWPC -> "☀"; else -> "!" },
+                            fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = accent)
                         else -> Text(Settings(ctx).callsign.take(1).ifEmpty { "•" }, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = accent)
                     }
                 }
@@ -203,7 +205,11 @@ private fun kindLine(a: EmergencyAlert): String = when (a.kind) {
     AlertKind.AIS_COLLISION -> "AIS · " + a.text.ifBlank { "collision risk" }
     AlertKind.EAI -> "Own emergency · this tracker"
     AlertKind.MAN_DOWN -> "No key touched · EAI starts by itself"
+    AlertKind.OFFICIAL -> a.official?.let { it.src.title + " · " + it.levelName.lowercase().replaceFirstChar { c -> c.uppercase() } } ?: "Official alert"
 }
+
+/** Level colours of the official alerts (yellow, orange, red; information in grey), the same as the tracker and the Display. */
+fun officialColor(level: Int): Color = when (level) { 3 -> Alp.Red; 2 -> Color(0xFFFF9A3C); 1 -> Color(0xFFFFD84D); else -> Alp.Muted }
 
 @Composable
 private fun alertView(nav: Navigator, a: EmergencyAlert, ctx: android.content.Context): AlertView {
@@ -277,6 +283,23 @@ private fun alertView(nav: Navigator, a: EmergencyAlert, ctx: android.content.Co
                 line3 = if (e?.fm == true) "FM voice EAI: " + (if (e?.fmMode == 2) "Continuous (microphone open)" else "Interval (beeps)") + " · CW ID every 10 min" else "",
                 actions = listOf(action("STOP EAI", "on the tracker") { c?.control("eai", "s" to "stop"); Unit },
                     action("MAP", "my position") { MapFocus.call = null; nav.go("MAP") }, share),
+            )
+        }
+        AlertKind.OFFICIAL -> {
+            val o = a.official!!
+            val d = Own.to(o.lat, o.lon)
+            fun when2(t: Long) = if (t <= 0) "" else java.text.SimpleDateFormat("EEE HH:mm", Locale.US).format(java.util.Date(t * 1000))
+            val valid = listOfNotNull(when2(o.onset).takeIf { it.isNotEmpty() }, when2(o.expires).takeIf { it.isNotEmpty() }).joinToString(" – ")
+            val acts = ArrayList<Triple<String, String, () -> Unit>>()
+            acts.add(action("ALERTS", "list") { nav.tool(Tool.ALERTS) })
+            val la = o.lat; val lo = o.lon
+            if (la != null && lo != null && (o.src.quake || o.src == es.ea7jrs.aprslorap.core.AlertSrc.TSUNAMI)) acts.add(action("GO TO", "Google Maps") { goToPos(ctx, la, lo, o.area) })
+            AlertView(
+                o.event, o.area, "official", null,
+                d?.let { Fmt.km(it.first) }.takeIf { o.src.quake || o.src == es.ea7jrs.aprslorap.core.AlertSrc.TSUNAMI }, d?.second, d?.let { Fmt.deg(it.second) } ?: "",
+                line2 = o.text, line3 = listOf(valid, o.instruction).filter { it.isNotBlank() }.joinToString(" · "),
+                heard = o.src.title, level = o.levelName,
+                actions = acts,
             )
         }
         AlertKind.MAN_DOWN -> {

@@ -207,6 +207,11 @@ class Controller(
         exec.execute { safe { if (controlOn && AppState.trackerInfo.value?.hasWxNet == true) sendControlLine(line) } }
     }
 
+    /** Official alerts and space weather for the tracker (OfficialAlertsFetcher, any thread): only to firmware with "alert". */
+    fun sendOfficial(line: String) {
+        exec.execute { safe { if (controlOn && AppState.trackerInfo.value?.hasAlerts == true) sendControlLine(line) } }
+    }
+
     fun control(name: String, vararg fields: Pair<String, Any?>) {
         if (!controlOn) { AppState.error.value = "The tracker has no control service (update its firmware)"; return }
         // stopping the own emergency (SOS / EAI) or answering the man-down warning does not transmit
@@ -263,6 +268,7 @@ class Controller(
         when (ev) {
             is ControlEvent.Info -> {
                 AppState.trackerInfo.value = ev.info
+                if (ev.info.hasAlerts) OfficialAlertsFetcher.trackerConnected()
                 nmeaFromTracker = ev.info.hasNmea
                 setTrackerNmea(wantNmea && nmeaFromTracker)
             }
@@ -329,6 +335,8 @@ class Controller(
                 AppState.aisMessages.value = ev.messages
                 if (ev.from + ev.items.size < ev.total && ev.items.isNotEmpty()) sendControlLine(Control.command("aislist", "from" to ev.from + ev.items.size, "cnt" to 15))
             }
+            is ControlEvent.OfficialAlertEv -> OfficialAlertsFetcher.onSame(ev.alert, byTracker = true)   // SAME decoded by the T-TWR
+            is ControlEvent.AlertsVersion -> {}
             is ControlEvent.NetRequest -> {                  // the tracker asks (its menu): weather or satellite file with the phone's internet
                 val ctx = AppState.appContext
                 when (ev.what) {
@@ -637,11 +645,13 @@ class Controller(
     // ------------------------------------------------------------------
 
     private var netWxCheckMs = 0L
+    private var officialCheckMs = 0L
 
     private fun tick() {
         if (engine.tick().isNotEmpty()) publish()
         val nowWx = System.currentTimeMillis()
         if (controlOn && nowWx - netWxCheckMs > 30_000) { netWxCheckMs = nowWx; AppState.appContext?.let { NetWeatherFetcher.maybeFetch(it, settings) } }
+        if (nowWx - officialCheckMs > 60_000) { officialCheckMs = nowWx; AppState.appContext?.let { OfficialAlertsFetcher.maybeFetch(it, settings) } }
         drainTx()
         val now = System.currentTimeMillis()
         if (AppState.configBusy.value && now > configDeadlineMs) {

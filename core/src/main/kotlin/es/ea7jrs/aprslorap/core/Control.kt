@@ -80,6 +80,8 @@ data class TrackerInfo(
     val lastResetAt: String = "",               // mode and seconds running before that reset ("mode 11, 12 s", "during boot")
     val lastResetTasks: String = "",            // task watchdog: task running on core 0 / core 1 ("afskRx / loopTask")
     val elfSha: String = "",                    // app_elf_sha256 of the running firmware (FirmwareSite.origin)
+    val hasAlerts: Boolean = false,             // official alerts from the app ("alert", "alertdel", "alertclr", "spacewx")
+    val hasSame: Boolean = false,               // NOAA Weather Radio (SAME) decoded by the T-TWR in FM (event "alert")
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -225,6 +227,9 @@ sealed class ControlEvent {
     /** CW listening on RF (`cwrx`): [letter] is null for a level-only update; [on] false = the session ended. */
     /** The tracker asks the app to download something with the phone's internet: "wx" (TELEMETRY weather) or "sat" (satellite file). */
     data class NetRequest(val what: String) : ControlEvent()
+    /** An official alert from the tracker (SAME decoded by the T-TWR); version change of its list. */
+    data class OfficialAlertEv(val alert: OfficialAlert) : ControlEvent()
+    data class AlertsVersion(val version: Int, val count: Int, val maxLevel: Int) : ControlEvent()
     data class Ais(val vessel: AisVessel) : ControlEvent()
     data class AisList(val total: Int, val from: Int, val messages: Int, val source: String, val channel: String, val items: List<AisVessel>) : ControlEvent()
     data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?, val freqHz: Long? = null) : ControlEvent()
@@ -347,6 +352,8 @@ object Control {
                 ),
             )
             "netreq" -> ControlEvent.NetRequest(o.str("what") ?: "")
+            "alert" -> OfficialAlerts.fromEvent(o)?.let { ControlEvent.OfficialAlertEv(it) } ?: ControlEvent.Unknown(line)
+            "alertsv" -> ControlEvent.AlertsVersion(o.int("v") ?: 0, o.int("n") ?: 0, o.int("max") ?: -1)
             "ais" -> AisVessel.parse(o, System.currentTimeMillis())?.let { ControlEvent.Ais(it) } ?: ControlEvent.Unknown(line)
             "aislist" -> ControlEvent.AisList(o.int("tot") ?: 0, o.int("from") ?: 0, o.int("msgs") ?: 0, o.str("src") ?: "", o.str("ch") ?: "",
                 o.objList("items").mapNotNull { AisVessel.parse(it, System.currentTimeMillis()) })
@@ -453,6 +460,8 @@ object Control {
             o.str("rstAt") ?: "",
             o.str("rstTask") ?: "",
             o.str("elf") ?: "",
+            caps.bool("alerts") ?: false,
+            caps.bool("same") ?: false,
         )
     }
 }

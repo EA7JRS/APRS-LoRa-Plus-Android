@@ -38,7 +38,7 @@ object NetWeatherFetcher {
 
     /** Tracker GNSS fix first; otherwise the phone's last known position (no new fix is asked for). */
     @SuppressLint("MissingPermission")
-    private fun position(ctx: Context): Pair<Double, Double>? {
+    internal fun position(ctx: Context): Pair<Double, Double>? {
         AppState.gnss.value?.let { g -> val la = g.lat; val lo = g.lon; if (g.fix && la != null && lo != null) return la to lo }
         return try {
             val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager

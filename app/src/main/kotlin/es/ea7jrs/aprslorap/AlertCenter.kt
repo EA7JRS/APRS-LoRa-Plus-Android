@@ -86,11 +86,16 @@ object AlertCenter {
         publish()
     }
 
-    private fun offer(a: EmergencyAlert) {
+    /** An official alert (OfficialAlertsFetcher): the window, and the alarm only from the level chosen in the settings. */
+    fun onOfficial(o: es.ea7jrs.aprslorap.core.OfficialAlert, sound: Boolean) {
+        offer(EmergencyAlert("oa:" + o.id, AlertKind.OFFICIAL, o.event, o.area, false, null, System.currentTimeMillis(), false, o), sound)
+    }
+
+    private fun offer(a: EmergencyAlert, sound: Boolean = true) {
         val isNew = synchronized(queue) { queue.offer(a, System.currentTimeMillis()) }
         publish()
         if (isNew) {
-            startAlarm(a.kind.distress)
+            if (sound) startAlarm(a.kind.distress || (a.official?.level ?: 0) >= 3)
             notify(a)
             toCar(a)
         }
@@ -129,6 +134,7 @@ object AlertCenter {
         when (a.kind) {
             AlertKind.AIS_DISTRESS, AlertKind.AIS_COLLISION -> a.mmsi?.let { AppState.aisVessels.value[it] }?.let { lat = it.lat; lon = it.lon }
             AlertKind.EAI, AlertKind.MAN_DOWN -> {}
+            AlertKind.OFFICIAL -> { lat = a.official?.lat; lon = a.official?.lon }
             else -> {
                 val s = AppState.stations.value.firstOrNull { it.call.equals(a.who, true) }
                 val h = AppState.heard.value.firstOrNull { it.call.equals(a.who, true) }
@@ -141,6 +147,7 @@ object AlertCenter {
             AlertKind.EAI -> listOfNotNull("Own emergency on this tracker", e?.let { eaiSource(it) },
                 (e?.left ?: e?.fmLeft)?.let { "${Alerts.formatLeft(it.toLong())} left" }).joinToString(". ")
             AlertKind.MAN_DOWN -> "No key touched for ${e?.manDownMin ?: 0} min: EAI starts in ${e?.manDownLeft ?: 30} s. Mark as read means I'm OK."
+            AlertKind.OFFICIAL -> a.official?.let { o -> listOf(o.event, o.area, o.text, o.instruction).filter { it.isNotBlank() }.joinToString(". ") } ?: a.text
             else -> listOf(a.text, where ?: "").filter { it.isNotBlank() }.joinToString(". ")
         }
         val replyTo = if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
@@ -148,10 +155,10 @@ object AlertCenter {
         val icon = when (a.kind) {
             AlertKind.AIS_DISTRESS -> n.symbolIcon(a.who, '/', 'Y')
             AlertKind.AIS_COLLISION -> n.symbolIcon(a.who, '/', 's')
-            AlertKind.EAI, AlertKind.MAN_DOWN -> null
+            AlertKind.EAI, AlertKind.MAN_DOWN, AlertKind.OFFICIAL -> null
             else -> n.symbolIcon(a.who)
         }
-        n.alert(CAR_PREFIX + a.key, a.kind.title, a.who, text.ifBlank { a.kind.title }, replyTo, lat, lon, icon)
+        n.alert(CAR_PREFIX + a.key, a.official?.title ?: a.kind.title, a.who, text.ifBlank { a.kind.title }, replyTo, lat, lon, icon)
     }
 
     /** "Mark as read" in the car: silences the alarm; for the man-down warning it is "I'm OK". */
@@ -238,13 +245,13 @@ object AlertCenter {
         val text = listOf(a.who, a.text).filter { it.isNotBlank() }.joinToString(" · ")
         val b = NotificationCompat.Builder(c, CH_ALERTS)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(a.kind.title)
+            .setContentTitle(a.official?.title ?: a.kind.title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setColor(if (a.kind.distress) 0xFFFF3B3B.toInt() else 0xFFFFB347.toInt())
+            .setColor(if (a.kind.distress || (a.official?.level ?: 0) >= 3) 0xFFFF3B3B.toInt() else 0xFFFFB347.toInt())
             .setContentIntent(open)
             .setFullScreenIntent(open, true)
             .setAutoCancel(true)

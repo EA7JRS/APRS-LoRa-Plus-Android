@@ -454,6 +454,45 @@ class Settings(ctx: Context) {
         get() = p.getString("ui_keys", "BCN,MSG,SLIST,MAP")!!.split(',').filter { it.isNotEmpty() }.let { if (it.size == 4) it else listOf("BCN", "MSG", "SLIST", "MAP") }
         set(v) { p.edit().putString("ui_keys", v.joinToString(",")).apply() }
 
+    /**
+     * Official alerts (OfficialAlertsFetcher): weather (AEMET in Spain, MeteoAlarm elsewhere in Europe, NWS in the US), tsunamis, earthquakes and
+     * space weather; window from [alertPopupLevel] (1 yellow, 2 orange, 3 red, 4 never) and alarm from [alertBuzzLevel]; [alertZones] filters the
+     * MeteoAlarm zones (no polygons); [alertCountry] = ISO code ("" = from the position).
+     */
+    var alertsOn: Boolean
+        get() = p.getBoolean("oa_on", true)
+        set(v) { p.edit().putBoolean("oa_on", v).apply() }
+    var alertWeather: Boolean
+        get() = p.getBoolean("oa_wx", true)
+        set(v) { p.edit().putBoolean("oa_wx", v).apply() }
+    var alertQuakes: Boolean
+        get() = p.getBoolean("oa_eq", true)
+        set(v) { p.edit().putBoolean("oa_eq", v).apply() }
+    var alertTsunami: Boolean
+        get() = p.getBoolean("oa_tsu", true)
+        set(v) { p.edit().putBoolean("oa_tsu", v).apply() }
+    var alertSpace: Boolean
+        get() = p.getBoolean("oa_sw", true)
+        set(v) { p.edit().putBoolean("oa_sw", v).apply() }
+    var alertSame: Boolean
+        get() = p.getBoolean("oa_same", true)
+        set(v) { p.edit().putBoolean("oa_same", v).apply() }
+    var alertPopupLevel: Int
+        get() = p.getInt("oa_popup", 1)
+        set(v) { p.edit().putInt("oa_popup", v.coerceIn(1, 4)).apply() }
+    var alertBuzzLevel: Int
+        get() = p.getInt("oa_buzz", 3)
+        set(v) { p.edit().putInt("oa_buzz", v.coerceIn(1, 4)).apply() }
+    var alertZones: String
+        get() = p.getString("oa_zones", "")!!
+        set(v) { p.edit().putString("oa_zones", v.trim()).apply() }
+    var alertCountry: String
+        get() = p.getString("oa_country", "")!!
+        set(v) { p.edit().putString("oa_country", v.trim().uppercase()).apply() }
+    var alertMinutes: Int
+        get() = p.getInt("oa_min", 15)
+        set(v) { p.edit().putInt("oa_min", v.coerceIn(10, 120)).apply() }
+
     /** Emergency alerts: the phone's "buzzer" (alarm tone on the alarm stream, vibration, torch strobe). */
     var alertSound: Boolean
         get() = p.getBoolean("alert_sound", true)
