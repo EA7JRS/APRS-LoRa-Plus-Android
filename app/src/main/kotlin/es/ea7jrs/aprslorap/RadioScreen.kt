@@ -460,6 +460,27 @@ private fun ClockPage() {
         Spacer(Modifier.height(8.dp))
         InfoRow("LOCATOR", Spotter.locator().ifEmpty { "—" })
         InfoRow("TRACKER UP", status?.uptimeS?.let { String.format(Locale.US, "%d h %02d min", it / 3600, (it / 60) % 60) } ?: "—")
+        // Sun and moon of the day at the tracker's GNSS position (or the phone's), local time: the plotter formulas
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val g = AppState.gnss.value
+        val phone = remember(now / 600_000) { try { GpsAid.lastRealLocation(ctx) } catch (_: Exception) { null } }
+        val lat = g?.lat ?: phone?.latitude
+        val lon = g?.lon ?: phone?.longitude
+        if (lat != null && lon != null) {
+            val off = java.util.TimeZone.getDefault().getOffset(now) / 60_000
+            val dayStart = now - Math.floorMod(now, 86_400_000L)
+            val sun = es.ea7jrs.aprslorap.core.Astro.sunTimes(utc.get(java.util.Calendar.YEAR), utc.get(java.util.Calendar.MONTH) + 1,
+                utc.get(java.util.Calendar.DAY_OF_MONTH), lat, lon)
+            val civil = es.ea7jrs.aprslorap.core.Astro.sunTimes(utc.get(java.util.Calendar.YEAR), utc.get(java.util.Calendar.MONTH) + 1,
+                utc.get(java.util.Calendar.DAY_OF_MONTH), lat, lon, -6.0)
+            val moon = remember(dayStart, lat.toInt(), lon.toInt()) { es.ea7jrs.aprslorap.core.Astro.moonTimes(dayStart, lat, lon) }
+            val age = es.ea7jrs.aprslorap.core.Astro.moonAgeDays(now)
+            val A = es.ea7jrs.aprslorap.core.Astro
+            InfoRow("SUN", if (sun.riseMin == null) "no rise / set today" else "${A.hhmm(sun.riseMin, off)} – ${A.hhmm(sun.setMin, off)}")
+            InfoRow("TWILIGHT", "${A.hhmm(civil.riseMin, off)} – ${A.hhmm(civil.setMin, off)}")
+            InfoRow("MOON", String.format(Locale.US, "%s %d %%", A.moonPhaseName(A.moonPhase8(age)), Math.round(A.moonIllumination(age) * 100)))
+            InfoRow("MOONRISE", "${A.hhmm(moon.riseMin, off)} · set ${A.hhmm(moon.setMin, off)}")
+        }
     }
 }
 

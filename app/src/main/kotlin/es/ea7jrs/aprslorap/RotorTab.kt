@@ -193,6 +193,7 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
                     append(String.format(java.util.Locale.US, "%.1f m/s", ws))
                     w.gustMs?.let { append(String.format(java.util.Locale.US, ", gusts %.1f", it)) }
                     w.dirDeg?.let { append(" from $it°") }
+                    (w.beaufort ?: es.ea7jrs.aprslorap.core.WxCalc.beaufortMs(ws)).let { append(" · force $it") }
                     w.ageS?.let { append(" · ${it / 60} min old") }
                     if (w.source.isNotEmpty()) append(" (${w.source})")
                 }
@@ -206,6 +207,12 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
             if (i.wind && p.wind == null && AppState.netWx.value == null)
                 Text("Wind protection: turn on Internet weather (Sensors) so the box gets the wind", fontSize = 12.sp)
             p.aprs?.let { Text("APRS: $it", fontSize = 12.sp) }
+            p.track?.let { t ->
+                val who = if (t.target == "sun") "the sun" else "the moon"
+                Field("Following", if (t.below) "$who, below the horizon (${RotorProto.deg(t.elDeg)}): waiting"
+                    else "$who at ${RotorProto.deg(t.azDeg)} / ${RotorProto.deg(t.elDeg)}")
+            }
+            p.declinationDeg?.let { Field("Declination", String.format(Locale.US, "%.1f° %s (added to a magnetic heading)", kotlin.math.abs(it), if (it >= 0) "E" else "W")) }
         }
 
         // ---------------------------------------------------------------- control
@@ -239,6 +246,14 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(enabled = canControl, onClick = { RotorLink.command(RotorProto.park()) }) { Text("Park") }
             OutlinedButton(enabled = canControl && p?.ok == false, onClick = { RotorLink.command(RotorProto.clear()) }) { Text("Clear fault") }
+        }
+        if (i.sky) {                                                     // sun noise / moonbounce: the box computes and aims by itself
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(enabled = canControl, onClick = { RotorLink.command(RotorProto.track(RotorProto.SkyTarget.SUN)) }) { Text("☀ Track sun") }
+                OutlinedButton(enabled = canControl, onClick = { RotorLink.command(RotorProto.track(RotorProto.SkyTarget.MOON)) }) { Text("☾ Track moon") }
+                if (p?.track != null) OutlinedButton(enabled = canControl, onClick = { RotorLink.command(RotorProto.track(RotorProto.SkyTarget.OFF)) }) { Text("Stop") }
+            }
+            Text("The box follows the sun or the moon from its own position (aprs.lat / lon or the network GPS) and clock; any move, stop or park ends it.", fontSize = 11.sp)
         }
 
         // ---------------------------------------------------------------- radio (CAT)

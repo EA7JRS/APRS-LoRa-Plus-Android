@@ -52,6 +52,10 @@ object RotorProto {
     fun here(axis: String, deg: Double) = line("c" to "here", "axis" to axis, "deg" to deg)
     fun configGet() = line("c" to "cfgget")
     fun reboot() = line("c" to "reboot")
+    /** Follow the sun or the moon (sun noise, moonbounce); any pos / stop / park / move stops it. */
+    fun track(target: SkyTarget) = line("c" to "track", "t" to target.wire)
+
+    enum class SkyTarget(val wire: String) { SUN("sun"), MOON("moon"), OFF("off") }
 
     // CAT of the radio / SDR receiver attached to the rotor box (docs/CAT.md of the rotor)
     val CAT_MODES = listOf("LSB", "USB", "CW", "FM", "AM", "PKTUSB")
@@ -118,13 +122,20 @@ object RotorProto {
         val uptimeS: Long, val hamlib: String?, val cat: Boolean = false, val rigctldPort: Int = 0,
         /** Wind protection: the box takes the internet weather (command `wx`) and parks on strong gusts. */
         val wind: Boolean = false,
+        /** The box can follow the sun or the moon (command `track`). */
+        val sky: Boolean = false,
     )
 
     /** Wind protection state (object `wind` of the event `pos`). [locked] = parked by wind; [holdS] = seconds left at least. */
     data class Wind(
         val on: Boolean, val parkMs: Double, val locked: Boolean, val windMs: Double?, val gustMs: Double?, val dirDeg: Int?,
         val peakMs: Double?, val ageS: Long?, val source: String, val holdS: Long?,
+        /** Beaufort force of the mean wind (null with older boxes). */
+        val beaufort: Int? = null,
     )
+
+    /** Following the sun or the moon (object `trk` of the event `pos`): position of the body; [below] = waiting under sky.minEl. */
+    data class Track(val target: String, val azDeg: Double, val elDeg: Double, val below: Boolean)
 
     data class CatTracking(val enabled: Boolean, val active: Boolean, val name: String, val dopplerHz: Long)
 
@@ -144,6 +155,9 @@ object RotorProto {
         val azDeg: Double, val elDeg: Double?, val status: Int, val moving: Boolean, val fault: String,
         val mechAzDeg: Double?, val targetAzDeg: Double?, val targetElDeg: Double?, val aprs: String?,
         val wind: Wind? = null,
+        val track: Track? = null,
+        /** Declination added to a magnetic heading (WMM or lan.magVar), degrees + east. */
+        val declinationDeg: Double? = null,
     ) {
         val ok: Boolean get() = fault == "OK"
     }
@@ -174,6 +188,7 @@ object RotorProto {
                     caps.bool("cal") ?: false, caps.bool("move") ?: true, o.long("up") ?: 0L, o.str("hamlib"),
                     o.bool("cat") ?: caps.bool("cat") ?: false, o.int("rigctld") ?: 0,
                     o.bool("wind") ?: caps.bool("wind") ?: false,
+                    o.bool("sky") ?: caps.bool("sky") ?: false,
                 ))
             }
             "pos" -> {
@@ -183,8 +198,10 @@ object RotorProto {
                     o.num("maz"), o.num("taz"), o.num("tel"), o.str("aprs"),
                     w?.let {
                         Wind(it.bool("on") ?: false, it.num("park") ?: 15.0, it.bool("lk") ?: false, it.num("ws"), it.num("wg"),
-                            it.int("wd"), it.num("pk"), it.long("age"), it.str("src") ?: "", it.long("hold"))
-                    }))
+                            it.int("wd"), it.num("pk"), it.long("age"), it.str("src") ?: "", it.long("hold"), it.int("bf"))
+                    },
+                    o.obj("trk")?.let { Track(it.str("t") ?: "", it.num("az") ?: 0.0, it.num("el") ?: 0.0, it.bool("below") ?: false) },
+                    o.obj("hdg")?.num("dec")))
             }
             "raw" -> Event.Raw(o.num("az"), o.num("el"), o.str("unit") ?: "", o.bool("link"))
             "cfg" -> Event.ConfigPiece(o.int("i") ?: return null, o.int("n") ?: return null, o.str("d") ?: "")

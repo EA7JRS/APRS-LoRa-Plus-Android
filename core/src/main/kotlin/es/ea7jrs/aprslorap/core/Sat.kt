@@ -129,7 +129,7 @@ object Sat {
 
     /** Name of the source of the rotor's target. */
     fun rotorSource(src: Int) = when (src) {
-        0 -> "Satellite"; 1 -> "APRS station"; 2 -> "Fixed target"; 3 -> "GPredict"; 4 -> "Last heard"; 5 -> "CW beacon"; else -> "Source $src"
+        0 -> "Satellite"; 1 -> "APRS station"; 2 -> "Fixed target"; 3 -> "GPredict"; 4 -> "Last heard"; 5 -> "CW beacon"; 6 -> "Sun"; 7 -> "Moon"; else -> "Source $src"
     }
 
     /** Compass point of an azimuth, for reading it at a glance. */
