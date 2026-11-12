@@ -126,6 +126,8 @@ data class Sensors(
 data class Gnss(
     val fix: Boolean, val lat: Double?, val lon: Double?, val altitudeM: Double?, val speedKmh: Double?, val courseDeg: Double?,
     val satellites: Int?, val hdop: Double?, val ageMs: Long?, val utc: String?,
+    /** PPS of the receiver at 1 Hz (null = the board has no PPS wired): slot timing aligned with it. */
+    val pps: Boolean? = null,
 )
 
 /** A DAPNET page received by the tracker (POCSAG). */
@@ -277,7 +279,7 @@ object Control {
             "gnss" -> ControlEvent.Position(
                 Gnss(
                     o.bool("fix") ?: false, o.num("lat"), o.num("lon"), o.num("alt"), o.num("spd"), o.num("crs"), o.int("sats"), o.num("hdop"),
-                    o.long("age"), o.str("utc"),
+                    o.long("age"), o.str("utc"), o.bool("pps"),
                 ),
             )
             "sky" -> ControlEvent.Sky(GnssSky.parse(o))

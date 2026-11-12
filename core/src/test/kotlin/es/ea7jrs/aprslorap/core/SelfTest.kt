@@ -239,6 +239,8 @@ private fun testControl() {
         val elf = "dc77508fc77e2f229c7126e66f58611cb6bc2157c54d23d06765c2828ff0cf66"
         val i = (Control.parse("""{"e":"info","v":1,"fw":"5.4.1","board":"lilygo_t_twr_plus","elf":"$elf","caps":{}}""") as ControlEvent.Info).info
         eq(i.elfSha, elf, "info elf")
+        eq((Control.parse("""{"e":"gnss","fix":true,"sats":9,"pps":true}""") as ControlEvent.Position).gnss.pps, true, "gnss pps")
+        eq((Control.parse("""{"e":"gnss","fix":false}""") as ControlEvent.Position).gnss.pps, null, "gnss without pps = null")
         val rel = FirmwareSite.parse("""{"version":"5.4.1","size":1500000,"sha256":"${"a".repeat(64)}","elfSha":"$elf","url":"firmware/x/firmware.bin","ota":true}""")
         eq(rel?.elfSha, elf, "ota json elfSha")
         eq(FirmwareSite.origin("5.4.1", elf, rel), FirmwareSite.Origin.OFFICIAL, "same build = OFFICIAL")

@@ -249,6 +249,7 @@ fun SensorsTab() {
             Field("Satellites", g.satellites?.toString() ?: "—")
             Field("HDOP", fmt(g.hdop, "%.1f", ""))
             Field("UTC", g.utc ?: "—")
+            g.pps?.let { Field("PPS", if (it) "1 Hz: slot timing locked to it (~1 ms)" else "No pulse (no fix yet): timing from NMEA") }
         }
 
         PhoneSensorsSection()
