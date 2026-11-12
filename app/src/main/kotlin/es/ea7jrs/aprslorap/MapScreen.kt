@@ -272,7 +272,7 @@ fun MapScreen(nav: Navigator) {
                 val sel = s.call == holder.focused
                 holder.dynamic.add(Marker(map).apply {
                     position = GeoPoint(s.lat!!, s.lon!!)
-                    icon = BitmapDrawable(ctx.resources, MarkerArt.station(ctx, s.symbol, s.call, sel, s.emergency, s.wx?.mapLabel()))
+                    icon = BitmapDrawable(ctx.resources, MarkerArt.station(ctx, s.symbol, s.call, sel, s.emergency, s.wx?.mapLabel(Fmt.units)))
                     val d = ctx.resources.displayMetrics.density
                     setAnchor((15 * d) / icon.intrinsicWidth, 0.5f)
                     setOnMarkerClickListener { _, _ -> nav.go("STATION:" + s.call); true }

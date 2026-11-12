@@ -69,7 +69,7 @@ data class StationView(
     val comment: String, val path: String, val packets: Int, val rssi: Int?, val snr: Double?, val courseDeg: Int?, val speedKmh: Double?,
     val altitudeM: Double?, val device: String?, val status: String?,
     val wx: AprsWx? = null, val wxMs: Long? = null, val owner: String? = null, val micE: String? = null,
-    val wxPressD3h: Double? = null,     // only for stations whose frames the app decodes itself (not the ones heard only by the tracker)
+    val wxPressD3h: Double? = null,     // change of the pressure over 3 h, once the station has been heard for an hour
 ) {
     val symbol: AprsSymbols.Symbol? get() = AprsSymbols.of(table, code)
     val kind: String get() = AprsSymbols.describe(table, code)
@@ -77,6 +77,19 @@ data class StationView(
     val isInfra: Boolean get() = code == '#' || code == '&' || code == 'r'
     val moving: Boolean get() = (speedKmh ?: 0.0) > 2.0
     val emergency: Boolean get() = (table == '\\' && code == '!') || micE == Aprs.MICE_EMERGENCY
+}
+
+/** Pressure readings of the weather stations heard only by the tracker (the app decodes the others itself: Station.wxPressD3h). */
+private object HeardTrends {
+    private val byCall = HashMap<String, es.ea7jrs.aprslorap.core.WxCalc.PressureTrend>()
+
+    @Synchronized fun d3h(call: String, atMs: Long, hpa: Double?): Double? {
+        if (hpa == null) return null
+        if (byCall.size > 64 && !byCall.containsKey(call)) byCall.clear()
+        val t = byCall.getOrPut(call) { es.ea7jrs.aprslorap.core.WxCalc.PressureTrend() }
+        t.add(atMs / 1000, hpa)
+        return t.delta3h(System.currentTimeMillis() / 1000)
+    }
 }
 
 fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: Long): List<StationView> {
@@ -104,7 +117,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             h.call, h.symbol.getOrNull(0), h.symbol.getOrNull(1), h.lat, h.lon, at, h.posAgeS?.let { heardAtMs - it * 1000 },
             w?.rest ?: h.comment ?: "", h.path ?: "", h.packets, h.rssi, h.snr,
             if (w != null) null else h.course, if (w != null) null else h.speedKmh?.toDouble(), h.altitudeM?.toDouble(), h.device, h.status,
-            wx = w?.wx, wxMs = if (w != null) at else null,
+            wx = w?.wx, wxMs = if (w != null) at else null, wxPressD3h = HeardTrends.d3h(h.call, at, w?.wx?.pressureHpa),
         ).let { if (sym == null) it.copy(table = null, code = null) else it })
     }
     return out
@@ -182,7 +195,7 @@ fun StationListScreen(nav: Navigator) {
                         AprsSymbolIcon(s.symbol, 24.dp, if (s.emergency) Color(0xFF4A2326) else Alp.SymbolBg)
                         Column(Modifier.weight(1f)) {
                             Text(s.call, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = if (s.emergency) Alp.RedSoft else Alp.Text, maxLines = 1)
-                            if (s.wx != null) Text(s.wx.summary(), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Cyan, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (s.wx != null) Text(s.wx.summary(Fmt.units), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Cyan, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             else Text(s.kind + (s.micE?.takeIf { it != "Off duty" }?.let { " · $it" } ?: "") + (s.rssi?.let { " · " + SMeter.fromDbm(it.toDouble(), trackerFreqHz()).label } ?: ""),
                                 fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -328,7 +341,7 @@ fun WeatherPanel(wx: AprsWx, atMs: Long?, pressD3h: Double? = null) {
                     // the arrow points where the wind blows to (it comes from windDirDeg)
                     val dir = wx.windDirDeg
                     if (dir != null && (wx.windKmh ?: 1.0) >= 1.0) BearingArrow((dir + 180) % 360.0, Alp.Cyan, 22.dp)
-                    Text(wx.wind() ?: "no wind data", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Alp.Cyan)
+                    Text(wx.wind(Fmt.units) ?: "no wind data", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Alp.Cyan)
                 }
                 wx.gustKmh?.let { Text("gusts " + Fmt.speed(it) + (wx.windDirDeg?.let { d -> " · from " + Fmt.deg(d.toDouble()) } ?: ""), fontSize = 14.sp, color = Alp.Muted) }
             }

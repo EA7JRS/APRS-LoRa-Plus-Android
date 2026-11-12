@@ -24,25 +24,26 @@ data class AprsWx(
     val isEmpty: Boolean get() = listOf(windDirDeg, windKmh, gustKmh, tempC, rain1hMm, rain24hMm, rainMidnightMm, humidityPct, pressureHpa, luminosityWm2, snowCm).all { it == null }
 
     /** "21.5 °C · SW 12 km/h · 65 % · 1013 hPa": what fits on a line of a list or a map label. */
-    fun summary(): String = listOfNotNull(
-        tempC?.let { String.format(Locale.US, "%.1f °C", it) },
-        wind(),
+    fun summary(units: Int = 0): String = listOfNotNull(
+        tempC?.let { String.format(Locale.US, "%.1f %s", WxCalc.tempShown(it, units), WxCalc.tempLabel(units)) },
+        wind(units),
         humidityPct?.let { "$it %" },
         pressureHpa?.let { String.format(Locale.US, "%.0f hPa", it) },
         rain1hMm?.takeIf { it > 0 }?.let { String.format(Locale.US, "rain %.1f mm/h", it) },
     ).joinToString(" · ")
 
     /** "SW 12 km/h" (with the direction it comes from), "calm" or null. */
-    fun wind(): String? {
+    fun wind(units: Int = 0): String? {
         val v = windKmh ?: return windDirDeg?.let { Geo.cardinal16(it.toDouble()) }
         if (v < 1.0) return "calm"
-        return (windDirDeg?.let { Geo.cardinal16(it.toDouble()) + " " } ?: "") + String.format(Locale.US, "%.0f km/h", v)
+        val (k, label) = WxCalc.speedFactor(units)
+        return (windDirDeg?.let { Geo.cardinal16(it.toDouble()) + " " } ?: "") + String.format(Locale.US, "%.0f %s", v * k, label)
     }
 
     /** Short label for the map: "21° 12 km/h". */
-    fun mapLabel(): String? = listOfNotNull(
-        tempC?.let { String.format(Locale.US, "%.0f°", it) },
-        windKmh?.let { if (it < 1.0) "calm" else String.format(Locale.US, "%.0f km/h", it) },
+    fun mapLabel(units: Int = 0): String? = listOfNotNull(
+        tempC?.let { String.format(Locale.US, "%.0f°", WxCalc.tempShown(it, units)) },
+        windKmh?.let { if (it < 1.0) "calm" else WxCalc.speedFactor(units).let { (k, label) -> String.format(Locale.US, "%.0f %s", it * k, label) } },
     ).joinToString(" ").ifEmpty { null }
 }
 

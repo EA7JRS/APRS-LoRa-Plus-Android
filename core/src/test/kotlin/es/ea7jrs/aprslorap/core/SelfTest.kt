@@ -1335,6 +1335,9 @@ private fun testWxCalc() {
     t2.add(3600, 1012.0); near(t2.delta3h(3600)!!, 6.0, 0.01, "2 hPa in 1 h = 6 in 3 h")
     eq(WxCalc.speedFactor(2).second, "mph", "imperial speed"); near(WxCalc.tempShown(100.0, 2), 212.0, 1e-9, "Fahrenheit")
     near(WxCalc.distFactor(1).first * 1.852, 1.0, 1e-12, "nautical mile")
+    val wxu = AprsWx(windDirDeg = 225, windKmh = 18.52, tempC = 20.0)
+    eq(wxu.wind(), "SW 19 km/h", "wind, metric"); eq(wxu.wind(1), "SW 10 kn", "wind, nautical"); eq(wxu.mapLabel(2), "68° 12 mph", "map label, imperial")
+    check(wxu.summary(2).startsWith("68.0 °F"), "summary, imperial: ${wxu.summary(2)}")
     // the station table keeps the pressure trend of each weather station
     val tbl = StationTable()
     fun wxFrame(hpa: Int) = Ax25Frame(Ax25Address("APRS", 0), Ax25Address("EA7WX", 13), emptyList(), "!3723.00N/00559.00W_090/005g010t068h50b%05d".format(hpa * 10).toByteArray())

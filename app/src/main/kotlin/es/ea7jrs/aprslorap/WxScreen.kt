@@ -93,7 +93,7 @@ private fun WxRow(s: StationView, d: Pair<Double, Double>?, onClick: () -> Unit)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val dir = w.windDirDeg
                 if (dir != null && (w.windKmh ?: 1.0) >= 1.0) BearingArrow((dir + 180) % 360.0, Alp.Cyan, 15.dp)
-                Text(listOfNotNull(w.wind(), w.gustKmh?.let { String.format(Locale.US, "gust %.0f", it) }).joinToString(" · ").ifEmpty { "—" },
+                Text(listOfNotNull(w.wind(Fmt.units), w.gustKmh?.let { "gust " + Fmt.speed(it) }).joinToString(" · ").ifEmpty { "—" },
                     fontFamily = BarlowCondensed, fontSize = 15.sp, color = Alp.Cyan, maxLines = 1)
             }
             Text(listOfNotNull(
