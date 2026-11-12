@@ -20,7 +20,10 @@ object RotorFollow {
     /** Tracker sources (field `src` of `tgt`, `rot` and `targets`). 3 = external program, never stored. */
     const val SRC_SAT = 0; const val SRC_APRS_TARGET = 1; const val SRC_FIXED = 2; const val SRC_EXTERNAL = 3
     const val SRC_LAST_HEARD = 4; const val SRC_CW_BEACON = 5
-    val TRACKER_SOURCES = listOf(SRC_SAT, SRC_APRS_TARGET, SRC_FIXED, SRC_LAST_HEARD, SRC_CW_BEACON)
+    /** Sun and moon (sun noise, moonbounce): computed by the tracker with the plotter formulas (firmware with sources 6 / 7). */
+    const val SRC_SUN = 6
+    const val SRC_MOON = 7
+    val TRACKER_SOURCES = listOf(SRC_SAT, SRC_APRS_TARGET, SRC_FIXED, SRC_LAST_HEARD, SRC_CW_BEACON, SRC_SUN, SRC_MOON)
 
     private const val EARTH_KM = 6371.0                      // the same sphere as the tracker (sat_core.cpp targetLook)
 

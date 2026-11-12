@@ -6,7 +6,6 @@
 package es.ea7jrs.aprslorap
 
 import android.content.Context
-import android.hardware.GeomagneticField
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -78,7 +77,8 @@ object PhoneSensors {
         val lat = l?.latitude ?: g?.lat ?: return declination
         val lon = l?.longitude ?: g?.lon ?: return declination
         val alt = (l?.altitude ?: g?.altitudeM ?: 0.0).toFloat()
-        declination = GeomagneticField(lat.toFloat(), lon.toFloat(), alt, now).declination.toDouble()
+        // WMM2025 of the core (the same numbers as the tracker, the plotter and the rotor box), not Android's own model
+        declination = es.ea7jrs.aprslorap.core.Wmm.declination(lat, lon, now, alt / 1000.0)
         return declination
     }
 

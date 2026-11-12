@@ -329,6 +329,15 @@ fun WeatherPanel(wx: AprsWx, atMs: Long?) {
             }
         }
         wx.humidityPct?.let { InfoRow("HUMIDITY", "$it %") }
+        // the plotter formulas (the same in every APRS LoRa+ device): Beaufort, dew point, feels-like
+        wx.windKmh?.let { InfoRow("FORCE", es.ea7jrs.aprslorap.core.WxCalc.beaufort(it / 1.852).let { f -> "$f · ${es.ea7jrs.aprslorap.core.WxCalc.beaufortName(f)}" }) }
+        val t = wx.tempC
+        val dew = if (t != null) wx.humidityPct?.let { es.ea7jrs.aprslorap.core.WxCalc.dewPointC(t, it.toDouble()) } else null
+        dew?.let { InfoRow("DEW POINT", String.format(Locale.US, "%.1f°", it)) }
+        if (t != null) {
+            val fl = es.ea7jrs.aprslorap.core.WxCalc.feelsLikeC(t, wx.humidityPct?.toDouble(), wx.windKmh)
+            if (kotlin.math.abs(fl - t) >= 0.5) InfoRow("FEELS LIKE", String.format(Locale.US, "%.0f°", fl), tempColor(fl))
+        }
         wx.pressureHpa?.let { InfoRow("PRESSURE", String.format(Locale.US, "%.1f hPa", it)) }
         wx.rain1hMm?.let { InfoRow("RAIN 1 H", String.format(Locale.US, "%.1f mm", it)) }
         wx.rain24hMm?.let { InfoRow("RAIN 24 H", String.format(Locale.US, "%.1f mm", it)) }

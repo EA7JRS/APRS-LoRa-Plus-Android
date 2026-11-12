@@ -759,6 +759,8 @@ private fun testRotorFollow() {
     val hd = Control.parse("{\"e\":\"heard\",\"tot\":1,\"pkts\":1,\"from\":0,\"items\":[{\"c\":\"EA7JRS-9\",\"lat\":37,\"lon\":-6,\"spd\":50,\"crs\":90,\"age\":5,\"pa\":40,\"n\":2}]}") as ControlEvent.Heard
     eq(hd.items.single().posAgeS, 40L, "heard position age")
     eq(Sat.rotorSource(5), "CW beacon", "rotor source name")
+    eq(Sat.rotorSource(7), "Moon", "rotor source moon")
+    check(RotorFollow.TRACKER_SOURCES.containsAll(listOf(RotorFollow.SRC_SUN, RotorFollow.SRC_MOON)), "tracker sources sun / moon")
 }
 
 private fun testSdr() {
@@ -1312,7 +1314,7 @@ private fun testAprsWx() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -1514,4 +1516,58 @@ private fun testHeardSymbol() {
     val h = (Control.parse("""{"e":"heard","tot":1,"pkts":1,"from":0,"items":[{"c":"EA7XYZ-9","sym":">/","age":5}]}""") as ControlEvent.Heard).items[0]
     eq(h.symbol, "/>", "heard event symbol in APRS order")
     eq(AprsSymbols.of(h.symbol)?.base, AprsSymbols.Cell(0, 13, 1), "car icon")
+}
+
+// Formulas shared with the plotter (lib/plotter_core): same reference values (pygeomag, PyEphem, NWS)
+private fun testFormulas() {
+    val w = Wmm.DEFAULT
+    near(w.field(36.53, -6.29, 0.0, 2026.86)!!.decDeg, -0.0318, 0.002, "WMM declination Rota")
+    near(w.field(36.53, -6.29, 0.0, 2026.86)!!.incDeg, 49.8584, 0.002, "WMM inclination Rota")
+    near(w.field(89.0, -121.0, 28.0, 2025.0)!!.decDeg, -99.7746, 0.01, "WMM declination north pole area")
+    near(w.field(-80.0, 240.0, 48.0, 2027.5)!!.decDeg, 68.2187, 0.01, "WMM declination Antarctica")
+    near(w.field(0.0, 0.0, 0.0, 2026.0)!!.decDeg, -3.8929, 0.002, "WMM declination 0/0")
+    check(w.field(91.0, 0.0, 0.0, 2026.0) == null && !w.expired(2029.99) && w.expired(2030.0), "WMM range and validity")
+    near(Wmm.decimalYear(1767225600000L), 2026.0, 1e-9, "decimal year")
+    val cof = buildString {
+        append("    2030.0  WMM-2030  12/01/2029\n")
+        for (n in 1..12) for (m in 0..n) append("$n $m ${if (n == 1 && m == 0) "-30000" else "0"} 0 0 0\n")
+        append("999999\n")
+    }
+    val w2 = Wmm.load(cof)
+    check(w2 != null && w2.epoch == 2030.0 && w2.name == "WMM-2030" && w2.validUntil == 2035.0, "WMM.COF loaded")
+    near(w2!!.declination(0.0, 0.0, 2030.0), 0.0, 1e-6, "axial dipole: no declination")
+    check(Wmm.load("2030.0 X\n1 0 1 0 0 0\n") == null, "WMM.COF too short")
+    val t = 1794490200000L                                            // 2026-11-12 13:30 UTC, Rota
+    val sun = Astro.sunPosition(t, 36.53, -6.29)
+    near(sun.altDeg, 32.434, 0.02, "sun altitude"); near(sun.azDeg, 202.895, 0.02, "sun azimuth")
+    val moon = Astro.moonPosition(t, 36.53, -6.29)
+    near(moon.altDeg, 22.708, 0.03, "moon altitude"); near(moon.azDeg, 162.424, 0.03, "moon azimuth")
+    check(moon.distKm in 400000.0..410000.0, "moon distance")
+    val m92 = Astro.moonPosition(703112400000L, 36.53, -6.29)        // 1992-04-12 21:00 UTC
+    near(m92.altDeg, 62.016, 0.03, "moon 1992 altitude"); near(m92.azDeg, 187.298, 0.03, "moon 1992 azimuth")
+    val mt = Astro.moonTimes(1794441600000L, 36.53, -6.29)            // 2026-11-12 00:00 UTC
+    near(mt.riseMin ?: -1.0, 606.3, 3.0, "moonrise"); near(mt.setMin ?: -1.0, 1165.1, 3.0, "moonset")
+    val st = Astro.sunTimes(2026, 11, 12, 36.53, -6.29)
+    check(st.riseMin != null && st.setMin != null && st.riseMin!! in 400.0..440.0 && st.setMin!! in 1020.0..1060.0, "sunrise / sunset")
+    check(Astro.sunTimes(2026, 6, 21, 80.0, 0.0).riseMin == null, "polar day")
+    check(Astro.moonPhase8(0.2) == 0 && Astro.moonPhase8(7.4) == 2 && Astro.moonPhase8(14.8) == 4 && Astro.moonPhase8(22.1) == 6, "moon phase")
+    eq(Astro.moonPhaseName(4), "Full moon", "moon phase name")
+    near(Astro.refractionDeg(0.0), 0.48, 0.03, "refraction at the horizon")
+    eq(Astro.hhmm(606.3, 60), "11:06", "hh:mm with offset"); eq(Astro.hhmm(null), "--:--", "hh:mm unknown")
+    near(WxCalc.dewPointC(20.0, 50.0) ?: 0.0, 9.26, 0.05, "dew point"); check(WxCalc.dewPointC(20.0, 0.0) == null, "dew point no humidity")
+    near(WxCalc.windChillC(-10.0, 30.0), -19.5, 0.1, "wind chill"); eq(WxCalc.windChillC(15.0, 30.0), 15.0, "no wind chill when warm")
+    near(WxCalc.heatIndexC(32.0, 70.0), 40.4, 0.3, "heat index")
+    eq(WxCalc.feelsLikeC(18.0, 50.0, 20.0), 18.0, "feels like = air")
+    near(WxCalc.seaLevelPressureHpa(1000.0, 110.0, 15.0), 1013.1, 0.3, "sea level pressure")
+    eq(listOf(0.0, 0.5, 3.4, 10.0, 38.9, 70.0).map { WxCalc.beaufort(it) }, listOf(0, 1, 1, 3, 8, 12), "Beaufort")
+    eq(WxCalc.beaufortMs(20.0), 8, "Beaufort from m/s"); eq(WxCalc.beaufortName(8), "Gale", "Beaufort name")
+    // Rotor box: track, trk, bf, sky, hdg.dec
+    eq(RotorProto.track(RotorProto.SkyTarget.MOON), "{\"c\":\"track\",\"t\":\"moon\"}\n", "rotor track")
+    val p = RotorProto.parse("{\"e\":\"pos\",\"az\":162.4,\"el\":22.7,\"st\":0,\"mv\":false,\"f\":\"OK\"," +
+        "\"wind\":{\"on\":true,\"park\":15,\"lk\":false,\"ws\":8,\"pk\":8,\"bf\":5,\"age\":3}," +
+        "\"trk\":{\"t\":\"moon\",\"az\":162.4,\"el\":22.7,\"below\":false},\"hdg\":{\"on\":false,\"dec\":0.9}}")
+    check(p is RotorProto.Event.Pos && p.pos.track?.target == "moon" && p.pos.track?.below == false && p.pos.wind?.beaufort == 5 &&
+        p.pos.declinationDeg == 0.9, "rotor pos with trk / bf / dec")
+    val i = RotorProto.parse("{\"e\":\"info\",\"api\":1,\"sky\":true,\"caps\":{\"sky\":true}}")
+    check(i is RotorProto.Event.InfoEv && i.info.sky, "rotor info sky")
 }

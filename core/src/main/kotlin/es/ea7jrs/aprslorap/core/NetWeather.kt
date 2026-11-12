@@ -126,7 +126,8 @@ object NetWeather {
         d.tempC?.let { parts.add(String.format(Locale.US, "%.1f °C", it)) }
         d.humidity?.let { parts.add(String.format(Locale.US, "%.0f %%", it)) }
         d.pressureHpa?.let { parts.add(String.format(Locale.US, "%.0f hPa", it)) }
-        d.windMs?.let { parts.add(String.format(Locale.US, "wind %.0f km/h", it * 3.6) + (d.windDeg?.let { w -> " from ${w}°" } ?: "")) }
+        d.tempC?.let { t -> d.humidity?.let { h -> WxCalc.dewPointC(t, h)?.let { parts.add(String.format(Locale.US, "dew %.1f °C", it)) } } }
+        d.windMs?.let { parts.add(String.format(Locale.US, "wind %.0f km/h", it * 3.6) + (d.windDeg?.let { w -> " from ${w}°" } ?: "") + " F${WxCalc.beaufortMs(it)}") }
         d.clouds?.let { parts.add("clouds $it %") }
         d.aqiUs?.let { parts.add("US AQI $it (${usAqiName(it)})") }
         d.aqiOwm?.let { parts.add("AQI $it (${owmAqiName(it)})") }
