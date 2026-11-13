@@ -38,7 +38,7 @@ object BeaconHub {
         val ctx = app ?: return
         val s = Settings(ctx)
         val auto = s.beaconAutoSpot
-        if (auto == "off" || (auto == "lrfhss" && m.mode != "LR-FHSS")) return
+        if (auto == "off" || (auto == "lrfhss" && !Beacons.isTrackerMode(m.mode))) return
         val now = System.currentTimeMillis()
         if (now - lastAuto < 20_000L || !log.due(m, now)) return
         if (!Licence.isValid(s) || !DxLink.state.value.connected) return

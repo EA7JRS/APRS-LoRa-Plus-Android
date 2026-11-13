@@ -213,7 +213,7 @@ internal fun hamOverlays(
         for (h in beacons) {
             val (la, lo) = h.position ?: continue
             if (!shown.add(h.call) || !inView(la, lo)) continue                  // newest entry of each station
-            val col = if (h.mode == "LR-FHSS") 0xFF3CE68A.toInt() else 0xFF28B5E1.toInt()
+            val col = if (es.ea7jrs.aprslorap.core.Beacons.isTrackerMode(h.mode)) 0xFF3CE68A.toInt() else 0xFF28B5E1.toInt()
             if (me != null && nowMs - h.timeMs < 30 * 60_000L) for (seg in HamLayers.greatCircle(me.first, me.second, la, lo)) out.add(Polyline(map).apply {
                 setPoints(seg.map { GeoPoint(it.first, it.second) })
                 outlinePaint.color = col; outlinePaint.alpha = a255("ham_beacons") * 6 / 10; outlinePaint.strokeWidth = 1.5f * dens

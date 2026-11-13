@@ -135,10 +135,14 @@ object DigitalVoiceRunner {
     }
 
     private fun readLog(p: Process) {
+        val m17 = DigitalVoice.M17Log()
         try {
             p.errorStream.bufferedReader().forEachLine { raw ->
                 val line = DigitalVoice.clean(raw)
                 if (line.isEmpty() || !DigitalVoice.interesting(line)) return@forEachLine
+                // M17 stations also go to the list of beacons heard (map layer, spots)
+                val now = System.currentTimeMillis()
+                m17.feed(line, now)?.let { h -> AppState.sdr.value.freqHz?.takeIf { it > 0 }?.let { hz -> BeaconHub.add(es.ea7jrs.aprslorap.core.Beacons.fromM17(h.call, h.lat, h.lon, hz, now)) } }
                 val l = AppState.dvLog.value
                 AppState.dvLog.value = (if (l.size >= 60) l.drop(l.size - 59) else l) + line
             }

@@ -157,6 +157,10 @@ class Controller(
                 else AlertCenter.onAprs(p.objectName ?: from, p.comment, false)
             else -> {}
         }
+        // APRS FSK heard by the app's own SDR: also a beacon heard (list, map layer, spot)
+        if (via == "RTL-SDR" && p is AprsPacket.Position && p.objectName == null && inner === frame) AppState.sdr.value.freqHz?.takeIf { it > 0 }?.let { hz ->
+            BeaconHub.add(es.ea7jrs.aprslorap.core.Beacons.fromAprsFsk(from, p.lat, p.lon, hz, p.comment, now))
+        }
         if (p is AprsPacket.Message) {
             engine.onMessage(from, p)?.let { msg ->
                 notifier.incoming(msg, table.get(msg.peer))

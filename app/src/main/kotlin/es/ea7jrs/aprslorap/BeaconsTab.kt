@@ -147,13 +147,13 @@ fun BeaconsTab(onMap: () -> Unit) {
                 }) { Text("MAP") }
                 if (list.isNotEmpty()) OutlinedButton(onClick = { BeaconHub.clear() }) { Text("Clear") }
             }
-            Text("Stations heard by this app in LR-FHSS, WSPR, FST4W, FT8, FT4 and CW (Modes). Those with a locator go to the map.", fontSize = 11.sp, color = Alp.Muted)
+            Text("Stations heard by this app in LR-FHSS, APRS FSK 9600 and M17 (SDR tool), WSPR, FST4W, FT8, FT4 and CW (Modes). Those with a locator go to the map.", fontSize = 11.sp, color = Alp.Muted)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 4.dp)) {
                 Text("AUTO SPOT", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Alp.Muted)
-                for ((id, label) in listOf("off" to "OFF", "lrfhss" to "LR-FHSS", "all" to "ALL")) Chip(label, auto == id, color = if (id == "off") Alp.Cyan else Alp.Amber) { auto = id; settings.beaconAutoSpot = id }
+                for ((id, label) in listOf("off" to "OFF", "lrfhss" to "TRACKER MODES", "all" to "ALL")) Chip(label, auto == id, color = if (id == "off") Alp.Cyan else Alp.Amber) { auto = id; settings.beaconAutoSpot = id }
             }
             Text(if (auto == "off") "Spots to the DX cluster only with the SPOT key of each station."
-                else "Every new station " + (if (auto == "lrfhss") "heard in LR-FHSS" else "of the list") + " goes to the DX cluster by itself: once per mode and band every 30 min, never your own callsign, one spot every 20 s at most. " +
+                else "Every new station " + (if (auto == "lrfhss") "heard in LR-FHSS, APRS FSK or M17" else "of the list") + " goes to the DX cluster by itself: once per mode and band every 30 min, never your own callsign, one spot every 20 s at most. " +
                     (if (dx.connected) "Cluster: ${dx.node}." else "The cluster is not connected: nothing goes out.") +
                     (if (auto == "all") " Many nodes do not want FT8 / WSPR decodes as spots: ask the sysop." else ""),
                 fontSize = 11.sp, color = if (auto != "off" && !dx.connected) Alp.Amber else Alp.Muted)
@@ -166,7 +166,7 @@ fun BeaconsTab(onMap: () -> Unit) {
             Column(Modifier.fillMaxWidth().clickable { open = if (open == h.key) "" else h.key }.padding(vertical = 5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(h.call, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.width(104.dp))
-                    Text(h.mode, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (h.mode == "LR-FHSS") Alp.Green else Alp.Cyan, modifier = Modifier.width(70.dp))
+                    Text(h.mode, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (Beacons.isTrackerMode(h.mode)) Alp.Green else Alp.Cyan, modifier = Modifier.width(70.dp))
                     Text(h.locator.ifEmpty { "—" } + (h.snrDb?.let { "  $it dB" } ?: ""), fontFamily = TechMono, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
                     Text(if (d != null && brg != null) String.format(Locale.US, "%.0f km %03.0f°", d, brg) else Fmt.ago(h.timeMs), fontFamily = TechMono, fontSize = 12.5.sp, color = if (d != null) Alp.Green else Alp.Muted)
                 }

@@ -2047,6 +2047,17 @@ private fun testBeacons() {
     log.add(f!!); log.add(f.copy(locator = "", timeMs = now + 15_000))
     eq(log.list().map { it.call + " " + it.mode + " " + it.locator + " " + it.count }, listOf("EA7JRS FT8 IM67 2", "EA7JRS LR-FHSS IM67NG 1"), "Beacons: newest first, locator kept, counted")
     eq(Beacons.spotComment(Beacons.fromCw("ed7yaa", "BEACON", "im76hr", 144_450_000L, 12, now)), "CW IM76HR 12dB BEACON", "Beacons: CW comment")
+    val fsk = Beacons.fromAprsFsk("ea7jrs-7", 37.27, -6.94, 432_500_000L, " tracker ", now)
+    eq(Beacons.spotCommand(fsk), "DX 432500.0 EA7JRS-7 APRS FSK IM67MG", "Beacons: APRS FSK spot with the locator of the position")
+    check(Beacons.isTrackerMode(fsk.mode) && !Beacons.isTrackerMode("FT8"), "Beacons: tracker modes")
+    val m17 = DigitalVoice.M17Log()
+    eq(m17.feed(" CAN: 0 DST: BROADCAST SRC: EA7JRS", now), DigitalVoice.M17Heard("EA7JRS"), "M17 log: station")
+    check(m17.feed(" CAN: 0 DST: BROADCAST SRC: EA7JRS", now + 5000) == null && m17.feed(" CAN: 0 DST: BROADCAST SRC: EA7JRS", now + 61_000) != null, "M17 log: same station once a minute")
+    eq(m17.feed(" GPS: (37.270000, -6.940000); Radius: 1.0; Speed: 0.0", now), DigitalVoice.M17Heard("EA7JRS", 37.27, -6.94), "M17 log: position")
+    check(m17.feed(" CAN: 3 DST: BROADCAST SRC:  UNKNOWN FFFFFFFFFFFF", now) == null && m17.feed(" GPS: (37.27, -6.94);", now) == null && m17.feed(" TGT=91 SRC=2141234", now) == null, "M17 log: unknown source, other protocols")
+    val mh = Beacons.fromM17("ea7jrs", 37.27, -6.94, 433_475_000L, now)
+    eq(Beacons.spotCommand(mh), "DX 433475.0 EA7JRS M17 IM67MG", "Beacons: M17 spot")
+    eq(Beacons.fromM17("EA7JRS", null, null, 433_475_000L, now).position, null, "Beacons: M17 without position")
     // IQ WAV
     fun wav(fmt: Int, bits: Int, rate: Int, extra: ByteArray = ByteArray(0)): ByteArray {
         val b = java.nio.ByteBuffer.allocate(44 + extra.size + 16).order(java.nio.ByteOrder.LITTLE_ENDIAN)

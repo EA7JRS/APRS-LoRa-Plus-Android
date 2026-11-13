@@ -32,4 +32,35 @@ object DigitalVoice {
     /** Lines worth showing: synchronisation, calls, identities, texts, positions. */
     fun interesting(line: String): Boolean = line.contains("Sync:") || line.contains("SRC") || line.contains("TGT") || line.contains("TG ") ||
         line.contains("Talkgroup", true) || line.contains("RID") || line.contains("DATA:") || line.contains("TEXT") || line.contains("GPS", true)
+
+    /** An M17 station in dsd-fme's log: its callsign, and its position when the transmission carries one. */
+    data class M17Heard(val call: String, val lat: Double? = null, val lon: Double? = null)
+
+    private val M17_SRC = Regex("CAN:\\s*\\d+.*\\bSRC:\\s+([A-Z0-9/.\\-]{3,9})")
+    private val M17_GPS = Regex("GPS:\\s*\\((-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)\\)")
+
+    /**
+     * Follows the log for M17: " CAN: 0 DST: BROADCAST SRC: EA7JRS" names the station and a later " GPS: (37.27, -6.94);"
+     * is its position. Gives each thing once as it comes; the same callsign again only after [repeatMs].
+     */
+    class M17Log(private val repeatMs: Long = 60_000L) {
+        private var src = ""
+        private var lastCall = ""; private var lastMs = 0L
+        fun feed(line: String, nowMs: Long): M17Heard? {
+            M17_SRC.find(line)?.let { m ->
+                val c = m.groupValues[1].trimEnd('.', '-', '/')
+                if (c == "UNKNOWN" || c == "RESERVED" || !c.any(Char::isDigit) || !c.any(Char::isLetter)) { src = ""; return null }
+                src = c
+                if (c == lastCall && nowMs - lastMs < repeatMs) return null
+                lastCall = c; lastMs = nowMs
+                return M17Heard(c)
+            }
+            M17_GPS.find(line)?.let { m ->
+                val la = m.groupValues[1].toDoubleOrNull() ?: return null; val lo = m.groupValues[2].toDoubleOrNull() ?: return null
+                if (src.isEmpty() || la !in -90.0..90.0 || lo !in -180.0..180.0 || (la == 0.0 && lo == 0.0)) return null
+                return M17Heard(src, la, lo)
+            }
+            return null
+        }
+    }
 }

@@ -233,7 +233,10 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   distancia y rumbo, MAP, ROTOR, SPOT), capa del mapa `ham_beacons` (marca, línea de círculo máximo 30 min, ficha) y **spots al DX
   cluster**: tecla SPOT (`DX <kHz> <indicativo> LR-FHSS IM67NG 14dBm 9dB`) y AUTO SPOT OFF / LR-FHSS / ALL (apagado de serie; indicativo
   validado, cluster conectado, nunca el indicativo propio, una vez por modo y banda cada 30 min, un spot cada 20 s como mucho).
-  1356 comprobaciones. **Sin probar en el móvil ni con un tracker real** (pendiente la grabación I / Q de Manuel a 434,000 MHz;
+  **APRS FSK y M17 en la lista** (Manuel, 2026-11-13: «Incluye el aprs fsk», «Y M17»): las posiciones APRS que decodifica el packet
+  9600 de la herramienta SDR (`Controller.onFrame` con `via` «RTL-SDR»; locator sacado de la posición) y las estaciones M17 del registro
+  de dsd-fme (`DigitalVoice.M17Log`: línea «CAN: n DST: … SRC: …» y «GPS: (lat, lon)» si la emisión lleva posición; sin ella, solo en
+  la lista); AUTO SPOT «TRACKER MODES» = LR-FHSS, APRS FSK y M17. 1364 comprobaciones. **Sin probar en el móvil ni con un tracker real** (pendiente la grabación I / Q de Manuel a 434,000 MHz;
   número de cabeceras e id de secuencia del tracker = los de serie de RadioLib, 3 y 0, pero el receptor no depende de ellos). Falta:
   flujo I / Q en vivo de SDRconnect (formato de sus tramas binarias de tipo 2 por confirmar), G3RUH 9600 con ese mismo flujo, locator
   de las balizas CW en la lista, cuadrícula ancha (FCC) con más de 39 kHz de banda sin probar.

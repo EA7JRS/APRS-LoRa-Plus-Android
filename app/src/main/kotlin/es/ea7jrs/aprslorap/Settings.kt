@@ -298,7 +298,7 @@ class Settings(ctx: Context) {
     var lrFhssFreqHz: Long                           // the tracker's default: 434.000 MHz
         get() = p.getLong("lrfhss_freq", 434_000_000L)
         set(v) { p.edit().putLong("lrfhss_freq", v).apply() }
-    var beaconAutoSpot: String                       // off, lrfhss (LR-FHSS beacons only), all
+    var beaconAutoSpot: String                       // off, lrfhss (LR-FHSS, APRS FSK and M17 only), all
         get() = p.getString("beacon_auto_spot", "off")!!
         set(v) { p.edit().putString("beacon_auto_spot", v).apply() }
 

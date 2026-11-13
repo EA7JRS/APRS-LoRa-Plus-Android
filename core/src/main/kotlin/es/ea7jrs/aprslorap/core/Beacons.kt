@@ -8,8 +8,8 @@ package es.ea7jrs.aprslorap.core
 import java.util.Locale
 
 /**
- * Stations heard by the app's own receivers (SDR or radio audio) in the beacon modes: LR-FHSS, WSPR, FST4W, FT8, FT4 and
- * CW. One entry per station, mode and band, with where it is when the message says it (locator): for the map, the rotor
+ * Stations heard by the app's own receivers (SDR or radio audio) in the beacon modes: LR-FHSS, APRS FSK, M17, WSPR, FST4W,
+ * FT8, FT4 and CW. One entry per station, mode and band, with where it is when the message says it (locator): for the map, the rotor
  * and to announce it to the DX cluster.
  */
 object Beacons {
@@ -40,6 +40,17 @@ object Beacons {
 
     fun fromCw(call: String, comment: String, locator: String, rfHz: Long, snrDb: Int, nowMs: Long) =
         Heard(call.uppercase(Locale.US), "CW", rfHz, locator.uppercase(Locale.US), snrDb, null, comment, nowMs)
+
+    /** An APRS position heard on FSK (G3RUH 9600) by the app's receiver: the locator comes from the position. */
+    fun fromAprsFsk(call: String, lat: Double, lon: Double, freqHz: Long, comment: String, nowMs: Long) =
+        Heard(call.uppercase(Locale.US), "APRS FSK", freqHz, Spots.locator(lat, lon, 6).uppercase(Locale.US), null, null, comment.trim().take(60), nowMs)
+
+    /** An M17 station heard by the digital voice decoder; with a position only if it sends one (GNSS in the link setup data). */
+    fun fromM17(call: String, lat: Double?, lon: Double?, freqHz: Long, nowMs: Long) =
+        Heard(call.uppercase(Locale.US), "M17", freqHz, if (lat != null && lon != null) Spots.locator(lat, lon, 6).uppercase(Locale.US) else "", null, null, "", nowMs)
+
+    /** The modes of the trackers' own beacons that are not WSJT-X ones or CW. */
+    fun isTrackerMode(mode: String) = mode == "LR-FHSS" || mode == "APRS FSK" || mode == "M17"
 
     /** Comment of the spot, 30 characters at most: "LR-FHSS IM67NG 14dBm 9dB". */
     fun spotComment(h: Heard): String =
