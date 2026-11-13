@@ -774,6 +774,21 @@ private fun testRotorFollow() {
     check(RotorFollow.TRACKER_SOURCES.containsAll(listOf(RotorFollow.SRC_SUN, RotorFollow.SRC_MOON)), "tracker sources sun / moon")
 }
 
+private fun testRateLimiter() {
+    val r = RateLimiter(30)
+    var late = 0
+    for (i in 0 until 30) if (r.waitMs(1000L + i) != 0L) late++
+    check(late == 0 && r.used(2000) == 30, "Rate limiter: the first 30 calls of the minute go at once")
+    check(r.waitMs(2000) == 59_000L && r.waitMs(2000) == 59_001L, "Rate limiter: the next ones wait for the minute to pass")
+    // whatever is asked, no minute ever holds more than 30 calls
+    val q = RateLimiter(30); val at = ArrayList<Long>(); var now = 0L
+    for (i in 0 until 500) { at.add(now + q.waitMs(now)); now += 37 }
+    var worst = 0
+    for (t in at) worst = maxOf(worst, at.count { it >= t && it < t + 60_000L })
+    check(worst == 30, "Rate limiter: never more than 30 calls in any minute")
+    check(RateLimiter(30).waitMs(5) == 0L && q.waitMs(at.last() + 120_000L) == 0L, "Rate limiter: free again after a quiet minute")
+}
+
 private fun testSdr() {
     run {   // SDRconnect audio to the phone: 48 kHz stereo -> 12 kHz mono
         check(Sdr.SdrConnect.audioStream(true) == """{"event_type":"audio_stream_enable","property":"","value":"true"}""", "SDRconnect: audio stream on")
@@ -1844,7 +1859,7 @@ private fun testRbn() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

@@ -219,3 +219,24 @@ object Terminator {
 
 /** Magnitude of an earthquake alert ("M4.1 Earthquake"), null otherwise. */
 fun OfficialAlert.magnitude(): Double? = if (!src.quake) null else Regex("M\\s?(\\d+(?:\\.\\d+)?)").find(event)?.groupValues?.get(1)?.toDoubleOrNull()
+
+/**
+ * Keeps the calls to a service under its limit per minute (OpenWeather's free key: 60 calls / min for everything done with
+ * that key, and every map tile is a call). [waitMs] says how long to wait before the next call and counts it.
+ */
+class RateLimiter(val perMinute: Int, val windowMs: Long = 60_000L) {
+    private val times = ArrayDeque<Long>()
+
+    /** Milliseconds to wait before calling (0 = now). The call is counted at the moment it will be made. */
+    @Synchronized
+    fun waitMs(nowMs: Long): Long {
+        while (times.isNotEmpty() && times.first() <= nowMs - windowMs) times.removeFirst()
+        val at = if (times.size < perMinute) nowMs else maxOf(nowMs, times[times.size - perMinute] + windowMs)
+        times.addLast(at)
+        return at - nowMs
+    }
+
+    /** Calls counted in the minute that ends at [nowMs] (those already made). */
+    @Synchronized
+    fun used(nowMs: Long): Int = times.count { it > nowMs - windowMs && it <= nowMs }
+}

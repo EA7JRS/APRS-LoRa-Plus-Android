@@ -105,10 +105,20 @@ object MapOverlays {
             Wms.tileUrl(base, layers, MapTileIndex.getZoom(index), MapTileIndex.getX(index), MapTileIndex.getY(index), transparent)
     }
 
+    /**
+     * OpenWeather's free key allows 60 calls a minute for everything done with it, and each map tile is a call: going over it
+     * gets the key blocked. All the OpenWeather layers share this limit of 30 tiles a minute (the rest is left for the weather
+     * of the tracker and for the user's other devices); the tiles that do not fit wait, so the layers fill in more slowly.
+     */
+    val owmLimiter = es.ea7jrs.aprslorap.core.RateLimiter(30)
+
     private class OwmSource(private val layer: String, private val key: String) :
         OnlineTileSourceBase("OWM-$layer", 1, 18, 256, ".png", arrayOf("https://tile.openweathermap.org/map/")) {
-        override fun getTileURLString(index: Long): String =
-            baseUrl + "$layer/${MapTileIndex.getZoom(index)}/${MapTileIndex.getX(index)}/${MapTileIndex.getY(index)}.png?appid=$key"
+        override fun getTileURLString(index: Long): String {             // called from the download threads, never from the UI
+            val wait = owmLimiter.waitMs(System.currentTimeMillis())
+            if (wait > 0) try { Thread.sleep(wait) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+            return baseUrl + "$layer/${MapTileIndex.getZoom(index)}/${MapTileIndex.getX(index)}/${MapTileIndex.getY(index)}.png?appid=$key"
+        }
     }
 
     private class GibsSource : OnlineTileSourceBase("GIBS-citylights", 1, 8, 256, ".jpg",
