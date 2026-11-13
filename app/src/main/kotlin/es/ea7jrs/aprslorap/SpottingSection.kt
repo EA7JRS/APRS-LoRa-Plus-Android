@@ -76,7 +76,7 @@ internal fun SpottingSection() {
             Spotter.reconfigure()
         }) { Text("Save") }
     }
-    Text("With the RTL-SDR receiver the frequency is the receiver's; with the microphone, the dial of the radio (USB) written here.", fontSize = 11.sp)
+    Text("With the RTL-SDR receiver the frequency is the receiver's; with the microphone, the radio's by CAT (Radio (CAT) or the rotor box) or, without CAT, the dial (USB) written here.", fontSize = 11.sp)
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("WSJT-X UDP (GridTracker, JTAlert, RBN Aggregator)", fontSize = 13.sp, modifier = Modifier.weight(1f))

@@ -305,6 +305,7 @@ class Controller(
                 AppState.satState.value = ev.state
                 ev.state.index?.let { AppState.satSelected.value = it }
                 RotorLink.onSat(ev.state)
+                CatLink.onSat(ev.state)
             }
             is ControlEvent.SatList -> onSatList(ev)
             is ControlEvent.SatTransmitters -> AppState.satTransmitters.value = ev.items

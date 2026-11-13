@@ -1652,6 +1652,135 @@ private fun testHamLayers() {
 private const val Date0 = 1794528000_000L                             // 2026-11-13 00:00 UTC (slot 0)
 
 // Reverse Beacon Network spots through a DX cluster
+// Same cases as testCatCiv / testCatYaesu / testCatKenwood / testCatYaesu5 / testCatTone of the rotor box (test_core.cpp)
+private fun testCat() {
+    fun hex(s: String) = s.map { String.format("%02X", it.code) }.joinToString(" ")
+    fun b(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
+    fun feed(e: Cat.Engine, s: String) = e.feed(Cat.bytes(s))
+    val ok = b(0xFE, 0xFE, 0xE0, 0xA2, 0xFB, 0xFD)
+
+    run {   // Icom CI-V
+        val e = Cat.CivEngine(0xA2)
+        var out = e.tick(0)
+        check(hex(out) == "FE FE A2 E0 03 FD", "CAT CI-V: frequency query")
+        e.feed(Cat.bytes(out))                                         // echo of the bus: ignored
+        check(!e.state.link, "CAT CI-V: the echo is not an answer")
+        e.feed(b(0xFE, 0xFE, 0xE0, 0xA2, 0x03, 0x00, 0x50, 0x82, 0x45, 0x01, 0xFD))
+        check(e.state.link && e.state.freq == 145_825_000L, "CAT CI-V: frequency")
+        check(hex(e.tick(200)) == "FE FE A2 E0 04 FD", "CAT CI-V: mode query")
+        e.feed(b(0xFE, 0xFE, 0xE0, 0xA2, 0x04, 0x05, 0x01, 0xFD)); check(e.state.mode == "FM", "CAT CI-V: FM")
+        check(hex(e.tick(400)) == "FE FE A2 E0 1C 00 FD", "CAT CI-V: PTT query")
+        e.feed(b(0xFE, 0xFE, 0xE0, 0xA2, 0x1C, 0x00, 0x01, 0xFD)); check(e.state.ptt, "CAT CI-V: PTT")
+        check(hex(e.tick(600)) == "FE FE A2 E0 15 02 FD", "CAT CI-V: S-meter query")
+        e.feed(b(0xFE, 0xFE, 0xE0, 0xA2, 0x15, 0x02, 0x01, 0x20, 0xFD)); check(e.state.smeter == 9, "CAT CI-V: S9")
+        check(hex(e.tick(800)) == "FE FE A2 E0 1A 06 FD", "CAT CI-V: data mode query")
+        e.feed(b(0xFE, 0xFE, 0xE0, 0xA2, 0x1A, 0x06, 0x01, 0x01, 0xFD)); check(e.state.mode == "PKTFM", "CAT CI-V: data FM")
+        check(hex(e.tick(1000)) == "FE FE A2 E0 25 01 FD", "CAT CI-V: other VFO query")
+        e.feed(b(0xFE, 0xFE, 0xE0, 0xA2, 0xFA, 0xFD))                 // NG: no command 0x25, not asked again
+        check(hex(e.tick(1200)) == "FE FE A2 E0 03 FD", "CAT CI-V: round without 0x25")
+        e.feed(b(0xFE, 0xFE, 0xE0, 0xA2, 0x03, 0x00, 0x00, 0x07, 0x14, 0x00, 0xFD)); check(e.state.freq == 14_070_000L, "CAT CI-V: 14.070")
+        check(e.setFreq(145_800_000L) && hex(e.tick(1400)) == "FE FE A2 E0 05 00 00 80 45 01 FD", "CAT CI-V: set frequency")
+        e.feed(ok)
+        check(e.setMode("DIG") && hex(e.tick(1500)) == "FE FE A2 E0 06 01 FD", "CAT CI-V: set mode")
+        e.feed(ok)
+        check(hex(e.tick(1600)) == "FE FE A2 E0 1A 06 01 01 FD", "CAT CI-V: set data mode")
+        e.feed(ok)
+        check(!e.setPtt(true), "CAT CI-V: PTT not allowed")
+        e.allowPtt = true
+        check(e.setPtt(true) && hex(e.tick(1700)) == "FE FE A2 E0 1C 00 01 FD", "CAT CI-V: PTT on")
+        e.feed(ok)
+        check(e.setTxFreq(435_100_000L) && hex(e.tick(1800)) == "FE FE A2 E0 25 01 00 00 10 35 04 FD", "CAT CI-V: other VFO")
+        e.feed(b(0xFE, 0xFE, 0x00, 0xA2, 0x00, 0x00, 0x25, 0x83, 0x45, 0x01, 0xFD))      // transceive
+        check(e.state.freq == 145_832_500L, "CAT CI-V: transceive")
+        val m = Cat.CivEngine()
+        var t = 0L; while (t < 4000) { m.tick(t); t += 50 }
+        check(!m.state.link, "CAT CI-V: no answer, no link")
+        check(Cat.CivEngine.unbcd(intArrayOf(0, 0, 0, 0, 0x10), 0, 5) == 1_000_000_000L, "CAT CI-V: BCD")
+    }
+    run {   // Yaesu text (FT-991A, FT-891)
+        val e = Cat.YaesuEngine()
+        check(e.tick(0) == "FA;", "CAT Yaesu: FA")
+        feed(e, "FA145825000;"); check(e.state.link && e.state.freq == 145_825_000L, "CAT Yaesu: frequency")
+        check(e.tick(200) == "MD0;", "CAT Yaesu: MD0"); feed(e, "MD04;"); check(e.state.mode == "FM", "CAT Yaesu: FM")
+        check(e.tick(400) == "TX;", "CAT Yaesu: TX"); feed(e, "TX0;"); check(!e.state.ptt, "CAT Yaesu: receiving")
+        check(e.tick(600) == "SM0;", "CAT Yaesu: SM0"); feed(e, "SM0120;"); check(e.state.smeter == 9, "CAT Yaesu: S9")
+        check(e.tick(800) == "FB;", "CAT Yaesu: FB"); feed(e, "FB435100000;"); check(e.state.txFreq == 435_100_000L, "CAT Yaesu: VFO B")
+        check(e.setFreq(7_074_000) && e.tick(1000) == "FA007074000;", "CAT Yaesu: set frequency")
+        check(e.setMode("PKTUSB") && e.tick(1100) == "MD0C;", "CAT Yaesu: set mode")
+        check(!e.setMode("XYZ"), "CAT Yaesu: unknown mode")
+        feed(e, "?;")
+        e.allowPtt = true; e.setPtt(true); check(e.tick(1200) == "TX1;", "CAT Yaesu: PTT")
+        feed(e, "MD0C;"); check(e.state.mode == "PKTUSB", "CAT Yaesu: DATA-USB")
+    }
+    run {   // Kenwood
+        val e = Cat.KenwoodEngine()
+        check(e.tick(0) == "IF;", "CAT Kenwood: IF")
+        feed(e, "IF00014074000     +00000000012001000000;")
+        check(e.state.link && e.state.freq == 14_074_000L && e.state.ptt && e.state.mode == "USB" && e.state.vfo == 'A' && e.state.split, "CAT Kenwood: IF answer")
+        check(e.tick(200) == "SM0;", "CAT Kenwood: SM0"); feed(e, "SM00015;"); check(e.state.smeter == 9, "CAT Kenwood: S9")
+        check(e.tick(400) == "FB;", "CAT Kenwood: FB"); feed(e, "FB00014076000;")
+        check(e.state.txFreq == 14_076_000L && e.state.freq == 14_074_000L, "CAT Kenwood: VFO B")
+        check(e.tick(600) == "DA;", "CAT Kenwood: DA"); feed(e, "DA1;"); check(e.state.mode == "PKTUSB", "CAT Kenwood: data")
+        check(e.setFreq(145_800_000) && e.tick(800) == "FA00145800000;", "CAT Kenwood: set frequency")
+        check(e.setMode("CW") && e.tick(900) == "MD3;" && e.tick(950) == "DA0;", "CAT Kenwood: set mode")
+        check(e.toggleVfo() && e.tick(1000) == "FR1;FT1;" && e.state.vfo == 'B', "CAT Kenwood: VFO B")
+        feed(e, "SM0030;"); check(e.state.smeter == 15, "CAT Kenwood: S9+60")
+    }
+    run {   // Yaesu 5 bytes (FT-817 / 818)
+        val e = Cat.Yaesu5Engine()
+        check(hex(e.tick(0)) == "00 00 00 00 03", "CAT FT-817: frequency query")
+        e.feed(b(0x14, 0x52, 0x50, 0x00, 0x01))
+        check(e.state.link && e.state.freq == 145_250_000L && e.state.mode == "USB", "CAT FT-817: frequency and mode")
+        check(hex(e.tick(200)) == "00 00 00 00 E7", "CAT FT-817: RX status"); e.feed(b(0x09)); check(e.state.smeter == 9, "CAT FT-817: S9")
+        check(hex(e.tick(400)) == "00 00 00 00 F7", "CAT FT-817: TX status"); e.feed(b(0x7F)); check(e.state.ptt, "CAT FT-817: transmitting")
+        check(e.setFreq(145_825_000) && hex(e.tick(600)) == "14 58 25 00 01", "CAT FT-817: set frequency")
+        check(e.setMode("FM") && hex(e.tick(700)) == "08 00 00 00 07", "CAT FT-817: set mode")
+        check(!e.setTxFreq(435_000_000), "CAT FT-817: no command for the other VFO")
+        e.allowPtt = true; e.setPtt(false); check(hex(e.tick(800)) == "00 00 00 00 88", "CAT FT-817: PTT off")
+    }
+    // CTCSS
+    check(Cat.toneIndex(Cat.CTCSS50, 50, 670) == 0 && Cat.toneIndex(Cat.CTCSS50, 50, 744) == 3 && Cat.toneIndex(Cat.CTCSS50, 50, 1598) == 26 &&
+        Cat.toneIndex(Cat.CTCSS50, 50, 2541) == 49, "CAT: Yaesu tone table")
+    check(Cat.toneIndex(Cat.CTCSS42, 41, 1622) == 26 && Cat.toneIndex(Cat.CTCSS42, 41, 1598) == -1 && Cat.toneIndex(Cat.CTCSS42, 41, 671) == 0, "CAT: Kenwood tone table")
+    run {
+        val e = Cat.CivEngine(0xA2)
+        check(e.setTone(670) && e.state.tone == 670 && hex(e.tick(0)) == "FE FE A2 E0 1B 00 00 06 70 FD", "CAT CI-V: tone")
+        e.feed(ok); check(hex(e.tick(100)) == "FE FE A2 E0 16 42 01 FD", "CAT CI-V: tone on")
+        e.feed(ok); check(e.setTone(0) && hex(e.tick(200)) == "FE FE A2 E0 16 42 00 FD" && !e.setTone(3000), "CAT CI-V: tone off")
+    }
+    run {
+        val e = Cat.YaesuEngine()
+        check(e.setTone(744) && e.tick(0) == "CN00003;CT02;", "CAT Yaesu: tone")
+        check(e.setTone(0) && e.tick(100) == "CT00;" && !e.setTone(1500), "CAT Yaesu: tone off")
+    }
+    run {
+        val e = Cat.KenwoodEngine()
+        check(e.setTone(670) && e.tick(0) == "TN01;TO1;", "CAT Kenwood: tone (TS-2000)")
+        e.toneBase = 0; check(e.setTone(885) && e.tick(100) == "TN08;TO1;", "CAT Kenwood: tone (TS-590)")
+        check(e.setTone(0) && e.tick(200) == "TO0;", "CAT Kenwood: tone off")
+    }
+    run {
+        val e = Cat.Yaesu5Engine()
+        check(e.setTone(885) && hex(e.tick(0)) == "08 85 08 85 0B" && hex(e.tick(100)) == "4A 00 00 00 0A", "CAT FT-817: tone")
+        check(e.setTone(0) && hex(e.tick(200)) == "8A 00 00 00 0A", "CAT FT-817: tone off")
+    }
+    // Doppler: ISS at 437.800 MHz approaching at 7 km/s is heard 10.2 kHz high; the uplink goes the other way
+    check(Cat.dopplerRx(437_800_000L, -7.0) == 437_810_222L && Cat.dopplerTx(145_990_000L, -7.0) == 145_986_591L, "CAT: Doppler")
+    run {
+        val e = Cat.YaesuEngine(); val tr = Cat.Tracker()
+        tr.update("ISS", 437_800_000L, 145_990_000L, -7.0, 0)
+        tr.step(e, 0); check(e.tick(0) == "FA;", "CAT tracker: waits for the link")
+        feed(e, "FA437800000;")
+        tr.step(e, 600)
+        check(e.tick(700) == "FA437810222;" && e.tick(800) == "FB145986591;" && tr.doppler == 10_222L, "CAT tracker: downlink and uplink corrected")
+        tr.update("ISS", 437_800_000L, 145_990_000L, -6.9999, 1000); tr.step(e, 1300)
+        check(e.tick(1400).let { it == "MD0;" || it == "FA;" || it == "TX;" || it == "SM0;" || it == "FB;" }, "CAT tracker: no retune below the step")
+        tr.step(e, 20_000); check(!tr.active, "CAT tracker: stops without data")
+    }
+    check(Cat.MODELS.first { it.name.startsWith("FT-818") }.proto == Cat.Proto.YAESU5 && Cat.MODELS.first { it.name.startsWith("FT-991") }.proto == Cat.Proto.YAESU &&
+        Cat.MODELS.first { it.name.startsWith("FT-891") }.stopBits == 2, "CAT: Yaesu models")
+}
+
 private fun testRbn() {
     val now = 1794558600_000L
     val a = DxCluster.parse("DX de DL8LAS-#:   14025.0  EA7JRS       CW    12 dB  22 WPM  CQ      0830Z", "EA1XYZ", now)!!
@@ -1687,7 +1816,7 @@ private fun testRbn() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

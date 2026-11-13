@@ -98,8 +98,8 @@ object Spotter {
     /** Frequency the tracker was last listening to CW on (event "cwrx"), or null. */
     fun trackerCwFreqHz(): Long? = trackerCwHz
 
-    /** Dial frequency of the radio when the audio comes from the microphone (set by hand), or null. */
-    fun micDialHz(): Long? = settings?.spotDialHz?.takeIf { it > 0 }
+    /** Dial frequency of the radio when the audio comes from the microphone: the CAT's if a radio answers, else the one set by hand. */
+    fun micDialHz(): Long? = Rig.state?.freqHz?.takeIf { it > 0 } ?: settings?.spotDialHz?.takeIf { it > 0 }
 
     private fun applySettings() {
         val s = settings ?: return

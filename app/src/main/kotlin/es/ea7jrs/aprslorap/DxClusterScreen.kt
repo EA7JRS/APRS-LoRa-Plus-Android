@@ -290,9 +290,8 @@ fun DxClusterScreen(nav: Navigator) {
     }
 
     if (spotOpen) {
-        val cat by AppState.rotorCat.collectAsState()
         val sdr by AppState.sdr.collectAsState()
-        val dial = cat?.takeIf { it.link }?.freqHz ?: sdr.freqHz
+        val dial = Rig.state?.freqHz ?: sdr.freqHz
         var freq by remember { mutableStateOf(dial?.let { String.format(Locale.US, "%.1f", it / 1000.0) } ?: sel?.let { String.format(Locale.US, "%.1f", it.freqKhz) } ?: "") }
         var call by remember { mutableStateOf(sel?.dx ?: "") }
         var comment by remember { mutableStateOf("") }

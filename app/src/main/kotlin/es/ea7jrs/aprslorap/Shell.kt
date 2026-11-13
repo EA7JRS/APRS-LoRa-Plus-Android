@@ -62,7 +62,7 @@ import kotlinx.coroutines.launch
 enum class Tool(val title: String) {
     TRACKER("Tracker"), SENSORS("Sensors"), HEARD("Heard by the tracker"), SAT("Satellites"), ROTOR("Rotor box"), SDR("SDR receivers"),
     MODES("Digital modes"), AIS("AIS ships"), LOG("Log & QSL"), SIGID("Signal ID"), REMOTE("Remote screen"), CONFIG("Tracker configuration"),
-    DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"),
+    DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"),
 }
 
 /** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "IBP", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
@@ -114,6 +114,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
     val sat by AppState.satState.collectAsState()
     val rotorPos by AppState.rotorPos.collectAsState()
     val sdr by AppState.sdr.collectAsState()
+    val phoneCat by AppState.phoneCat.collectAsState()
     val wsjt by AppState.wsjt.collectAsState()
     val extra by AppState.extraStatus.collectAsState()
     val spot by AppState.spotter.collectAsState()
@@ -142,6 +143,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
         FKey("IBP", "IBP", es.ea7jrs.aprslorap.core.HamLayers.ibpNow(System.currentTimeMillis())[0].second.call + " 20m") { nav.go("IBP") },
         FKey("SAT", "SAT", sat?.name ?: "passes", if (sat?.ok == true) 1 else 0) { nav.tool(Tool.SAT) },
         FKey("ROTOR", "ROTOR", rotorPos?.let { String.format(java.util.Locale.US, "%03.0f° / %.0f°", it.azDeg, it.elDeg ?: 0.0) } ?: "box") { nav.tool(Tool.ROTOR) },
+        FKey("CAT", "CAT", phoneCat?.takeIf { it.link }?.let { es.ea7jrs.aprslorap.core.RotorProto.freq(it.freqHz) } ?: "USB radio", if (phoneCat?.link == true) 1 else 0) { nav.tool(Tool.CAT) },
         FKey("SDR", "SDR", if (sdr.connected) sdr.device.ifEmpty { "on" } else "receivers", if (sdr.connected) 1 else 0) { nav.tool(Tool.SDR) },
         FKey("MODES", "MODES", if (wsjt.running) "decoding" else "FT8 · CW", if (wsjt.running) 1 else 0) { nav.tool(Tool.MODES) },
         FKey("CWKEY", "CW KEY", "paddle") { nav.tool(Tool.TRACKER) },
@@ -165,7 +167,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 
 val FMENU_PAGES = listOf(
     "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
-    "RADIO" to listOf("DX", "RBN", "IBP", "SAT", "ROTOR", "SDR", "MODES", "CWKEY", "SPOTS", "AIS"),
+    "RADIO" to listOf("DX", "RBN", "IBP", "SAT", "ROTOR", "CAT", "SDR", "MODES", "CWKEY", "SPOTS", "AIS"),
     "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS"),
 )
 
@@ -393,6 +395,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("DEVICES") {
             MenuItem("Tracker", right = info?.board ?: if (running) ble else "off", lamp = running) { tool(Tool.TRACKER) }
             MenuItem("Rotor box", right = rotor, lamp = rotorPos != null) { tool(Tool.ROTOR) }
+            MenuItem("Radio (CAT)", right = AppState.phoneCat.collectAsState().value?.takeIf { it.link }?.rig?.substringBefore(" ·") ?: "USB", lamp = AppState.phoneCat.collectAsState().value?.link == true) { tool(Tool.CAT) }
             MenuItem("Extra receivers", right = "${extra.size}", lamp = extra.isNotEmpty() && running) { tool(Tool.CONNECT) }
             MenuItem("Connect & settings") { tool(Tool.CONNECT) }
         }
@@ -516,6 +519,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.CONNECT -> ConnectTab()
                 Tool.ABOUT -> AboutTab()
                 Tool.ALERTS -> AlertsTab()
+                Tool.CAT -> CatTab()
             }
         }
     }

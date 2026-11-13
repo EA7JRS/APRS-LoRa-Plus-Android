@@ -224,6 +224,47 @@ class Settings(ctx: Context) {
     var rotorCatStep: Long
         get() = p.getLong("rotor_cat_step", 1000L)
         set(v) { p.edit().putLong("rotor_cat_step", v).apply() }
+
+    // ---- CAT of a radio plugged into the phone (USB serial)
+    var catModel: String                             // name in Cat.MODELS
+        get() = p.getString("cat_model", "FT-991 / FT-991A")!!
+        set(v) { p.edit().putString("cat_model", v).apply() }
+    var catBaud: Int
+        get() = p.getInt("cat_baud", 4800)
+        set(v) { p.edit().putInt("cat_baud", v).apply() }
+    var catCivAddr: Int
+        get() = p.getInt("cat_civ", 0x94)
+        set(v) { p.edit().putInt("cat_civ", v.coerceIn(1, 0xDF)).apply() }
+    var catDevice: String                            // "vid:pid" of the adapter, "" = the first one found
+        get() = p.getString("cat_device", "")!!
+        set(v) { p.edit().putString("cat_device", v).apply() }
+    var catPort: Int                                 // port of the adapter (FT-991A / FT-891: 0 = Enhanced = CAT)
+        get() = p.getInt("cat_port", 0)
+        set(v) { p.edit().putInt("cat_port", v.coerceIn(0, 7)).apply() }
+    var catRts: Boolean                              // RTS high: Yaesu USB radios wait for it (menu CAT RTS)
+        get() = p.getBoolean("cat_rts", true)
+        set(v) { p.edit().putBoolean("cat_rts", v).apply() }
+    var catDtr: Boolean
+        get() = p.getBoolean("cat_dtr", false)
+        set(v) { p.edit().putBoolean("cat_dtr", v).apply() }
+    var catPtt: Boolean                              // PTT from the app (hold): off unless the user turns it on
+        get() = p.getBoolean("cat_ptt", false)
+        set(v) { p.edit().putBoolean("cat_ptt", v).apply() }
+    var catPttLine: Boolean                          // PTT on the RTS line of the adapter's other port (SCU-17) instead of the CAT command
+        get() = p.getBoolean("cat_ptt_line", false)
+        set(v) { p.edit().putBoolean("cat_ptt_line", v).apply() }
+    var catAuto: Boolean                             // connect when the app starts the link screen again
+        get() = p.getBoolean("cat_auto", false)
+        set(v) { p.edit().putBoolean("cat_auto", v).apply() }
+    var catTrack: Boolean                            // Doppler of the tracker's satellite on this radio
+        get() = p.getBoolean("cat_track", false)
+        set(v) { p.edit().putBoolean("cat_track", v).apply() }
+    var catUplink: Boolean
+        get() = p.getBoolean("cat_uplink", false)
+        set(v) { p.edit().putBoolean("cat_uplink", v).apply() }
+    var catStep: Long
+        get() = p.getLong("cat_step", 1000L)
+        set(v) { p.edit().putLong("cat_step", v).apply() }
     var rotorStep: Double
         get() = p.getFloat("rotor_step", 2f).toDouble()
         set(v) { p.edit().putFloat("rotor_step", v.coerceIn(0.5, 20.0).toFloat()).apply() }

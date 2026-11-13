@@ -195,13 +195,9 @@ object DxLink {
             }
         }
         if (cat) {
-            if (AppState.rotorCat.value?.link == true) {
-                RotorLink.send(RotorProto.catFreq(spot.freqHz))
-                RotorLink.send(RotorProto.catMode(if (spot.group == DxCluster.Group.DIGITAL) "PKTUSB" else mode))
-                done.add("CAT radio")
-            }
+            done.addAll(Rig.tune(spot.freqHz, if (spot.group == DxCluster.Group.DIGITAL) "PKTUSB" else mode))
         }
-        val text = if (done.isEmpty()) "Nothing tuned: connect an SDR (SDR) or the radio on the rotor box (Rotor > Radio)"
+        val text = if (done.isEmpty()) "Nothing tuned: connect an SDR (SDR), a radio by USB (CAT) or the radio on the rotor box (Rotor > Radio)"
             else "Tuned " + DxCluster.formatKhz(spot.freqKhz) + " kHz $mode → " + done.joinToString(" + ")
         set { it.copy(status = text) }
         return text

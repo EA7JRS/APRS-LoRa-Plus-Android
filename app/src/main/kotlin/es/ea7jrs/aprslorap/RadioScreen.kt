@@ -228,16 +228,18 @@ private fun ageS(s: Long): String = when { s < 60 -> "${s}s"; s < 3600 -> "${s /
 /** Band B: the radio on the rotor box (CAT) or, without it, the SDR receiver under control. */
 @Composable
 private fun BandB(nav: Navigator, big: Boolean) {
-    val cat by AppState.rotorCat.collectAsState()
+    val boxCat by AppState.rotorCat.collectAsState()
+    val phoneCat by AppState.phoneCat.collectAsState()
     val sdr by AppState.sdr.collectAsState()
-    val c = cat?.takeIf { it.link && it.freqHz > 0 }
+    val onPhone = phoneCat?.let { it.link && it.freqHz > 0 } == true
+    val c = if (onPhone) phoneCat else boxCat?.takeIf { it.link && it.freqHz > 0 }
     val title: String; val hz: Long?; val mode: String; val reading: SMeter.Reading?; val extra: String?; val target: () -> Unit
     when {
         c != null -> {
             title = "CAT · " + c.rig.ifEmpty { "radio" }; hz = c.freqHz; mode = RotorProto.modeName(c.mode)
             reading = SMeter.fromCat(c.smeter)
             extra = listOfNotNull("VFO ${c.vfo}", if (c.split) "SPLIT" else null, c.toneHz?.let { String.format(Locale.US, "T %.1f", it) }, if (c.ptt) "TX" else null).joinToString(" · ")
-            target = { nav.tool(Tool.ROTOR) }
+            target = { nav.tool(if (onPhone) Tool.CAT else Tool.ROTOR) }
         }
         sdr.connected -> {
             title = "SDR · " + sdr.device.ifEmpty { "receiver" }; hz = sdr.freqHz; mode = sdr.mode ?: "—"
@@ -245,7 +247,7 @@ private fun BandB(nav: Navigator, big: Boolean) {
             extra = listOfNotNull(sdr.signalDb?.let { String.format(Locale.US, "%.0f dBm", it) }, sdr.snrDb?.let { String.format(Locale.US, "SNR %.0f", it) }).joinToString(" · ")
             target = { nav.tool(Tool.SDR) }
         }
-        else -> { title = "NO RADIO"; hz = null; mode = ""; reading = null; extra = null; target = { nav.tool(Tool.SDR) } }
+        else -> { title = "NO RADIO"; hz = null; mode = ""; reading = null; extra = null; target = { nav.tool(Tool.CAT) } }
     }
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Alp.SubPanel).clickable(onClick = target)) {
         Box(Modifier.padding(top = 12.dp).width(5.dp).height(if (big) 90.dp else 36.dp).clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)).background(Alp.BandB))
@@ -259,7 +261,7 @@ private fun BandB(nav: Navigator, big: Boolean) {
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg).padding(horizontal = 6.dp))
             }
             if (hz == null) {
-                Text("CAT through the rotor box, or an SDR receiver · touch to set up", fontSize = 14.sp, color = Alp.SubMuted)
+                Text("A radio by USB (CAT), the rotor box or an SDR receiver · touch to set up", fontSize = 14.sp, color = Alp.SubMuted)
             } else {
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(Fmt.mhz(hz), fontFamily = TechMono, fontSize = if (big) 34.sp else 28.sp, color = Alp.SubText)

@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import es.ea7jrs.aprslorap.core.Geo
 import es.ea7jrs.aprslorap.core.HamLayers
-import es.ea7jrs.aprslorap.core.RotorProto
 import es.ea7jrs.aprslorap.core.Terminator
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -213,8 +212,8 @@ private fun tuneIbp(mhz: Double): String {
     val hz = Math.round(mhz * 1e6)
     val done = ArrayList<String>()
     if (AppState.sdr.value.connected) { SdrControl.tune(hz); SdrControl.mode("CW", 500); done.add("SDR") }
-    if (AppState.rotorCat.value?.link == true) { RotorLink.send(RotorProto.catFreq(hz)); RotorLink.send(RotorProto.catMode("CW")); done.add("CAT radio") }
-    return if (done.isEmpty()) "Nothing tuned: connect an SDR (SDR) or the radio on the rotor box (Rotor > Radio)"
+    done.addAll(Rig.tune(hz, "CW"))
+    return if (done.isEmpty()) "Nothing tuned: connect an SDR (SDR), a radio by USB (CAT) or the radio on the rotor box (Rotor > Radio)"
     else String.format(Locale.US, "Tuned %.3f MHz CW → ", mhz) + done.joinToString(" + ")
 }
 
