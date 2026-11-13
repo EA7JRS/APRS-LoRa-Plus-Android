@@ -1569,9 +1569,87 @@ private fun testAviation() {
     check(A.metarUrl(35.0, -8.0, 38.0, -4.0) == "https://aviationweather.gov/api/data/metar?bbox=35.00,-8.00,38.00,-4.00&format=json", "METAR url")
 }
 
+// Layers with the ideas and feeds of OpenHamClock: samples with the shape of each feed (values invented)
+private fun testHamLayers() {
+    val H = HamLayers
+    val ov = H.parseOvation("""{"Observation Time":"2026-11-13T08:00:00Z","Forecast Time":"2026-11-13T08:40:00Z","Data Format":"[Longitude, Latitude, Aurora]",
+        "coordinates":[[0,65,12],[359,66,40],[200,-70,2],[10,60,1]]}""")
+    check(ov != null && ov.cells.size == 2 && ov.forecastTime.startsWith("2026-11-13T08:40"), "OVATION: cells of 3 % or more")
+    check(ov != null && ov.cells[1].second == -1.0 && ov.cells[1].third == 40, "OVATION: longitude 359 -> -1")
+    val drap = H.parseDrap("""# Product: Global D-Region Absorption Prediction
+# Product Valid At : 2026-11-13 08:10 UTC
+#
+              -178  -174  -170  -166  -162  -158  -154  -150  -146  -142  -138  -134
+         ---------------------------------------------------------------------------
+   89.0 |   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0
+   87.0 |   1.5   2.0  12.5   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0
+""")
+    check(drap != null && drap.lats == listOf(89.0, 87.0) && drap.lons.size == 12 && drap.validAt == "2026-11-13 08:10 UTC", "D-RAP grid")
+    check(drap != null && drap.maxFreq == 12.5 && drap.freqs[1][1] == 2.0, "D-RAP values")
+    val nhc = H.parseNhc("""{"activeStorms":[{"id":"al142026","binNumber":"AT4","name":"Example","classification":"HU","intensity":"75","pressure":"984",
+        "latitude":"28.5N","longitude":"38.0W","latitudeNumeric":28.5,"longitudeNumeric":-38.0,"movementDir":45,"movementSpeed":18,"lastUpdate":"2026-11-13T06:00:00.000Z",
+        "publicAdvisory":{"advNum":"14","url":"https://www.nhc.noaa.gov/text/refresh/MIATCPAT4+shtml/130851.shtml"},
+        "forecastTrack":{"kmzFile":"https://www.nhc.noaa.gov/storm_graphics/api/AL142026_014adv_TRACK.kmz"},
+        "trackCone":{"kmzFile":"https://www.nhc.noaa.gov/storm_graphics/api/AL142026_014adv_CONE.kmz"}}]}""")
+    check(nhc != null && nhc.size == 1 && nhc[0].windKt == 75 && nhc[0].category == 1 && nhc[0].label == "Hurricane", "NHC storm")
+    check(nhc != null && nhc[0].trackKmz!!.endsWith("_TRACK.kmz") && nhc[0].pressureMb == 984 && nhc[0].lon == -38.0, "NHC KMZ links")
+    val kml = """<kml><Document><Placemark><name>Track</name><LineString><coordinates>-38.0,28.5,0 -34.0,30.4,0 -29.5,32.6,0</coordinates></LineString></Placemark>
+<Placemark><description><![CDATA[<b>Advisory Information</b> Valid at: 5:00 AM AST November 13 Location: 28.5 N Maximum Wind: 75 knots]]></description><Point><coordinates>-38.0,28.5,0</coordinates></Point></Placemark>
+<Placemark><description><![CDATA[24 hr Forecast Valid at: 2:00 AM AST November 14 Location: 32.6 N Maximum Wind: 60 knots]]></description><Point><coordinates>-29.5,32.6,0</coordinates></Point></Placemark>
+<Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>-38,28 -30,33 -29,32 -38,28</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></Document></kml>"""
+    val (line, fc) = H.nhcTrack(kml)
+    check(line.size == 3 && line[1] == (30.4 to -34.0), "NHC track line (lat, lon)")
+    check(fc.size == 2 && fc[0].hour == 0 && fc[1].hour == 24 && fc[1].windKt == 60 && fc[1].validAt.startsWith("2:00 AM"), "NHC forecast points")
+    check(H.nhcCone(kml).size == 4, "NHC cone ring")
+    val now = 1794558600_000L                                         // 2026-11-13 08:30 UTC
+    val io = H.parseKc2g("""[{"fof2":"6.2","mufd":19.4,"md":3.1,"cs":85,"time":"2026-11-13T08:15:00","station":{"code":"EB040","name":"Roquetes","latitude":"40.8","longitude":"0.5"}},
+        {"fof2":5.0,"cs":-1,"time":"2026-11-13T08:00:00","station":{"code":"AU930","name":"Learmonth","latitude":-21.9,"longitude":"242.0"}},
+        {"fof2":4.0,"time":"2019-01-01T00:00:00","station":{"code":"OLD","latitude":0,"longitude":0}},{"mufd":10,"time":"2026-11-13T08:00:00","station":{"code":"NOF2"}}]""", now)
+    check(io != null && io.size == 2 && io[0].mufd == 19.4 && io[0].cs == 85 && io[1].cs == null && io[1].lon == -118.0, "KC2G ionosondes (age, foF2, 0..360)")
+    check(H.ibpSlot(Date0 + 0) == 0 && H.ibpSlot(Date0 + 35_000) == 3 && H.ibpSlot(Date0 + 180_000) == 0, "IBP slot")
+    val ibp = H.ibpNow(Date0 + 5_000)
+    check(ibp[0].second.call == "4U1UN" && ibp[1].second.call == "YV5B" && ibp[4].second.call == "CS3B", "IBP: 20 m 4U1UN, 17 m YV5B, 10 m CS3B at slot 0")
+    check(H.ibpNow(Date0 + 15_000)[1].second.call == "4U1UN" && H.ibpSecondsLeft(Date0 + 13_000) == 7, "IBP: 4U1UN on 17 m in slot 1")
+    val gc = H.greatCircle(36.53, -6.29, 35.68, 139.69)
+    check(gc.size == 1 && abs(gc[0].first().first - 36.53) < 1e-9 && abs(gc[0].last().first - 35.68) < 1e-6 && gc[0].maxOf { it.first } > 60, "great circle to Tokyo goes north")
+    val gcl = H.greatCircle(36.53, -6.29, 35.68, 139.69, longPath = true)
+    check(gcl.size == 2 && abs(gcl.last().last().second - 139.69) < 1e-6, "long path crosses the antimeridian")
+    val gb = H.gridBounds("IM76hr")!!
+    check(abs(gb[0] - 36.7083) < 1e-3 && abs(gb[1] - (-5.4167)) < 1e-3 && H.gridBounds("JJ00") != null && H.gridBounds("ZZ99") == null, "grid bounds")
+    check(H.gridStep(4.0).first == 20.0 && H.gridStep(8.0).first == 2.0, "grid step by zoom")
+    val ev = H.parseEonet("""{"events":[{"id":"EONET_1","title":"Wildfire in Huelva","categories":[{"id":"wildfires","title":"Wildfires"}],
+        "geometry":[{"magnitudeValue":1200,"magnitudeUnit":"acres","date":"2026-11-12T10:00:00Z","type":"Point","coordinates":[-6.9,37.3]}]},
+        {"id":"EONET_2","title":"Flood","categories":[{"title":"Floods"}],"geometry":[{"date":"2026-11-11T00:00:00Z","type":"Polygon","coordinates":[[[0,0],[2,0],[2,2],[0,2]]]}]}]}""")
+    check(ev != null && ev.size == 2 && ev[0].lat == 37.3 && ev[0].magnitude == "1200 acres" && ev[1].lat == 1.0 && ev[1].category == "Floods", "EONET events")
+    val bl = H.parseSondehub("""{"EA7XYZ-11":{"2026-11-13T08:00:00.000Z":{"lat":36.5,"lon":-6.2,"alt":9000,"datetime":"2026-11-13T08:00:00.000Z"},
+        "2026-11-13T08:10:00.000Z":{"lat":36.6,"lon":-6.0,"alt":11000,"datetime":"2026-11-13T08:10:00.000Z","comment":"pico"}}}""")
+    check(bl != null && bl.size == 1 && bl[0].lat == 36.6 && bl[0].altM == 11000.0 && bl[0].track.size == 2 && bl[0].comment == "pico", "SondeHub balloon")
+    val ac = H.parseAdsb("""{"ac":[{"hex":"3443c1","flight":"IBE1234 ","t":"A320","lat":36.7,"lon":-6.1,"alt_baro":35000,"alt_geom":35500,"gs":450.5,"track":45.2},
+        {"hex":"abc","lat":36.74,"lon":-6.06,"alt_baro":"ground"},{"hex":"nopos"}]}""")
+    check(ac != null && ac.size == 2 && ac[0].flight == "IBE1234" && ac[0].altFt == 35500 && ac[1].onGround && ac[1].altFt == 0, "adsb.lol aircraft")
+    val la = H.parseLaunches("""{"results":[{"name":"Falcon 9 | Starlink","net":"2026-11-14T02:30:00Z","status":{"abbrev":"Go"},
+        "launch_service_provider":{"name":"SpaceX"},"pad":{"name":"SLC-40","latitude":"28.56","longitude":"-80.57"}}]}""")
+    check(la != null && la.size == 1 && la[0].lat == 28.56 && la[0].status == "Go" && la[0].provider == "SpaceX", "launches")
+    val nd = H.parseNdbc("""#STN       LAT      LON  YYYY MM DD hh mm WDIR WSPD   GST WVHT  DPD APD MWD   PRES  PTDY  ATMP  WTMP  DEWP  VIS   TIDE
+#text      deg      deg   yr mo day hr mn degT  m/s   m/s   m   sec sec degT   hPa   hPa  degC  degC  degC  nmi     ft
+41047   27.520  -71.530  2026 11 13 08 00  80   7.0   9.0  2.1  10  MM  MM 1018.5    MM  24.5  26.8    MM   MM     MM
+""")
+    check(nd != null && nd.size == 1 && nd[0].windDeg == 80 && nd[0].waveM == 2.1 && nd[0].pressureHpa == 1018.5 && nd[0].timeMs == 1794556800_000L, "NDBC buoy")
+    val ws = H.parseWsprLive("""{"meta":[],"data":[{"time":"2026-11-13 08:20:00","band":14,"rx_sign":"G4XYZ","rx_loc":"IO91wm","snr":-18,"frequency":14097042}],"rows":1}""")
+    check(ws != null && ws.size == 1 && ws[0].band == "20m" && ws[0].snr == -18 && ws[0].timeMs == 1794558000_000L, "wspr.live spots")
+    check(H.wsprLiveUrl("ea7jrs").contains("tx_sign+%3D+%27EA7JRS%27"), "wspr.live query")
+    val ps = H.parsePskReporter("""<receptionReports><receptionReport receiverCallsign="DL1ABC" receiverLocator="JO62qm" senderCallsign="EA7JRS" frequency="14074500" flowStartSeconds="1794558000" mode="FT8" sNR="-12" /></receptionReports>""")
+    check(ps.size == 1 && ps[0].rxCall == "DL1ABC" && ps[0].mode == "FT8" && ps[0].band == "20m" && ps[0].snr == -12, "PSK Reporter receptions")
+    val z = H.parseZones("""{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"itu_zone_name":"!:KL:**Alaska, west of 141º W","itu_zone_number":1,"itu_zone_name_loc":[60,-160]},
+        "geometry":{"type":"Polygon","coordinates":[[[-170,50],[-141,50],[-141,72],[-170,72],[-170,50]]]}}]}""", itu = true)
+    check(z != null && z.size == 1 && z[0].number == 1 && z[0].name == "Alaska, west of 141º W" && z[0].rings[0].size == 5 && z[0].labelLat == 60.0, "ITU zones")
+    check(H.drapColor(0.5, 200) == 0 && (H.auroraColor(50, 255) ushr 24) > 150, "colour scales")
+}
+private const val Date0 = 1794528000_000L                             // 2026-11-13 00:00 UTC (slot 0)
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

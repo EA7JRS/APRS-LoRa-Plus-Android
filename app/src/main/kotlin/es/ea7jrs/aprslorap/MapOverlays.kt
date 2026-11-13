@@ -19,10 +19,13 @@ import java.net.URL
  * Map overlays brought from the plotter, each with its own transparency. Terms (2026-11-13): IHM services and NAVAREA
  * warnings are for non-commercial reuse only, so the Google Play build hides them (BuildConfig.PLAY); EUMETSAT imagery is
  * CC BY 4.0; OpenWeather maps use the user's own key; USGS is public domain and EMSC CC BY 4.0; the day / night line is computed;
- * METAR, TAF and SIGMET come from the NOAA Aviation Weather Center (public domain, AviationFetcher).
+ * METAR, TAF and SIGMET come from the NOAA Aviation Weather Center (public domain, AviationFetcher). The HAM, SPACE and EVENTS layers
+ * follow OpenHamClock (MIT, HamLayersFetcher): NOAA and NASA feeds are public domain; the community feeds (KC2G, wspr.live, PSK Reporter,
+ * SondeHub, adsb.lol, The Space Devs) stay out of the Google Play build until their terms for a paid app are checked.
  */
 object MapOverlays {
-    enum class Group(val title: String) { SEA("SEA"), WARNINGS("WARNINGS"), AVIATION("AVIATION · NOAA AVIATIONWEATHER.GOV"), SKY("SKY"), SATELLITE("SATELLITE"), FORECAST("FORECAST MAPS (OPENWEATHER, YOUR KEY)") }
+    enum class Group(val title: String) { SEA("SEA"), WARNINGS("WARNINGS"), AVIATION("AVIATION · NOAA AVIATIONWEATHER.GOV"), HAM("HAM RADIO · IDEAS FROM OPENHAMCLOCK"), SPACE("SPACE WEATHER"),
+        EVENTS("NATURE, SEA, AIR AND SPACE"), SKY("SKY"), SATELLITE("SATELLITE"), FORECAST("FORECAST MAPS (OPENWEATHER, YOUR KEY)") }
 
     /** [tile]: a tile layer (null = drawn by the app: markers or shapes). [play]: allowed in the paid Google Play build. */
     data class Ov(
@@ -41,6 +44,25 @@ object MapOverlays {
         Ov("quakes", "Earthquakes", Group.WARNINGS, 0xFFFF8A80, "Earthquakes: USGS, EMSC-CSEM SeismicPortal", 80, play = true, tile = false),
         Ov("metar", "METAR + TAF", Group.AVIATION, 0xFF3CE68A, "METAR / TAF: NOAA aviationweather.gov", 100, play = true, tile = false),
         Ov("sigmet", "SIGMET", Group.AVIATION, 0xFFFF6B6B, "SIGMET: NOAA aviationweather.gov", 80, play = true, tile = false),
+        Ov("ham_grid", "Maidenhead grid", Group.HAM, 0xFFB39DDB, "", 70, play = true, tile = false),
+        Ov("ham_cq", "CQ zones", Group.HAM, 0xFF28B5E1, "CQ / ITU zones: HB9HIL hamradio-zones-geojson (MIT)", 70, play = true, tile = false),
+        Ov("ham_itu", "ITU zones", Group.HAM, 0xFFFFB347, "CQ / ITU zones: HB9HIL hamradio-zones-geojson (MIT)", 70, play = true, tile = false),
+        Ov("ham_gc", "Great circle", Group.HAM, 0xFF28B5E1, "", 100, play = true, tile = false),
+        Ov("ham_ibp", "IBP beacons (NCDXF)", Group.HAM, 0xFF3CE68A, "IBP schedule: NCDXF / IARU", 100, play = true, tile = false),
+        Ov("ham_worked", "Worked grids (log)", Group.HAM, 0xFF3CE68A, "", 45, play = true, tile = false),
+        Ov("ham_muf", "Ionosondes (MUF)", Group.HAM, 0xFFF2D35B, "Ionosondes: prop.kc2g.com (GIRO)", 100, play = false, tile = false),
+        Ov("ham_wspr", "WSPR: who hears me", Group.HAM, 0xFFFF8A80, "WSPR spots: wspr.live", 90, play = false, tile = false),
+        Ov("ham_psk", "PSK Reporter: who hears me", Group.HAM, 0xFFFFB347, "Spots: PSK Reporter (pskreporter.info)", 90, play = false, tile = false),
+        Ov("sp_aurora", "Aurora (OVATION)", Group.SPACE, 0xFF3CE68A, "Aurora: NOAA SWPC OVATION", 60, play = true, tile = false),
+        Ov("sp_drap", "HF absorption (D-RAP)", Group.SPACE, 0xFFFF8C1A, "D-RAP: NOAA SWPC", 55, play = true, tile = false),
+        Ov("ev_cyclones", "Tropical cyclones (NHC)", Group.EVENTS, 0xFFFF6B6B, "Tropical cyclones: NOAA NHC", 90, play = true, tile = false),
+        Ov("ev_fires", "Wildfires (NASA EONET)", Group.EVENTS, 0xFFFF8C1A, "Wildfires and floods: NASA EONET", 90, play = true, tile = false),
+        Ov("ev_floods", "Floods (NASA EONET)", Group.EVENTS, 0xFF4FC3F7, "Wildfires and floods: NASA EONET", 90, play = true, tile = false),
+        Ov("ev_buoys", "Buoys (NOAA NDBC)", Group.EVENTS, 0xFF4FC3F7, "Buoys: NOAA NDBC", 90, play = true, tile = false),
+        Ov("ev_balloons", "Balloons (SondeHub)", Group.EVENTS, 0xFFE8EEF3, "Balloons: SondeHub amateur", 90, play = false, tile = false),
+        Ov("ev_aircraft", "Aircraft (adsb.lol)", Group.EVENTS, 0xFFC9D4DE, "Aircraft: adsb.lol (ODbL)", 80, play = false, tile = false),
+        Ov("ev_launches", "Rocket launches", Group.EVENTS, 0xFFB39DDB, "Launches: The Space Devs Launch Library 2", 90, play = false, tile = false),
+        Ov("city_lights", "City lights (NASA)", Group.SKY, 0xFFF2D35B, "City lights: NASA GIBS (VIIRS 2012)", 60, play = true, tile = true),
         Ov("night", "Day / night line", Group.SKY, 0xFFFFB347, "", 40, play = true, tile = false),
         Ov("meteosat", "Clouds (Meteosat IR)", Group.SATELLITE, 0xFFE8EEF3, "Contains modified EUMETSAT Meteosat data", 55, play = true, tile = true),
         Ov("owm_clouds", "Cloud cover", Group.FORECAST, 0xFFC9D4DE, "Weather data provided by OpenWeather", 50, play = true, tile = true, needsOwmKey = true),
@@ -89,8 +111,15 @@ object MapOverlays {
             baseUrl + "$layer/${MapTileIndex.getZoom(index)}/${MapTileIndex.getX(index)}/${MapTileIndex.getY(index)}.png?appid=$key"
     }
 
+    private class GibsSource : OnlineTileSourceBase("GIBS-citylights", 1, 8, 256, ".jpg",
+        arrayOf("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_CityLights_2012/default/2012-03-12/GoogleMapsCompatible_Level8/")) {
+        override fun getTileURLString(index: Long): String =
+            baseUrl + "${MapTileIndex.getZoom(index)}/${MapTileIndex.getY(index)}/${MapTileIndex.getX(index)}.jpg"
+    }
+
     /** Tile source of a tile overlay, or null while its layer names are not known yet (or the OpenWeather key is missing). */
     fun source(ctx: Context, ov: Ov, owmKey: String): ITileSource? {
+        if (ov.id == "city_lights") return GibsSource()
         OWM[ov.id]?.let { return if (owmKey.isBlank()) null else OwmSource(it, owmKey) }
         val base = WMS_BASE[ov.id] ?: return null
         val layers = FIXED_LAYERS[ov.id] ?: knownLayers(ctx, ov.id) ?: run { fetchLayers(ctx, ov.id, base); return null }

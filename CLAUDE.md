@@ -112,8 +112,21 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   contorno y etiqueta, fichas `MapCard` con METAR / TAF en Share Tech Mono y GO TO / ROTOR. Política de privacidad rev. 4 (tracker,
   `web/privacy.html`). 1149 comprobaciones. Sin probar contra el servidor real ni en el móvil. **Capas de OpenHamClock**
   (accius/openhamclock, MIT; maqueta aprobada): aurora (OVATION), DRAP, ciclones tropicales (NHC), mapa de MUF (prop.kc2g.com,
-  condiciones por leer), rejilla Maidenhead, zonas CQ / ITU, círculo máximo, balizas IBP y locators trabajados: sin hacer;
-  Manuel marcará cuáles.
+  condiciones por leer), rejilla Maidenhead, zonas CQ / ITU, círculo máximo, balizas IBP y locators trabajados.
+- **Capas al estilo OpenHamClock** (2026-11-13; Manuel: «De openhamclock para la app todas las posibles»): núcleo
+  `HamLayers.kt` (lectores con la forma de cada fuente según el código de OpenHamClock, MIT: OVATION, D-RAP, NHC
+  `CurrentStorms.json` + KMZ de trayectoria y cono, KC2G, EONET, SondeHub, adsb.lol, Launch Library 2, NDBC `latest_obs.txt`,
+  wspr.live, PSK Reporter, zonas CQ / ITU; calculados: horario IBP de NCDXF, círculo máximo con camino largo, rejilla
+  Maidenhead), `HamLayersFetcher.kt` (solo con la capa encendida y el mapa abierto, cada 30 s comprueba; intervalos por
+  fuente), `HamMapDraw.kt` (celdas de aurora / D-RAP / locators trabajados, rejilla, zonas, círculo máximo con pulsación
+  larga, balizas IBP en el aire, MUF, quién me oye, ciclones, incendios, inundaciones, boyas, globos, aviones,
+  lanzamientos; fichas `MapCard`), luces de ciudades (NASA GIBS, teselas). Grupos HAM, SPACE y EVENTS de `MapOverlays`.
+  **Fuera de Google Play** hasta leer sus condiciones para una app de pago: KC2G, wspr.live, PSK Reporter, SondeHub,
+  adsb.lol, The Space Devs. Zonas: `assets/zones/{cq,itu}.geojson` (HB9HIL, MIT, simplificadas a 0,05°;
+  `assets/licenses/MIT-hamradio-zones.txt`). Créditos en About; privacidad rev. 5. **No hechas**: Winlink (pide clave de
+  desarrollador), Meshtastic y N3FJP (red local / escritorio), RBN (ya está en el DX cluster), rayos de Blitzortung
+  (no comercial), VOACAP (lo calcula el servidor de OpenHamClock). 1176 comprobaciones. Sin probar contra los servidores
+  reales ni en el móvil.
 
 ## Pendiente
 - **PORTUS de Puertos del Estado, para después de publicar en Google Play** (Manuel, 2026-11-10): datos y mapas oceanográficos (boyas, mareógrafos, radar HF, previsión de oleaje, viento, nivel del mar y corrientes) en el mapa y quizá en la pestaña AIS. Widgets por iframe (`portus.puertos.es/Portus/docs/widgets.pdf`: su uso implica aceptar el aviso legal de puertos.es y avisar a webmaster@puertos.es) o WMS (`geoserver.puertos.es`, confirmado solo para zonas de servicio). Antes, pedir conformidad a webmaster@puertos.es para una app de pago.

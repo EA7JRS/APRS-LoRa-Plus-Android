@@ -142,7 +142,7 @@ object MapLayers {
 }
 
 /** Marker image: the APRS symbol with the callsign beside it. */
-private object MarkerArt {
+internal object MarkerArt {
     private val cache = LruCache<String, Bitmap>(400)
 
     /** [sub]: a second line under the callsign (the weather of a weather station: "21° 12 km/h"). */
@@ -264,7 +264,7 @@ private object MarkerArt {
 }
 
 /** What a touched shape on the map shows: title, rows and source. */
-private data class MapCard(val title: String, val color: Int, val rows: List<Pair<String, String>>, val source: String,
+internal data class MapCard(val title: String, val color: Int, val rows: List<Pair<String, String>>, val source: String,
                            val lat: Double? = null, val lon: Double? = null, val mono: List<Pair<String, String>> = emptyList())
 
 private class MapHolder(val map: MapView) {
@@ -314,6 +314,15 @@ fun MapScreen(nav: Navigator) {
     val shown = all.filter { it.lat != null && it.lon != null && now - it.lastMs <= minutes * 60_000L }
     val me = Own.position()
     val focus = MapFocus.call
+    // layers that follow OpenHamClock (HAM, SPACE, EVENTS): downloads while the map is open
+    val ham by HamLayersFetcher.data.collectAsState()
+    val gcTarget by HamLayersFetcher.gcTarget.collectAsState()
+    val qsos by AppState.qsoLog.collectAsState()
+    val ovAvail = ovOn.filter { id -> MapOverlays.available.any { it.id == id } }.toSet()
+    val hamNow = rememberNow(if ("ham_ibp" in ovAvail) 5_000 else 60_000)
+    if (ovAvail.any { it.startsWith("ham_") || it.startsWith("sp_") || it.startsWith("ev_") }) LaunchedEffect(ovAvail) {
+        while (true) { HamLayersFetcher.tick(ctx, settings, ovAvail); kotlinx.coroutines.delay(30_000) }
+    }
     KeepHeardFresh(30_000)
 
     val holder = remember {
@@ -493,6 +502,8 @@ fun MapScreen(nav: Navigator) {
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 setOnMarkerClickListener { _, _ -> true }
             })
+            val gcTo = gcTarget ?: shown.firstOrNull { it.call == focus }?.let { it.lat!! to it.lon!! }
+            holder.dynamic.addAll(0, hamOverlays(map, ctx, ovAvail, { opacity(it) }, ham, me, gcTo, qsos, maxOf(hamNow, System.currentTimeMillis())) { card = it })
             map.overlays.addAll(holder.dynamic)
             if (focus != null && holder.focused != focus) {
                 shown.firstOrNull { it.call == focus }?.let { map.controller.animateTo(GeoPoint(it.lat!!, it.lon!!)); holder.centered = true }
