@@ -190,6 +190,27 @@ object DxCluster {
  */
 object Cty {
     const val URL = "https://www.country-files.com/cty/cty.dat"
+    /** Where to download it, in order: AD1C's site and the Win-Test mirror (same data; CTY_WT_MOD.DAT has more exact callsigns). */
+    val URLS = listOf(URL, "https://download.win-test.com/files/country/CTY_WT_MOD.DAT", "https://download.win-test.com/files/country/CTY.DAT")
+    /** Files looked for inside a zip (country-files.com gives cty-NNNN.zip), in this order. */
+    private val ZIP_NAMES = listOf("CTY.DAT", "CTY_WT_MOD.DAT", "CTY_WT.DAT", "WL_CTY.DAT")
+
+    /**
+     * The text of a country file from what the user chose or downloaded: the file itself (ISO-8859-1, as CT wrote it) or the
+     * cty.dat inside a zip. Null if it is a zip without one.
+     */
+    fun textOf(bytes: ByteArray): String? {
+        if (bytes.size < 4 || bytes[0] != 'P'.code.toByte() || bytes[1] != 'K'.code.toByte()) return String(bytes, Charsets.ISO_8859_1)
+        val found = HashMap<String, ByteArray>()
+        java.util.zip.ZipInputStream(bytes.inputStream()).use { z ->
+            while (true) {
+                val e = z.nextEntry ?: break
+                val name = e.name.substringAfterLast('/').uppercase(Locale.US)
+                if (!e.isDirectory && name in ZIP_NAMES) found[name] = z.readBytes()
+            }
+        }
+        return ZIP_NAMES.firstNotNullOfOrNull { found[it] }?.let { String(it, Charsets.ISO_8859_1) }
+    }
 
     data class Entity(val name: String, val cqz: Int, val ituz: Int, val continent: String, val lat: Double, val lon: Double, val prefix: String)
 
@@ -220,7 +241,9 @@ object Cty {
         val prefixes = HashMap<String, Entity>()
         val exact = HashMap<String, Entity>()
         var count = 0
-        val records = text.replace("\r", "").split(';')
+        // Win-Test files (CTY_WT.DAT, CTY_WT_MOD.DAT) carry "#" comment lines: before a record, inside the prefix list
+        val clean = text.removePrefix("\uFEFF").replace("\r", "").lineSequence().filter { !it.trimStart().startsWith("#") }.joinToString("\n")
+        val records = clean.split(';')
         for (rec in records) {
             val r = rec.trim()
             if (r.isEmpty()) continue

@@ -1245,6 +1245,26 @@ private fun testNetWeather() {
     eq(TrackerMode.name(TrackerMode.AIS), "AIS receiver", "AIS mode name")
 }
 
+private fun testCtyFiles() {
+    // Win-Test format (CTY_WT_MOD.DAT): "#" comment lines before records and inside the prefix list, overrides <lat/lon>
+    val wt = "#\n# RELEASE 2026.01.31.00\n# based on CTY-3607\n#\n# ADIF 246\n" +
+        "Sov Mil Order of Malta:   15:  28:  EU:   41.90:   -12.43:    -1.0:  1A:\n    1A;\n# ADIF 260\n" +
+        "Monaco:                   14:  27:  EU:   43.73:    -7.40:    -1.0:  3A:\n    3A;\n# ADIF 4\n" +
+        "Agalega & St. Brandon:    39:  53:  AF:  -10.45:   -56.67:    -4.0:  3B6:\n# Agalega Islands\n    3B6<-10.42/-56.58>,\n# St. Brandon Islands\n    3B7<-16.58/-59.62>;\n"
+    val t = Cty.parse(wt)
+    eq(t.entities, 3, "Win-Test file: entities with comments"); eq(t.lookup("3A2MW")?.name, "Monaco", "Win-Test file: Monaco")
+    near(t.lookup("3B7SP")!!.lat, -16.58, 1e-9, "Win-Test file: St. Brandon override"); check(t.lookup("3B7SP")!!.lon > 59.0, "Win-Test file: east longitude")
+    eq(Cty.parse(wt.replace("\n", "\r\n")).entities, 3, "Win-Test file with CRLF")
+    // zip of country-files.com: cty.dat inside (any folder, any case)
+    val bos = java.io.ByteArrayOutputStream()
+    java.util.zip.ZipOutputStream(bos).use { z ->
+        z.putNextEntry(java.util.zip.ZipEntry("cty-3611/readme.txt")); z.write("hi".toByteArray()); z.closeEntry()
+        z.putNextEntry(java.util.zip.ZipEntry("cty-3611/cty.dat")); z.write(wt.toByteArray(Charsets.ISO_8859_1)); z.closeEntry()
+    }
+    eq(Cty.textOf(bos.toByteArray())?.let { Cty.parse(it).entities }, 3, "cty.dat inside a zip")
+    eq(Cty.textOf("Monaco: 14: 27: EU: 43.73: -7.40: -1.0: 3A:\n 3A;".toByteArray()), "Monaco: 14: 27: EU: 43.73: -7.40: -1.0: 3A:\n 3A;", "plain file text")
+}
+
 private fun testRepeaterBookConnect() {
     // RepeaterBook Connect content provider row (column names of the RepeaterBookConnect demo): RX = output, TX = input
     val r = RepeaterBook.fromConnect(mapOf("Call" to "ED7ZAB", "RX" to 145.6375, "TX" to 145.0375, "CTCSS" to 88.5, "DCS" to 0L,
@@ -1436,7 +1456,7 @@ private fun testSame() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testOfficialAlerts(); testSame()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testOfficialAlerts(); testSame()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

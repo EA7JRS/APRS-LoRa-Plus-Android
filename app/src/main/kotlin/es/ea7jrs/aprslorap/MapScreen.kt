@@ -331,7 +331,7 @@ fun MapScreen(nav: Navigator) {
                     WxRadarSource.aemetNational(aemetKey) { r -> r.onSuccess { aemet = it; aemetMsg = "" }.onFailure { aemetMsg = it.message ?: "AEMET: error" } }
                 }
             }
-            OutlinedTextField(aemetKey, { aemetKey = it.trim(); settings.aemetKey = aemetKey }, label = { Text("Your AEMET OpenData API key (free, opendata.aemet.es)") },
+            OutlinedTextField(aemetKey, { aemetKey = it.filterNot { c -> c.isWhitespace() }; settings.aemetKey = aemetKey }, label = { Text("Your AEMET OpenData API key (free, opendata.aemet.es)") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             Text("AEMET: the latest national radar composite of Spain, as an image (source: AEMET).",
                 fontSize = 12.sp, color = Alp.Muted)

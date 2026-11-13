@@ -81,7 +81,7 @@ fun DxClusterScreen(nav: Navigator) {
     val ctyPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             val ok = try { ctx.contentResolver.openInputStream(it)?.use { s -> DxLink.importCty(ctx, s.readBytes()) } ?: false } catch (_: Exception) { false }
-            if (ok) AppState.notice.value = "cty.dat loaded" else AppState.error.value = "That file is not a cty.dat"
+            if (ok) AppState.notice.value = "cty.dat loaded" else AppState.error.value = "Not a country file: choose cty.dat, CTY_WT.DAT, CTY_WT_MOD.DAT or the cty zip"
         }
     }
 

@@ -223,29 +223,33 @@ object DxLink {
     }
 
     private fun download(f: File) {
-        try {
-            val c = URL(Cty.URL).openConnection() as HttpURLConnection
-            c.connectTimeout = 15_000; c.readTimeout = 30_000
-            c.setRequestProperty("User-Agent", "APRSLoRaPlus-Android")
-            if (c.responseCode != 200) throw Exception("HTTP ${c.responseCode}")
-            val bytes = c.inputStream.use { it.readBytes() }
-            val text = String(bytes, Charsets.ISO_8859_1)
-            if (Cty.parse(text).entities < 300) throw Exception("not a cty.dat")
-            val tmp = File(f.parentFile, "cty.dat.tmp")
-            tmp.writeBytes(bytes)
-            tmp.renameTo(f)
-            parseCty(f)
-        } catch (e: Exception) {
-            set { it.copy(ctyStatus = if (cty != null) it.ctyStatus + " (update failed)" else "cty.dat not downloaded: " + (e.message ?: "error")) }
+        var why = ""
+        for (url in Cty.URLS) {
+            try {
+                val c = URL(url).openConnection() as HttpURLConnection
+                c.connectTimeout = 15_000; c.readTimeout = 30_000
+                c.setRequestProperty("User-Agent", "APRSLoRaPlus/${BuildConfig.VERSION_NAME} (Android)")
+                if (c.responseCode != 200) throw Exception("HTTP ${c.responseCode}")
+                val text = Cty.textOf(c.inputStream.use { it.readBytes() }) ?: throw Exception("no cty.dat inside")
+                if (Cty.parse(text).entities < 300) throw Exception("not a cty.dat")
+                val tmp = File(f.parentFile, "cty.dat.tmp")
+                tmp.writeBytes(text.toByteArray(Charsets.ISO_8859_1))
+                tmp.renameTo(f)
+                parseCty(f)
+                return
+            } catch (e: Exception) {
+                why = (java.net.URI(url).host ?: url) + ": " + (e.message ?: "error")
+            }
         }
+        set { it.copy(ctyStatus = if (cty != null) it.ctyStatus + " (update failed)" else "cty.dat not downloaded ($why): choose the file") }
     }
 
-    /** Import of a cty.dat chosen by the user (no internet, or a newer one). */
+    /** Import of a country file chosen by the user (no internet, or a newer one): cty.dat, CTY_WT.DAT, CTY_WT_MOD.DAT or the zip of country-files.com. */
     fun importCty(ctx: Context, bytes: ByteArray): Boolean {
-        val text = String(bytes, Charsets.ISO_8859_1)
+        val text = try { Cty.textOf(bytes) } catch (_: Exception) { null } ?: return false
         if (Cty.parse(text).entities < 300) return false
         val f = File(ctx.filesDir, "cty.dat")
-        f.writeBytes(bytes)
+        f.writeBytes(text.toByteArray(Charsets.ISO_8859_1))
         parseCty(f)
         return true
     }

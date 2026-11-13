@@ -16,21 +16,40 @@ import java.util.concurrent.Executors
 object WxRadarSource {
     private val exec = Executors.newSingleThreadExecutor()
 
-    private fun http(url: String, timeoutMs: Int = 15_000): ByteArray {
+    /** An error answer: AEMET sends JSON with "descripcion" (e.g. "API key invalido" for HTTP 401). */
+    private class HttpError(val code: Int, val body: String) : Exception("HTTP $code")
+
+    private fun http(url: String, timeoutMs: Int = 15_000, key: String? = null): ByteArray {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = timeoutMs; c.readTimeout = timeoutMs
-        c.setRequestProperty("User-Agent", "APRS-LoRa-Plus-Android")
+        c.setRequestProperty("User-Agent", "APRSLoRaPlus/${BuildConfig.VERSION_NAME} (Android)")
+        c.setRequestProperty("Accept", "application/json")
+        if (key != null) c.setRequestProperty("api_key", key)        // AEMET OpenData takes the key in the header too
         try {
-            if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
+            if (c.responseCode !in 200..299)
+                throw HttpError(c.responseCode, try { c.errorStream?.use { String(it.readBytes(), Charsets.ISO_8859_1) } ?: "" } catch (_: Exception) { "" })
             return c.inputStream.use { it.readBytes() }
         } finally { c.disconnect() }
     }
 
     /** AEMET national radar composite (Spain): the answer gives the address of the image. */
-    fun aemetNational(key: String, done: (Result<Bitmap>) -> Unit) {
+    fun aemetNational(keyIn: String, done: (Result<Bitmap>) -> Unit) {
+        // the key is a long JWT ("eyJ..."): without spaces, line breaks or quotes copied from the e-mail
+        val key = keyIn.filterNot { it.isWhitespace() || it == '"' || it == '\'' }
         exec.execute {
             done(runCatching {
-                val url = WxRadar.aemetData(String(http(WxRadar.AEMET_NATIONAL + "?api_key=" + java.net.URLEncoder.encode(key, "UTF-8")), Charsets.ISO_8859_1)).getOrThrow()
+                if (key.isEmpty()) throw IllegalStateException("AEMET: put your OpenData API key")
+                val answer = try {
+                    http(WxRadar.AEMET_NATIONAL + "?api_key=" + java.net.URLEncoder.encode(key, "UTF-8"), key = key)
+                } catch (e: HttpError) {
+                    val why = WxRadar.aemetData(e.body).exceptionOrNull()?.message?.removePrefix("AEMET: ")?.takeIf { it.isNotBlank() && !it.startsWith("unreadable") }
+                    throw IllegalStateException(when (e.code) {
+                        401 -> "AEMET rejected the key (HTTP 401${why?.let { ": $it" } ?: ""}). Paste the whole key from AEMET's e-mail (a long text that starts eyJ); a new key has to be confirmed first from the link in that e-mail."
+                        429 -> "AEMET: too many requests, wait a minute"
+                        else -> "AEMET: HTTP ${e.code}" + (why?.let { ": $it" } ?: "")
+                    })
+                }
+                val url = WxRadar.aemetData(String(answer, Charsets.ISO_8859_1)).getOrThrow()
                 val img = http(url, 30_000)
                 BitmapFactory.decodeByteArray(img, 0, img.size) ?: throw IllegalStateException("AEMET: the image could not be read")
             })
