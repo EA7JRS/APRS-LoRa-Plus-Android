@@ -50,6 +50,7 @@ object AdsbLink {
     fun startRtl(ctx: Context, host: String, port: Int, ppm: Int, gainPercent: Int) {
         stop()
         SdrControl.disconnect()                                          // rtl_tcp takes one client only
+        if (LrFhssLink.usesRtl) LrFhssLink.stop()
         running = true; usesRtl = true
         closeDriver = host == "127.0.0.1" || host == "localhost"
         set { State(running = true, status = "Connecting to the RTL-SDR ($host:$port)...") }

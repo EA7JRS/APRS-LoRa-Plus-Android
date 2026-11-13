@@ -285,6 +285,23 @@ class Settings(ctx: Context) {
     var sdrConnectPlay: Boolean
         get() = p.getBoolean("sdrconnect_play", true)
         set(v) { p.edit().putBoolean("sdrconnect_play", v).apply() }
+    // ---- LR-FHSS receiver and the beacons heard by the app
+    var lrFhssSource: String                         // USB (RTL-SDR on this phone), RTLTCP (rtl_tcp on the network), FILE (I / Q recording)
+        get() = p.getString("lrfhss_source", "USB")!!
+        set(v) { p.edit().putString("lrfhss_source", v).apply() }
+    var lrFhssHost: String
+        get() = p.getString("lrfhss_host", "")!!
+        set(v) { p.edit().putString("lrfhss_host", v).apply() }
+    var lrFhssPort: Int
+        get() = p.getInt("lrfhss_port", 1234)
+        set(v) { p.edit().putInt("lrfhss_port", v).apply() }
+    var lrFhssFreqHz: Long                           // the tracker's default: 434.000 MHz
+        get() = p.getLong("lrfhss_freq", 434_000_000L)
+        set(v) { p.edit().putLong("lrfhss_freq", v).apply() }
+    var beaconAutoSpot: String                       // off, lrfhss (LR-FHSS beacons only), all
+        get() = p.getString("beacon_auto_spot", "off")!!
+        set(v) { p.edit().putString("beacon_auto_spot", v).apply() }
+
     // ---- ADS-B (aircraft on 1090 MHz)
     var adsbSource: String                           // USB (RTL-SDR on this phone), RTLTCP (rtl_tcp on the network), NET (dump1090 / readsb)
         get() = p.getString("adsb_source", "USB")!!

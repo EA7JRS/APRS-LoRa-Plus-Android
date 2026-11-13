@@ -84,7 +84,8 @@ private fun band(c: String) = when (c) { "160m", "80m" -> 0xFFB39DDB; "40m" -> 0
  */
 internal fun hamOverlays(
     map: MapView, ctx: Context, on: Set<String>, opacity: (String) -> Int, d: HamLayersFetcher.Data, me: Pair<Double, Double>?,
-    gcTo: Pair<Double, Double>?, qsos: List<Qso>, nowMs: Long, aircraft: List<es.ea7jrs.aprslorap.core.Adsb.Aircraft>, onCard: (MapCard) -> Unit,
+    gcTo: Pair<Double, Double>?, qsos: List<Qso>, nowMs: Long, aircraft: List<es.ea7jrs.aprslorap.core.Adsb.Aircraft>,
+    beacons: List<es.ea7jrs.aprslorap.core.Beacons.Heard>, onCard: (MapCard) -> Unit,
 ): List<Overlay> {
     val out = ArrayList<Overlay>()
     val dens = ctx.resources.displayMetrics.density
@@ -206,6 +207,25 @@ internal fun hamOverlays(
             MapCard("Balloon " + b.call, 0xFFE8EEF3.toInt(), listOf("Altitude" to (b.altM?.let { String.format(Locale.US, "%,.0f m", it) } ?: ""), "Heard" to Fmt.ago(b.timeMs), "Comment" to b.comment)
                 .filter { it.second.isNotBlank() }, "SondeHub amateur", b.lat, b.lon)
         })
+    }
+    if ("ham_beacons" in on) {
+        val shown = HashSet<String>()
+        for (h in beacons) {
+            val (la, lo) = h.position ?: continue
+            if (!shown.add(h.call) || !inView(la, lo)) continue                  // newest entry of each station
+            val col = if (h.mode == "LR-FHSS") 0xFF3CE68A.toInt() else 0xFF28B5E1.toInt()
+            if (me != null && nowMs - h.timeMs < 30 * 60_000L) for (seg in HamLayers.greatCircle(me.first, me.second, la, lo)) out.add(Polyline(map).apply {
+                setPoints(seg.map { GeoPoint(it.first, it.second) })
+                outlinePaint.color = col; outlinePaint.alpha = a255("ham_beacons") * 6 / 10; outlinePaint.strokeWidth = 1.5f * dens
+            })
+            out.add(tag(GeoPoint(la, lo), h.call + " " + h.mode, dark, col, "ham_beacons") {
+                MapCard(h.call + " · " + h.mode, col, listOf("Frequency" to String.format(Locale.US, "%.4f MHz", h.freqHz / 1e6), "Locator" to h.locator,
+                    "Distance" to (me?.let { Fmt.km(es.ea7jrs.aprslorap.core.Geo.distanceKm(it.first, it.second, la, lo)) + " · " + Fmt.deg(es.ea7jrs.aprslorap.core.Geo.bearingDeg(it.first, it.second, la, lo)) } ?: ""),
+                    "Signal" to (h.snrDb?.let { "$it dB" } ?: ""), "Power" to (h.powerDbm?.let { "$it dBm" } ?: ""), "Heard" to Fmt.ago(h.timeMs) + ", ${h.count} times",
+                    "Spotted" to (if (h.spottedMs > 0) Fmt.ago(h.spottedMs) else ""))
+                    .filter { it.second.isNotBlank() }, "Received by this app", la, lo, if (h.text.isNotEmpty()) listOf("Text" to h.text) else emptyList())
+            })
+        }
     }
     if ("ev_aircraft" in on) for (p in aircraft.take(300)) {
         val la = p.lat ?: continue; val lo = p.lon ?: continue

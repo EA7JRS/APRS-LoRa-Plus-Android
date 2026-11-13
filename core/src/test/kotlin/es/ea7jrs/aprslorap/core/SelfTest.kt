@@ -1935,9 +1935,139 @@ private fun testRbn() {
     check(Rbn.position(null, "G4XYZ-#", "IO91wm")?.let { abs(it.first - 51.5) < 0.1 } == true && Rbn.position(null, "G4XYZ-#", null) == null, "RBN position from locator")
 }
 
+private fun testLrFhss() {
+    // reference bits from an independent encoder (pyLR-FHSS), used here only as test vectors
+    fun s(b: IntArray) = b.joinToString("")
+    val h1 = LrFhss.Header(11, 3, true, true, 0, 0, 2)
+    val h2 = LrFhss.Header(20, 0, false, true, 2, 77, 0)
+    val b1 = LrFhss.headerBits(h1); val b2 = LrFhss.headerBits(h2)
+    eq(b1.size, 114, "LR-FHSS: header burst of 114 bits")
+    eq(s(b1.copyOfRange(2, 42)), "1010010000100101010000101010001110001000", "LR-FHSS: header, first half")
+    eq(s(b1.copyOfRange(74, 114)), "0100000101101001000101110101000110000101", "LR-FHSS: header, second half")
+    eq(s(b2.copyOfRange(2, 42)) + s(b2.copyOfRange(74, 114)), "01111001000001100110101101110011101111100111101010001001110100100000000011011010", "LR-FHSS: second header")
+    eq(s(b1.copyOfRange(42, 74)), "00010010101011010001000000011011", "LR-FHSS: sync word 12 AD 10 1B")
+    fun soft(b: IntArray) = FloatArray(b.size) { if (b[it] == 1) 1f else -1f }
+    eq(LrFhss.decodeHeader(soft(b1)), h1, "LR-FHSS: header decoded")
+    eq(LrFhss.decodeHeader(soft(b2)), h2, "LR-FHSS: second header decoded")
+    val rnd = java.util.Random(7)
+    val noisy = soft(b1); for (i in intArrayOf(5, 17, 30, 80, 95, 110)) noisy[i] = -noisy[i] * 0.6f
+    eq(LrFhss.decodeHeader(noisy), h1, "LR-FHSS: header with 6 wrong bits")
+    LrFhss.decodeHeader(FloatArray(114) { rnd.nextFloat() - 0.5f })
+    val msg = "PB1 EA7JRS IM67NG 14".toByteArray()
+    val ref = arrayOf("101000101110110101100110010010111101010000010010011101000011001001111010110001001111110001111110011001000101011101110001000100101111011101000110000100100100101111000010001110100000111000001110001111111001011011000100111",
+        "100001000110100001001001001101010010000011101101011000110010011111001010000110101010000100010010111100001000001010000110010001111111001111011110110110111011010101110000101001001011001111101110101110111101101011000110001000111111110100000001000100010001100110011111100110011",
+        "1001001001101011011001010111110010110100100110110000101111010011101100110010011100101101111111110010100100010110011000010000001010010010111110101111000011111101100010111000011001000101100010100100110111100010101011001101111001001011000001110101100101110001010110010111111111101101000011110100111000010001100110010000001011010100000110100000001000110010000101011101",
+        "101100000101101100010001010000010111111000001111011000100100101101110110000101101110111111111000110101000001010010110010110100110010011111101101011111100011101110000110101001011000000000000001011110110001001000111010100100100100000111110010111100000101101101001111000011011101011111101111100001100110101011100100001001101101001101100001010000101001001110111001100000100101000001010100111110001101111111001111101101110100110111000101101011000011011100110000011011111101110101011110001010010101010001100110000011001110110001011111110100110110101100")
+    for (cr in 0..3) {
+        val blocks = LrFhss.payloadBlocks(msg, cr)
+        val air = blocks.joinToString("") { s(it.copyOfRange(2, it.size)) }
+        eq(air, ref[cr], "LR-FHSS: payload bits, CR ${LrFhss.CR_NAMES[cr]}")
+        val h = LrFhss.Header(msg.size, cr, true, true, 0, 0, 0)
+        eq(air.length, h.codedBits, "LR-FHSS: coded bits, CR $cr")
+        eq(blocks.size, h.fragments, "LR-FHSS: fragments, CR $cr")
+        eq(blocks.last().size, h.fragmentSymbols(blocks.size - 1), "LR-FHSS: last fragment, CR $cr")
+        val sb = FloatArray(air.length) { if (air[it] == '1') 1f else -1f }
+        eq(LrFhss.decodePayload(sb, h)?.let { String(it) }, "PB1 EA7JRS IM67NG 14", "LR-FHSS: payload decoded, CR $cr")
+        if (cr >= 2) {
+            val bad = sb.copyOf(); for (i in 0 until bad.size step 13) bad[i] = -bad[i]
+            eq(LrFhss.decodePayload(bad, h)?.let { String(it) }, "PB1 EA7JRS IM67NG 14", "LR-FHSS: payload with 1 wrong bit in 13, CR $cr")
+            val lost = sb.copyOf(); for (i in 48 until 96) lost[i] = 0f
+            eq(LrFhss.decodePayload(lost, h)?.let { String(it) }, "PB1 EA7JRS IM67NG 14", "LR-FHSS: payload with a fragment lost, CR $cr")
+        }
+        val wrong = sb.copyOf(); for (i in 0 until wrong.size step 2) wrong[i] = -wrong[i]
+        check(LrFhss.decodePayload(wrong, h) == null, "LR-FHSS: garbage fails the CRC, CR $cr")
+    }
+    eq(LrFhss.whiten(LrFhss.whiten(intArrayOf(1, 2, 0x80, 0xFF, 0x55)), undo = true).toList(), listOf(1, 2, 0x80, 0xFF, 0x55), "LR-FHSS: whitening undone")
+    fun pll(a: DoubleArray?) = a?.map { Math.round(it / LrFhss.PLL_STEP_HZ).toInt() }
+    eq(pll(LrFhss.hopOffsetsHz(true, 0, 0, 3, 11)), listOf(10240, -14080, -6144, -2048, 6144, 14336, 2048, -18432, 18432, -10240, 10240, -14336, -6144, -2048), "LR-FHSS: hop sequence 0, 39 kHz, narrow grid")
+    eq(pll(LrFhss.hopOffsetsHz(true, 0, 5, 3, 4)), listOf(-2048, 14592, -14336, 10240, -6144, 2048, -18432), "LR-FHSS: hop sequence 5")
+    check(LrFhss.hopOffsetsHz(false, 2, 77, 2, 5) == null, "LR-FHSS: no sequence for that grid")
+    eq(LrFhss.burstSymbols(h1, 3, 0), 115, "LR-FHSS: first burst one symbol longer")
+    eq(LrFhss.parseBeacon(msg), LrFhss.Beacon("EA7JRS", "IM67NG", 14), "LR-FHSS: beacon text")
+    eq(LrFhss.parseBeacon("PB1 EA7JRS-7 IM67NG55 -3".toByteArray()), LrFhss.Beacon("EA7JRS-7", "IM67NG55", -3), "LR-FHSS: beacon with SSID and 8 characters")
+    check(LrFhss.parseBeacon("PB1 EA7JRS ZZ99 14".toByteArray()) == null && LrFhss.parseBeacon("hello world".toByteArray()) == null && LrFhss.parseBeacon("PB1 EA7JRS IM67 x".toByteArray()) == null, "LR-FHSS: not a beacon")
+
+    // the radio side: a whole packet, off frequency and in noise, through the receiver
+    fun receive(cr: Int, centre: Double, sigma: Float, seed: Long, spoil: Boolean = false): List<LrFhss.Packet> {
+        val got = ArrayList<LrFhss.Packet>()
+        val rx = LrFhss.Receiver { got.add(it) }
+        val iq = LrFhss.modulate(msg, cr, true, 0, 0, 3, centre)!!
+        val r = java.util.Random(seed)
+        if (spoil) for (i in (4000 + (3 * 114 + 100 + 4) * 128) * 2 until (4000 + (3 * 114 + 150) * 128) * 2) iq[i] = 0f      // most of the third fragment gone
+        for (i in iq.indices) iq[i] += sigma * r.nextGaussian().toFloat()
+        rx.feed(iq); rx.feed(FloatArray(4000) { sigma * r.nextGaussian().toFloat() })
+        return got
+    }
+    val clean = receive(3, 1234.5, 0.3f, 1)
+    eq(clean.size, 1, "LR-FHSS receiver: one packet, once")
+    eq(clean.firstOrNull()?.beacon, LrFhss.Beacon("EA7JRS", "IM67NG", 14), "LR-FHSS receiver: the beacon")
+    near(clean.firstOrNull()?.centreHz ?: 0.0, 1234.5, 3.0, "LR-FHSS receiver: carrier found")
+    eq(receive(0, -3210.0, 0.5f, 2).firstOrNull()?.text, "PB1 EA7JRS IM67NG 14", "LR-FHSS receiver: CR 5/6, -3.2 kHz")
+    eq(receive(3, 777.0, 3.5f, 3).firstOrNull()?.text, "PB1 EA7JRS IM67NG 14", "LR-FHSS receiver: 14 dB under the noise of the 62.5 kHz")
+    eq(receive(3, -150.0, 1.0f, 4, spoil = true).firstOrNull()?.text, "PB1 EA7JRS IM67NG 14", "LR-FHSS receiver: a fragment lost")
+    run {
+        val got = ArrayList<LrFhss.Packet>(); val rx = LrFhss.Receiver { got.add(it) }
+        val r = java.util.Random(5); rx.feed(FloatArray(62500 * 2 * 4) { r.nextGaussian().toFloat() })
+        eq(got.size, 0, "LR-FHSS receiver: nothing out of noise")
+    }
+    // resampler: a tone 20 kHz above a centre that sits 250 kHz up in a 1 MS/s input comes out at 30 kHz
+    run {
+        val o = ArrayList<Float>()
+        val rs = LrFhss.Resampler(1_000_000.0, 250_000.0) { i, q -> o.add(i); o.add(q) }
+        for (n in 0 until 200_000) { val p = 2 * Math.PI * 270_000.0 * n / 1e6; rs.feed(Math.cos(p).toFloat(), Math.sin(p).toFloat()) }
+        near(o.size / 2.0, 12500.0, 20.0, "LR-FHSS resampler: 1 MS/s to 62.5 kS/s")
+        var sr = 0.0; var si = 0.0; var pw = 0.0
+        for (k in 1000 until 6000) { val a = o[2 * k].toDouble(); val b = o[2 * k + 1].toDouble(); val a0 = o[2 * k - 2].toDouble(); val b0 = o[2 * k - 1].toDouble(); sr += a * a0 + b * b0; si += b * a0 - a * b0; pw += a * a + b * b }
+        near(Math.atan2(si, sr) / (2 * Math.PI) * 62500, 20000.0, 1.0, "LR-FHSS resampler: tone where it should be")
+        near(pw / 5000, 1.0, 0.05, "LR-FHSS resampler: gain 1 in the band")
+        // and a packet through it, from 250 kS/s made by repeating samples
+        val got = ArrayList<LrFhss.Packet>(); val rx = LrFhss.Receiver { got.add(it) }
+        val rs2 = LrFhss.Resampler(250_000.0) { i, q -> rx.feed(i, q) }
+        val iq = LrFhss.modulate(msg, 3, true, 0, 0, 3, 500.0)!!
+        for (k in 0 until iq.size / 2) repeat(4) { rs2.feed(iq[2 * k], iq[2 * k + 1]) }
+        repeat(40_000) { rs2.feed(0f, 0f) }
+        eq(got.firstOrNull()?.text, "PB1 EA7JRS IM67NG 14", "LR-FHSS: packet through the resampler")
+    }
+}
+
+private fun testBeacons() {
+    val now = 1_800_000_000_000L
+    val log = Beacons.Log()
+    val h = Beacons.fromLrFhss(LrFhss.Beacon("EA7JRS", "IM67NG", 14), 434_000_000L, 9, now, "PB1 EA7JRS IM67NG 14")
+    eq(Beacons.spotCommand(h), "DX 434000.0 EA7JRS LR-FHSS IM67NG 14dBm 9dB", "Beacons: spot of an LR-FHSS beacon")
+    check(h.position != null && Math.abs(h.position!!.first - 37.27) < 0.05 && h.band == "70cm", "Beacons: position from the locator, band")
+    check(log.due(h, now), "Beacons: new station is due")
+    log.add(h); log.spotted(h.key, now)
+    check(!log.due(h, now + 10 * 60_000L) && log.due(h, now + 31 * 60_000L), "Beacons: one spot per station, mode and band every 30 min")
+    val w = Beacons.fromWsjt(Wsjt.Decode(now, -21.4, 0.3, 1500, "EA7JRS IM67 23", rfHz = 14_097_100L), Wsjt.Mode.WSPR, 14_095_600L)
+    eq(w?.let { listOf(it.call, it.mode, it.locator, it.powerDbm, it.snrDb, it.freqHz) }, listOf<Any?>("EA7JRS", "WSPR", "IM67", 23, -21, 14_097_100L), "Beacons: WSPR")
+    val f = Beacons.fromWsjt(Wsjt.Decode(now, -5.0, 0.1, 1200, "CQ EA7JRS IM67"), Wsjt.Mode.FT8, 14_074_000L)
+    eq(f?.let { listOf(it.call, it.mode, it.locator, it.freqHz) }, listOf<Any?>("EA7JRS", "FT8", "IM67", 14_075_200L), "Beacons: FT8 CQ")
+    check(Beacons.fromWsjt(Wsjt.Decode(now, -5.0, 0.1, 1200, "CQ EA7JRS IM67"), Wsjt.Mode.FT8, null) == null, "Beacons: no dial, no entry")
+    log.add(f!!); log.add(f.copy(locator = "", timeMs = now + 15_000))
+    eq(log.list().map { it.call + " " + it.mode + " " + it.locator + " " + it.count }, listOf("EA7JRS FT8 IM67 2", "EA7JRS LR-FHSS IM67NG 1"), "Beacons: newest first, locator kept, counted")
+    eq(Beacons.spotComment(Beacons.fromCw("ed7yaa", "BEACON", "im76hr", 144_450_000L, 12, now)), "CW IM76HR 12dB BEACON", "Beacons: CW comment")
+    // IQ WAV
+    fun wav(fmt: Int, bits: Int, rate: Int, extra: ByteArray = ByteArray(0)): ByteArray {
+        val b = java.nio.ByteBuffer.allocate(44 + extra.size + 16).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        b.put("RIFF".toByteArray()).putInt(0).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16).putShort(fmt.toShort()).putShort(2).putInt(rate).putInt(rate * 2 * bits / 8).putShort((2 * bits / 8).toShort()).putShort(bits.toShort())
+        b.put(extra).put("data".toByteArray()).putInt(16)
+        return b.array()
+    }
+    val w16 = wav(1, 16, 125000)
+    val info = IqWav.parse(w16)
+    eq(info?.let { listOf(it.sampleRate, it.format, it.bits, it.dataOffset, it.frameBytes) }, listOf(125000, 1, 16, 44, 4), "IqWav: 16-bit header")
+    w16[44] = 0; w16[45] = 0x40; w16[46] = 0; w16[47] = 0xC0.toByte()
+    val fl = FloatArray(2); IqWav.toFloat(info!!, w16, 44, 1, fl)
+    check(fl[0] == 0.5f && fl[1] == -0.5f, "IqWav: 16-bit samples")
+    val aux = java.nio.ByteBuffer.allocate(8 + 36).order(java.nio.ByteOrder.LITTLE_ENDIAN).put("auxi".toByteArray()).putInt(36).put(ByteArray(32)).putInt(434_000_000).array()
+    eq(IqWav.parse(wav(3, 32, 62500, aux))?.let { listOf<Any?>(it.format, it.dataOffset, it.centreHz) }, listOf<Any?>(3, 88, 434_000_000L), "IqWav: float file with the centre frequency")
+    check(IqWav.parse(ByteArray(64)) == null, "IqWav: not a WAV")
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

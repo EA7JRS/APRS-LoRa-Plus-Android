@@ -61,6 +61,7 @@ object Spotter {
         if (started) return
         started = true
         app = ctx.applicationContext
+        BeaconHub.init(ctx)
         settings = Settings(ctx)
         exec.scheduleWithFixedDelay({ heartbeat() }, 2, Spots.WsjtxUdp.HEARTBEAT_S.toLong(), TimeUnit.SECONDS)
         schedulePsk()
@@ -124,6 +125,7 @@ object Spotter {
 
     /** After each FT8 / FT4 / WSPR / FST4W slot ([dialHz] null: unknown, nothing goes out that needs it). */
     fun onWsjtSlot(mode: Wsjt.Mode, slotMs: Long, decodes: List<Wsjt.Decode>, dialHz: Long?) {
+        for (d in decodes) es.ea7jrs.aprslorap.core.Beacons.fromWsjt(d, mode, dialHz)?.let { BeaconHub.add(it) }
         if (!started) return
         exec.execute {
             val s = settings ?: return@execute
@@ -183,6 +185,7 @@ object Spotter {
         val f = rfHz?.let { String.format(java.util.Locale.US, "%.1f kHz", it / 1000.0) } ?: "frequency unknown"
         set { it.copy(lastCw = "${h.call} (${h.comment}) $f, $snr dB, $wpm wpm, from the $from · $cwSpots CW spots") }
         if (rfHz == null || rfHz <= 0) return
+        BeaconHub.add(es.ea7jrs.aprslorap.core.Beacons.fromCw(h.call, h.comment, "", rfHz, snr, now))
         if (telnet != null) broadcast(Spots.skimmerLine(s.callsign, rfHz, h.call, snr, wpm, h.comment, now))
         if (s.spotPsk && validated()) {
             val loc = locator()

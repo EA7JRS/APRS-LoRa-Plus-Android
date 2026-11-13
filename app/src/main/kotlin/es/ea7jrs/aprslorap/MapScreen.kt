@@ -315,6 +315,7 @@ fun MapScreen(nav: Navigator) {
     // layers that follow OpenHamClock (HAM, SPACE, EVENTS): downloads while the map is open
     val ham by HamLayersFetcher.data.collectAsState()
     val aircraft by AppState.aircraft.collectAsState()
+    val beacons by AppState.beacons.collectAsState()
     val gcTarget by HamLayersFetcher.gcTarget.collectAsState()
     val qsos by AppState.qsoLog.collectAsState()
     val ovAvail = ovOn.filter { id -> MapOverlays.available.any { it.id == id } }.toSet()
@@ -488,7 +489,7 @@ fun MapScreen(nav: Navigator) {
                 setOnMarkerClickListener { _, _ -> true }
             })
             val gcTo = gcTarget ?: shown.firstOrNull { it.call == focus }?.let { it.lat!! to it.lon!! }
-            holder.dynamic.addAll(0, hamOverlays(map, ctx, ovAvail, { opacity(it) }, ham, me, gcTo, qsos, maxOf(hamNow, System.currentTimeMillis()), aircraft) { card = it })
+            holder.dynamic.addAll(0, hamOverlays(map, ctx, ovAvail, { opacity(it) }, ham, me, gcTo, qsos, maxOf(hamNow, System.currentTimeMillis()), aircraft, beacons) { card = it })
             map.overlays.addAll(holder.dynamic)
             if (focus != null && holder.focused != focus) {
                 shown.firstOrNull { it.call == focus }?.let { map.controller.animateTo(GeoPoint(it.lat!!, it.lon!!)); holder.centered = true }

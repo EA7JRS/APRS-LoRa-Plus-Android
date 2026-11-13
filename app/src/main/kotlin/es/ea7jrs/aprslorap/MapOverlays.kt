@@ -43,6 +43,7 @@ object MapOverlays {
         Ov("ham_itu", "ITU zones", Group.HAM, 0xFFFFB347, "CQ / ITU zones: HB9HIL hamradio-zones-geojson (MIT)", 70, play = true, tile = false),
         Ov("ham_gc", "Great circle", Group.HAM, 0xFF28B5E1, "", 100, play = true, tile = false),
         Ov("ham_ibp", "IBP beacons (NCDXF)", Group.HAM, 0xFF3CE68A, "IBP schedule: NCDXF / IARU", 100, play = true, tile = false),
+        Ov("ham_beacons", "Beacons heard by this app (SDR)", Group.HAM, 0xFF3CE68A, "", 100, play = true, tile = false),
         Ov("ham_worked", "Worked grids (log)", Group.HAM, 0xFF3CE68A, "", 45, play = true, tile = false),
         Ov("ham_wspr", "WSPR: who hears me", Group.HAM, 0xFFFF8A80, "WSPR spots: wspr.live", 90, play = true, tile = false),
         Ov("ham_psk", "PSK Reporter: who hears me", Group.HAM, 0xFFFFB347, "Spots: PSK Reporter (pskreporter.info)", 90, play = true, tile = false),

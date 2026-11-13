@@ -215,6 +215,29 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   1A, 1S y BS7; EA8 con la de Canarias, EA9 con la de Ceuta y Melilla, G / GM / GW con Inglaterra / Escocia / Gales). En la lista delante
   del indicativo y en la ficha delante de la entidad; en el mapa RBN, delante de la estación y del skimmer (lista y ficha). Necesita cty.dat cargado. 1288 comprobaciones.
 
+- **Receptor LR-FHSS y balizas oídas** (2026-11-13; Manuel: «podemos incluir un decodificador de este tipo de baliza?», «Situar las
+  estaciones recibidas sobre mapa, y enviarlas como Spot al cluster»; lo de «LR-FHSS descartado» de más arriba era recibirlo con el
+  tracker): núcleo `LrFhss.kt`, escrito como inverso de lo que arma RadioLib (`SX126x_LR_FHSS.cpp`, MIT; Semtech SWDM001, Clear BSD):
+  cabecera (CRC-8, código 1/2 de 16 estados con cola mordida, entrelazado, palabra de sincronía 12 AD 10 1B), datos (blanqueo, CRC-16
+  0x755B, código 1/3 con perforado 5/6, 2/3, 1/2, entrelazado, fragmentos de 48 bits + 2 de guarda), secuencia de saltos, texto
+  `PB1 <indicativo> <locator> <dBm>`; `Receiver` (I / Q a 62,5 kS/s: sincronía en cada bin de 244 Hz con detección diferencial, luego
+  cabecera y cada fragmento en su salto; un solo paquete aunque se lean las 3 cabeceras), `Resampler` (cualquier tasa → 62,5 kS/s, con
+  desplazamiento), `modulate` (señal de prueba). Comprobado con vectores de un codificador independiente (pyLR-FHSS, solo como
+  prueba: su `phy/` deriva de un código MATLAB solo académico, **no portar**) y con su grabación real de un SX126x (39 kHz, «hello
+  world», decodificada; no está en el repositorio). Sensibilidad medida con ruido sintético: decodifica hasta ~6 dB de Eb/N0
+  (el chip de pasarela llega más abajo). `Beacons.kt` (`Heard`, `Log`, comentario y orden de spot) e `IqWav` (WAV de I / Q: 8 / 16 /
+  24 / 32 bits y float, RF64, frecuencia central del bloque `auxi`). App: `LrFhssLink.kt` (rtl_tcp a 1 MS/s sintonizado 250 kHz por
+  debajo —el dongle del móvil con el driver o un rtl_tcp de la red— o **grabación I / Q** elegida como archivo: SDRconnect, SDR++...),
+  `BeaconHub` (lista común `AppState.beacons`: LR-FHSS, y WSPR / FST4W / FT8 / FT4 / CW desde `Spotter`), herramienta **Beacons heard
+  (SDR)** (`BeaconsTab.kt`, `Tool.BEACONS`, tecla [F] BEACONS en RADIO —SPOTS pasa a SYSTEM—, menú lateral: receptor, lista con
+  distancia y rumbo, MAP, ROTOR, SPOT), capa del mapa `ham_beacons` (marca, línea de círculo máximo 30 min, ficha) y **spots al DX
+  cluster**: tecla SPOT (`DX <kHz> <indicativo> LR-FHSS IM67NG 14dBm 9dB`) y AUTO SPOT OFF / LR-FHSS / ALL (apagado de serie; indicativo
+  validado, cluster conectado, nunca el indicativo propio, una vez por modo y banda cada 30 min, un spot cada 20 s como mucho).
+  1356 comprobaciones. **Sin probar en el móvil ni con un tracker real** (pendiente la grabación I / Q de Manuel a 434,000 MHz;
+  número de cabeceras e id de secuencia del tracker = los de serie de RadioLib, 3 y 0, pero el receptor no depende de ellos). Falta:
+  flujo I / Q en vivo de SDRconnect (formato de sus tramas binarias de tipo 2 por confirmar), G3RUH 9600 con ese mismo flujo, locator
+  de las balizas CW en la lista, cuadrícula ancha (FCC) con más de 39 kHz de banda sin probar.
+
 ## Pendiente
 - **PORTUS de Puertos del Estado, para después de publicar en Google Play** (Manuel, 2026-11-10): datos y mapas oceanográficos (boyas, mareógrafos, radar HF, previsión de oleaje, viento, nivel del mar y corrientes) en el mapa y quizá en la pestaña AIS. Widgets por iframe (`portus.puertos.es/Portus/docs/widgets.pdf`: su uso implica aceptar el aviso legal de puertos.es y avisar a webmaster@puertos.es) o WMS (`geoserver.puertos.es`, confirmado solo para zonas de servicio). Antes, pedir conformidad a webmaster@puertos.es para una app de pago.
 - **Registro de equipos propios, aparcado para el futuro** (Manuel, 2026-11-10; eligió nivel 1 + 2): la app funciona con cualquier tracker APRS LoRa+ y los equipos registrados por Manuel salen como «VERIFIED · EA7JRS» con funciones extra. Propuesta: código = firma ECDSA P-256 de la MAC (+ indicativo y fecha) con una clave de Manuel distinta de la de `tx_unlock`, herramienta en el firmware, orden `reg` / campo en la WebUI, código y MAC en `info`, comprobación sin conexión en la app. Básico: mensajes, estaciones, mapa, Heard, iGate, notificaciones / Android Auto, alertas recibidas, actualizar firmware. Extra: todo el control BLE (Tracker, Sensors, Config, Remote, SAT, DAPNET / CW, FM / AIS de la T-TWR, seguir con el rotor, A-GPS, tiempo de internet al tracker, luces, EAI). Sin decidir: si las herramientas solo del móvil (SDR, Modes, Log, DX cluster, caja del rotor) son extra, y cómo se entregan los códigos (con el equipo vendido, bien; vendidos sueltos = contenido digital → Play Billing). Con GPL no es protección absoluta. **Firmware oficial o modificado** (hecho 2026-11-11, Manuel eligió este punto): el tracker manda en `info` la huella `elf` (`app_elf_sha256` de `esp_app_desc_t`) y `ota/<placa>.json` lleva `elfSha` (leído del .bin en 0x20 + 0x90 por `tools/make_web_assets.py`); `FirmwareSite.origin` → «OFFICIAL» / «CUSTOM FIRMWARE» en Firmware y Tracker (solo la versión publicada se puede comprobar), solo informativa (un firmware modificado puede mentir; compilado por el usuario casi nunca da el mismo SHA-256). Descartado bloquear: Secure Boot V2 + cifrado de flash + periférico DS del S3 es irreversible (eFuses) y choca con la cláusula anti-tivoización de la GPL-3 en equipos vendidos; quitar funciones por firmware modificado, zona gris.
