@@ -213,7 +213,7 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 - **Bandera del país en el DX cluster** (Manuel, 2026-11-13): núcleo `Flags.kt` (prefijo principal de cty.dat → código ISO → emoji de
   bandera, lo dibuja la fuente de emojis del móvil, sin imágenes en la app; 343 de las 346 entidades del cty.dat de WSJT-X, sin bandera
   1A, 1S y BS7; EA8 con la de Canarias, EA9 con la de Ceuta y Melilla, G / GM / GW con Inglaterra / Escocia / Gales). En la lista delante
-  del indicativo y en la ficha delante de la entidad. Necesita cty.dat cargado. 1288 comprobaciones.
+  del indicativo y en la ficha delante de la entidad; en el mapa RBN, delante de la estación y del skimmer (lista y ficha). Necesita cty.dat cargado. 1288 comprobaciones.
 
 ## Pendiente
 - **PORTUS de Puertos del Estado, para después de publicar en Google Play** (Manuel, 2026-11-10): datos y mapas oceanográficos (boyas, mareógrafos, radar HF, previsión de oleaje, viento, nivel del mar y corrientes) en el mapa y quizá en la pestaña AIS. Widgets por iframe (`portus.puertos.es/Portus/docs/widgets.pdf`: su uso implica aceptar el aviso legal de puertos.es y avisar a webmaster@puertos.es) o WMS (`geoserver.puertos.es`, confirmado solo para zonas de servicio). Antes, pedir conformidad a webmaster@puertos.es para una app de pago.

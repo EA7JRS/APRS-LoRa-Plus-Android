@@ -205,8 +205,8 @@ fun RbnScreen(nav: Navigator) {
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (h == sel) Alp.GreenBg else Color.Transparent).clickable { sel = h }
                         .padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (h.freqKhz >= 30_000.0) String.format(Locale.US, "%.3f", h.freqKhz / 1000.0) else String.format(Locale.US, "%.1f", h.freqKhz), fontFamily = TechMono, fontSize = 13.sp, color = Color(bandColor(h.band)), modifier = Modifier.width(74.dp))
-                        Text(h.dx, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Alp.Amber, modifier = Modifier.width(76.dp), maxLines = 1)
-                        Text(h.skimmer.removeSuffix("-#"), fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(flagged(cty, h.dx), fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Alp.Amber, modifier = Modifier.width(98.dp), maxLines = 1)
+                        Text(flagged(cty, h.skimmer.removeSuffix("-#")), fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text((h.snrDb?.let { "$it dB" } ?: "") + (h.speed?.let { " · $it ${h.speedUnit.lowercase(Locale.US)}" } ?: ""), fontFamily = TechMono, fontSize = 12.sp, color = Alp.Muted)
                         Text(Fmt.ago(h.receivedMs).replace(" ago", ""), fontSize = 11.sp, color = Alp.Muted)
                     }
@@ -228,12 +228,16 @@ fun RbnScreen(nav: Navigator) {
     }
 }
 
+/** The callsign with the flag of its DXCC entity in front (cty.dat), or alone if it has none. */
+private fun flagged(cty: es.ea7jrs.aprslorap.core.Cty.Table?, call: String): String =
+    es.ea7jrs.aprslorap.core.Flags.of(cty?.lookup(call)).let { if (it.isEmpty()) call else "$it $call" }
+
 @Composable
 private fun HearCard(h: Rbn.Hear, me: Pair<Double, Double>?, cty: es.ea7jrs.aprslorap.core.Cty.Table?, onClose: () -> Unit) {
     val sp = Rbn.position(cty, h.skimmer, h.skimmerLocator)
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Alp.Panel).border(1.dp, Color(bandColor(h.band)), RoundedCornerShape(12.dp))
         .clickable(onClick = onClose).padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("${h.skimmer.removeSuffix("-#")} hears ${h.dx}", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(bandColor(h.band)))
+        Text("${flagged(cty, h.skimmer.removeSuffix("-#"))} hears ${flagged(cty, h.dx)}", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(bandColor(h.band)))
         Text(Rbn.freqText(h.freqKhz) + " · ${h.mode} · ${h.kind.label}" + (h.snrDb?.let { " · $it dB" } ?: "") +
             (h.speed?.let { " · $it ${h.speedUnit}" } ?: "") + " · ${h.utc}Z", fontSize = 13.sp, color = Alp.Text)
         val pos = (h.skimmerLocator?.let { "skimmer at $it" } ?: cty?.lookup(h.skimmer.removeSuffix("-#"))?.let { "skimmer in ${it.name} (centre of the entity)" }) ?: ""
