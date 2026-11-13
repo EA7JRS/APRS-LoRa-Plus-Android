@@ -48,6 +48,7 @@ import es.ea7jrs.aprslorap.core.DxCluster
 import es.ea7jrs.aprslorap.core.Geo
 import es.ea7jrs.aprslorap.core.HamLayers
 import es.ea7jrs.aprslorap.core.Rbn
+import es.ea7jrs.aprslorap.core.Spots
 import es.ea7jrs.aprslorap.core.Terminator
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -58,11 +59,21 @@ import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import java.util.Locale
 
-private val RBN_BANDS = listOf("ALL", "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m")
+/** ALL, HF (below 30 MHz), VHF+ (30 MHz and up) and every amateur band, LF to millimetre waves. */
+private val RBN_BANDS = listOf("ALL", "HF", "VHF+") + Spots.BANDS.map { it.first }
 private fun bandColor(b: String?): Int = when (b) {
-    "160m", "80m", "60m" -> 0xFFB39DDB; "40m" -> 0xFF4FC3F7; "30m" -> 0xFF28B5E1; "20m" -> 0xFF3CE68A; "17m" -> 0xFFA5E35B
-    "15m" -> 0xFFF2D35B; "12m" -> 0xFFFFB347; "10m" -> 0xFFFF8C1A; "6m" -> 0xFFFF6B6B; else -> 0xFFE8EEF3
+    "2200m", "630m" -> 0xFF9FA8DA; "160m", "80m", "60m" -> 0xFFB39DDB; "40m" -> 0xFF4FC3F7; "30m" -> 0xFF28B5E1
+    "20m" -> 0xFF3CE68A; "17m" -> 0xFFA5E35B; "15m" -> 0xFFF2D35B; "12m" -> 0xFFFFB347; "10m" -> 0xFFFF8C1A
+    "8m", "6m", "4m" -> 0xFFFF6B6B; "2m", "1.25m" -> 0xFFF06292; "70cm", "33cm" -> 0xFFCE93D8
+    "HF", "VHF+" -> 0xFFE8EEF3; null, "" -> 0xFFE8EEF3; else -> 0xFFFFD54F
 }.toInt()
+
+private fun inBand(h: Rbn.Hear, band: String) = when (band) {
+    "ALL" -> true
+    "HF" -> h.freqKhz < 30000.0
+    "VHF+" -> h.freqKhz >= 30000.0
+    else -> h.band == band
+}
 
 /**
  * Map of the Reverse Beacon Network (reversebeacon.net): which skimmers hear a station (you by default, a callsign you
@@ -87,7 +98,7 @@ fun RbnScreen(nav: Navigator) {
     val validated = Licence.isValid(settings)
     val target = if (who == 0) myCall else call.trim().uppercase(Locale.US)
     val list = all.filter { h ->
-        now - h.receivedMs <= minutes * 60_000L && (band == "ALL" || h.band == band) && when (who) {
+        now - h.receivedMs <= minutes * 60_000L && inBand(h, band) && when (who) {
             0, 1 -> target.isNotEmpty() && (h.dx == target || h.dx.substringBefore('/') == target)
             2 -> h.kind == Rbn.Kind.BEACON || h.kind == Rbn.Kind.NCDXF
             else -> true

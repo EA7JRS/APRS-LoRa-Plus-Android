@@ -125,7 +125,7 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   adsb.lol, The Space Devs. Zonas: `assets/zones/{cq,itu}.geojson` (HB9HIL, MIT, simplificadas a 0,05°;
   `assets/licenses/MIT-hamradio-zones.txt`). Créditos en About; privacidad rev. 5. **No hechas**: Winlink (pide clave de
   desarrollador), Meshtastic y N3FJP (red local / escritorio), RBN (ya está en el DX cluster), rayos de Blitzortung
-  (no comercial), VOACAP (lo calcula el servidor de OpenHamClock). 1176 comprobaciones. Sin probar contra los servidores
+  (no comercial), VOACAP (lo calcula el servidor de OpenHamClock). 1187 comprobaciones. Sin probar contra los servidores
   reales ni en el móvil.
 - **Pantalla IBP** (2026-11-13; Manuel: «Mapa para NCDXF/IARU International Beacon Project», enlaces a
   `ncdxf.org/beacon/beaconlocations.html` y `beaconprograms.html`): `IbpScreen.kt`, ruta `IBP`, tecla [F] IBP (página
@@ -142,7 +142,7 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   [F] RBN (página RADIO) y menú lateral «RBN map». Los avisos de los skimmers («CALL-#») llegan por la conexión del DX
   cluster (RBN pide que los usuarios finales usen un cluster «retail», no sus nodos telnet 7000 / 7001), `DxLink.rbn`
   (todas las recepciones, 60 min, 3000) y núcleo `Rbn.kt` (SNR, WPM / BPS, CQ / BEACON / NCDXF; posición = locator del
-  nodo o centro de la entidad de cty.dat). Filtros: yo, un indicativo, balizas, todo; banda; 10 / 30 / 60 min. Mapa con
+  nodo o centro de la entidad de cty.dat). Filtros: yo, un indicativo, balizas, todo; banda (ALL, HF, VHF+ y todas las bandas de aficionado de 2200 m a 1 mm, `Spots.BANDS`; Manuel 2026-11-13); 10 / 30 / 60 min. Mapa con
   la línea gris y líneas de círculo máximo skimmer → estación (color por banda, opacidad por SNR), lista y ficha; ASK
   manda `sh/dx <indicativo> 50`. Sin probar con un nodo real.
 

@@ -55,11 +55,16 @@ object Spots {
         val khz = hz / 1000
         return BANDS.firstOrNull { khz in it.second }?.first
     }
-    private val BANDS = listOf(
+    /** Every amateur band, LF to millimetre waves (IARU allocations of the three regions joined). */
+    val BANDS = listOf(
         "2200m" to 135L..138L, "630m" to 472L..479L, "160m" to 1800L..2000L, "80m" to 3500L..4000L, "60m" to 5060L..5450L,
         "40m" to 7000L..7300L, "30m" to 10100L..10150L, "20m" to 14000L..14350L, "17m" to 18068L..18168L, "15m" to 21000L..21450L,
-        "12m" to 24890L..24990L, "10m" to 28000L..29700L, "6m" to 50000L..54000L, "4m" to 70000L..71000L, "2m" to 144000L..148000L,
-        "1.25m" to 222000L..225000L, "70cm" to 420000L..450000L, "23cm" to 1240000L..1300000L,
+        "12m" to 24890L..24990L, "10m" to 28000L..29700L, "8m" to 40000L..45000L, "6m" to 50000L..54000L,
+        "4m" to 70000L..71000L, "2m" to 144000L..148000L, "1.25m" to 222000L..225000L, "70cm" to 420000L..450000L,
+        "33cm" to 902000L..928000L, "23cm" to 1240000L..1300000L, "13cm" to 2300000L..2450000L, "9cm" to 3300000L..3500000L,
+        "6cm" to 5650000L..5925000L, "3cm" to 10000000L..10500000L, "1.25cm" to 24000000L..24250000L,
+        "6mm" to 47000000L..47200000L, "4mm" to 75500000L..81000000L, "2.5mm" to 122250000L..123000000L,
+        "2mm" to 134000000L..149000000L, "1mm" to 241000000L..250000000L,
     )
 
     // ------------------------------------------------------------------ FT8 / FT4 messages

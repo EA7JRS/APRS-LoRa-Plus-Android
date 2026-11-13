@@ -1656,6 +1656,11 @@ private fun testRbn() {
     val now = 1794558600_000L
     val a = DxCluster.parse("DX de DL8LAS-#:   14025.0  EA7JRS       CW    12 dB  22 WPM  CQ      0830Z", "EA1XYZ", now)!!
     val h = Rbn.of(a)
+    check(Spots.band(144_050_000) == "2m" && Spots.band(432_100_000) == "70cm" && Spots.band(1_296_200_000) == "23cm" &&
+        Spots.band(10_368_100_000) == "3cm" && Spots.band(70_200_000) == "4m" && Spots.band(146_500_000) == "2m" && Spots.band(60_000_000) == null,
+        "Spots: VHF / UHF / SHF bands")
+    val v = Rbn.of(DxCluster.parse("DX de OH6BG-#:   144050.0  SM6FMB       CW    9 dB  20 WPM  CQ      0830Z", "EA1XYZ", now)!!)
+    check(v?.band == "2m", "RBN 2 m spot")
     check(h != null && h.skimmer == "DL8LAS-#" && h.snrDb == 12 && h.speed == 22 && h.speedUnit == "WPM" && h.kind == Rbn.Kind.CQ && h.band == "20m", "RBN CW CQ spot")
     val b = Rbn.of(DxCluster.parse("DX de EA5WU-#:    14100.0  4X6TU        CW    25 dB  22 WPM  NCDXF B 0830Z", "", now)!!)
     check(b != null && b.kind == Rbn.Kind.NCDXF, "RBN NCDXF beacon")
