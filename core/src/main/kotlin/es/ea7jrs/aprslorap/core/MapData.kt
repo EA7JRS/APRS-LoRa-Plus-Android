@@ -87,7 +87,7 @@ object Terminator {
         return dec to lon
     }
 
-    /** Night side as a closed ring of (lat, lon) points, from −180° to 180° and closed over the dark pole (Mercator limit ±85°). */
+    /** Night side as a closed ring of (lat, lon) points, from −180° to 180° and back along the dark pole (Mercator limit ±85°); no step longer than 360° / [steps]. */
     fun nightPolygon(timeMs: Long, steps: Int = 180): List<Pair<Double, Double>> {
         val (dec0, sunLon) = subsolar(timeMs)
         val dec = if (kotlin.math.abs(dec0) < 0.01) 0.01 else dec0          // at an equinox the line is almost a meridian pair
@@ -98,7 +98,9 @@ object Terminator {
             pts.add(lat.coerceIn(-85.0, 85.0) to lon)
         }
         val pole = if (dec > 0) -85.0 else 85.0                               // the pole without sun
-        pts.add(pole to 180.0); pts.add(pole to -180.0)
+        // back along the dark pole in short steps: the map joins two points by the shorter way round, so a single
+        // step from 180° to −180° would be no step at all and the shade would fall on the wrong side
+        for (i in steps downTo 0) pts.add(pole to -180.0 + 360.0 * i / steps)
         return pts
     }
 

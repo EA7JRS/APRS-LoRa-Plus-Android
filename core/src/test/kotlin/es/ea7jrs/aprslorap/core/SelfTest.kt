@@ -1417,6 +1417,10 @@ private fun testMapData() {
     val ring = Terminator.nightPolygon(midnight)
     check(inRing(ring, 40.4, -3.7), "Madrid inside the night polygon at midnight"); check(!inRing(ring, 35.7, 139.7), "Tokyo outside the night polygon at 00 UTC")
     check(!inRing(Terminator.nightPolygon(june), 40.4, -3.7), "Madrid outside the night polygon at noon")
+    val nov = java.time.Instant.parse("2026-11-13T16:30:00Z").toEpochMilli()      // afternoon in Spain, night in Japan, day in New York
+    val rn = Terminator.nightPolygon(nov)
+    check(!inRing(rn, 36.5, -6.3) && inRing(rn, 35.7, 139.7) && !inRing(rn, 40.7, -74.0) && inRing(rn, 80.0, 0.0) && !inRing(rn, -80.0, 0.0), "night polygon in November")
+    check((1 until rn.size).all { Math.abs(rn[it].second - rn[it - 1].second) <= 2.01 } && Math.abs(rn.last().second - rn.first().second) < 0.01, "night polygon: no long steps in longitude")
     // earthquake magnitude
     eq(OfficialAlert("q", AlertSrc.USGS, 0, "M4.1 Earthquake", "Spain").magnitude(), 4.1, "quake magnitude")
     check(OfficialAlert("a", AlertSrc.AEMET, 2, "Wind", "Murcia").magnitude() == null, "no magnitude for weather alerts")
