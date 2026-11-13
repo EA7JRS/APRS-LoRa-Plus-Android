@@ -582,4 +582,12 @@ class Settings(ctx: Context) {
     var dxActivity: String
         get() = p.getString("dx_act", "ANY")!!
         set(v) { p.edit().putString("dx_act", v).apply() }
+    /** RBN alert range: OFF, UHF (300 MHz and up) or VHF (30 MHz and up). */
+    var rbnAlert: String
+        get() = p.getString("rbn_alert", "OFF")!!
+        set(v) { p.edit().putString("rbn_alert", v).apply() }
+    /** RBN alerts only for skimmer spots of your own callsign. */
+    var rbnAlertMe: Boolean
+        get() = p.getBoolean("rbn_alert_me", false)
+        set(v) { p.edit().putBoolean("rbn_alert_me", v).apply() }
 }

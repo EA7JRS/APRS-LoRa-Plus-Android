@@ -144,7 +144,11 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   (todas las recepciones, 60 min, 3000) y núcleo `Rbn.kt` (SNR, WPM / BPS, CQ / BEACON / NCDXF; posición = locator del
   nodo o centro de la entidad de cty.dat). Filtros: yo, un indicativo, balizas, todo; banda (ALL, HF, VHF+ y todas las bandas de aficionado de 2200 m a 1 mm, `Spots.BANDS`; Manuel 2026-11-13); 10 / 30 / 60 min. Mapa con
   la línea gris y líneas de círculo máximo skimmer → estación (color por banda, opacidad por SNR), lista y ficha; ASK
-  manda `sh/dx <indicativo> 50`. Sin probar con un nodo real.
+  manda `sh/dx <indicativo> 50`. **Aviso de VHF / UHF** (Manuel 2026-11-13): fila ALERT OFF / UHF (≥ 300 MHz) / VHF+ (≥ 30 MHz) y ONLY ME
+  (`settings.rbnAlert` / `rbnAlertMe`, `Rbn.Alerter`: cada estación una vez por banda cada 30 min, sin avisos de avisos de más de
+  15 min, los del historial del nodo al conectar); notificación `MessagingStyle` (también en Android Auto) «OH6BG hears SM6FMB on
+  432.050 MHz · CW · CQ · 12 dB · 20 WPM · 0830Z»; desde 30 MHz las frecuencias van en MHz. Solo con la conexión al cluster
+  abierta. 1197 comprobaciones. Sin probar con un nodo real.
 
 ## Pendiente
 - **PORTUS de Puertos del Estado, para después de publicar en Google Play** (Manuel, 2026-11-10): datos y mapas oceanográficos (boyas, mareógrafos, radar HF, previsión de oleaje, viento, nivel del mar y corrientes) en el mapa y quizá en la pestaña AIS. Widgets por iframe (`portus.puertos.es/Portus/docs/widgets.pdf`: su uso implica aceptar el aviso legal de puertos.es y avisar a webmaster@puertos.es) o WMS (`geoserver.puertos.es`, confirmado solo para zonas de servicio). Antes, pedir conformidad a webmaster@puertos.es para una app de pago.

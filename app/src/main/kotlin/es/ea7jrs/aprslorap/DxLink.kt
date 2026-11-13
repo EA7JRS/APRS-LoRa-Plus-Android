@@ -45,6 +45,19 @@ object DxLink {
     @Volatile var autoFilter = DxCluster.Filter()
     @Volatile var autoLongPath = false
 
+    // RBN alerts: skimmer spots on VHF / UHF as notifications (also read aloud by Android Auto)
+    @Volatile var rbnAlert = es.ea7jrs.aprslorap.core.Rbn.AlertRange.OFF
+    @Volatile var rbnAlertMe = false
+    @Volatile private var myCall = ""
+    @Volatile private var appCtx: Context? = null
+    private val alerter = es.ea7jrs.aprslorap.core.Rbn.Alerter()
+
+    /** Reads the RBN alert settings (at connect and when they change on the RBN screen). */
+    fun loadRbnAlert(settings: Settings) {
+        rbnAlert = runCatching { es.ea7jrs.aprslorap.core.Rbn.AlertRange.valueOf(settings.rbnAlert) }.getOrDefault(es.ea7jrs.aprslorap.core.Rbn.AlertRange.OFF)
+        rbnAlertMe = settings.rbnAlertMe
+    }
+
     @Volatile private var wanted = false
     @Volatile private var sock: Socket? = null
     @Volatile private var out: OutputStream? = null
@@ -57,6 +70,9 @@ object DxLink {
     fun connect(ctx: Context, node: DxCluster.Node, call: String) {
         disconnect()
         loadCty(ctx)
+        appCtx = ctx.applicationContext
+        myCall = call.substringBefore('-').uppercase()
+        loadRbnAlert(Settings(ctx))
         wanted = true
         set { it.copy(node = node.name + " · " + node.address, status = "Connecting...") }
         thread = Thread({ run(node, call) }, "dx-cluster").apply { isDaemon = true; start() }
@@ -146,6 +162,12 @@ object DxLink {
         es.ea7jrs.aprslorap.core.Rbn.of(spot)?.let { h ->
             val old = spot.receivedMs - 60 * 60_000L
             rbn.value = (listOf(h) + rbn.value.filter { it.receivedMs > old && !(it.skimmer == h.skimmer && it.dx == h.dx && Math.abs(it.freqKhz - h.freqKhz) < 1) }).take(3000)
+            if (alerter.check(h, rbnAlert, rbnAlertMe, myCall, spot.receivedMs)) {
+                val n = AppState.notifier ?: appCtx?.let { Notifier(it) }
+                val range = if (h.freqKhz >= 300_000.0) "UHF" else "VHF"
+                n?.alert("RBN:${h.dx}:${h.band}", "RBN $range · ${h.band ?: ""}".trimEnd(' ', '·'), h.skimmer.removeSuffix("-#"),
+                    es.ea7jrs.aprslorap.core.Rbn.alertText(h), null, null, null)
+            }
         }
         var fresh = false
         set { s ->

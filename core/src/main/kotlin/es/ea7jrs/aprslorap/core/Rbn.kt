@@ -46,4 +46,53 @@ object Rbn {
         val e = table?.lookup(call.removeSuffix("-#").substringBefore('-')) ?: return null
         return e.lat to e.lon
     }
+
+    // ------------------------------------------------------------------ alerts for skimmer spots on VHF / UHF
+
+    /** Which spots raise an alert: none, 300 MHz and up (UHF and microwaves) or 30 MHz and up (VHF, UHF, microwaves). */
+    enum class AlertRange(val label: String, val minKhz: Double) { OFF("OFF", Double.MAX_VALUE), UHF("UHF", 300_000.0), VHF("VHF+", 30_000.0) }
+
+    /** "432.050 MHz" from 30 MHz up, "14025.0 kHz" below. */
+    fun freqText(khz: Double): String =
+        if (khz >= 30_000.0) String.format(java.util.Locale.US, "%.3f MHz", khz / 1000.0) else String.format(java.util.Locale.US, "%.1f kHz", khz)
+
+    /** Minutes since the spot's "HHMM" UTC (the day before if it is ahead of [nowMs]); null if it does not read. */
+    fun utcAgeMin(utc: String, nowMs: Long): Int? {
+        val t = utc.trim().removeSuffix("Z")
+        if (t.length != 4 || !t.all { it.isDigit() }) return null
+        val spot = t.substring(0, 2).toInt() * 60 + t.substring(2).toInt()
+        val now = ((nowMs / 60_000L) % 1440L).toInt()
+        return (now - spot + 1440) % 1440
+    }
+
+    /** Alert text: "OH6BG hears SM6FMB on 432.050 MHz · CW · CQ · 12 dB · 20 WPM · 0830Z". */
+    fun alertText(h: Hear): String =
+        "${h.skimmer.removeSuffix("-#")} hears ${h.dx} on ${freqText(h.freqKhz)} · ${h.mode} · ${h.kind.label}" +
+            (h.snrDb?.let { " · $it dB" } ?: "") + (h.speed?.let { " · $it ${h.speedUnit}" } ?: "") + (if (h.utc.isNotEmpty()) " · ${h.utc.removeSuffix("Z")}Z" else "")
+
+    /**
+     * Decides which skimmer spots raise an alert: in the chosen range, only stations heard about you if [onlyMe], spots no
+     * older than [maxAgeMin] (the node's history when connecting does not ring), and each station once per band every
+     * [repeatMin] minutes.
+     */
+    class Alerter(val repeatMin: Int = 30, val maxAgeMin: Int = 15) {
+        private val last = HashMap<String, Long>()
+
+        fun check(h: Hear, range: AlertRange, onlyMe: Boolean, myCall: String, nowMs: Long): Boolean {
+            if (range == AlertRange.OFF || h.freqKhz < range.minKhz) return false
+            if (onlyMe) {
+                val me = myCall.trim().uppercase()
+                if (me.isEmpty() || (h.dx != me && h.dx.substringBefore('/') != me && h.dx.substringBefore('-') != me)) return false
+            }
+            utcAgeMin(h.utc, nowMs)?.let { if (it > maxAgeMin) return false }
+            val key = h.dx + "|" + (h.band ?: freqText(h.freqKhz))
+            synchronized(last) {
+                val t = last[key]
+                if (t != null && nowMs - t < repeatMin * 60_000L) return false
+                last[key] = nowMs
+                if (last.size > 500) last.entries.removeIf { nowMs - it.value > repeatMin * 60_000L }
+            }
+            return true
+        }
+    }
 }

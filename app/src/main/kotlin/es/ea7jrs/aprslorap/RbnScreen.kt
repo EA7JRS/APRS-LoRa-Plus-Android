@@ -94,6 +94,8 @@ fun RbnScreen(nav: Navigator) {
     var band by rememberSaveable { mutableStateOf("ALL") }
     var minutes by rememberSaveable { mutableStateOf(30) }
     var sel by remember { mutableStateOf<Rbn.Hear?>(null) }
+    var alert by remember { mutableStateOf(runCatching { Rbn.AlertRange.valueOf(settings.rbnAlert) }.getOrDefault(Rbn.AlertRange.OFF)) }
+    var alertMe by remember { mutableStateOf(settings.rbnAlertMe) }
     val now = rememberNow(15_000)
     val validated = Licence.isValid(settings)
     val target = if (who == 0) myCall else call.trim().uppercase(Locale.US)
@@ -132,6 +134,14 @@ fun RbnScreen(nav: Navigator) {
             listOf(10, 30, 60).forEach { m -> Chip("$m'", m == minutes, color = Alp.Amber) { minutes = m } }
         }
         if (who == 1) OutlinedTextField(call, { call = it.uppercase(Locale.US).trim() }, label = { Text("Callsign heard by the skimmers") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("ALERT", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Alp.Muted)
+            for (r in Rbn.AlertRange.entries) Chip(r.label, r == alert, color = if (r == Rbn.AlertRange.OFF) Alp.Muted else Alp.RedSoft, height = 30.dp) {
+                alert = r; settings.rbnAlert = r.name; DxLink.loadRbnAlert(settings)
+            }
+            Chip("ONLY ME", alertMe, color = Alp.Amber, height = 30.dp) { alertMe = !alertMe; settings.rbnAlertMe = alertMe; DxLink.loadRbnAlert(settings) }
+            if (alert != Rbn.AlertRange.OFF) Text(if (alert == Rbn.AlertRange.UHF) "≥ 300 MHz" else "≥ 30 MHz", fontFamily = TechMono, fontSize = 12.sp, color = Alp.Muted)
+        }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (b in RBN_BANDS) Chip(b, b == band, color = if (b == "ALL") Alp.Cyan else Color(bandColor(b)), height = 30.dp) { band = b }
         }
@@ -192,7 +202,7 @@ fun RbnScreen(nav: Navigator) {
                 items(list, key = { it.skimmer + it.dx + it.freqKhz + it.receivedMs }) { h ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (h == sel) Alp.GreenBg else Color.Transparent).clickable { sel = h }
                         .padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(String.format(Locale.US, "%.1f", h.freqKhz), fontFamily = TechMono, fontSize = 13.sp, color = Color(bandColor(h.band)), modifier = Modifier.width(66.dp))
+                        Text(if (h.freqKhz >= 30_000.0) String.format(Locale.US, "%.3f", h.freqKhz / 1000.0) else String.format(Locale.US, "%.1f", h.freqKhz), fontFamily = TechMono, fontSize = 13.sp, color = Color(bandColor(h.band)), modifier = Modifier.width(74.dp))
                         Text(h.dx, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Alp.Amber, modifier = Modifier.width(76.dp), maxLines = 1)
                         Text(h.skimmer.removeSuffix("-#"), fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text((h.snrDb?.let { "$it dB" } ?: "") + (h.speed?.let { " · $it ${h.speedUnit.lowercase(Locale.US)}" } ?: ""), fontFamily = TechMono, fontSize = 12.sp, color = Alp.Muted)
@@ -222,7 +232,7 @@ private fun HearCard(h: Rbn.Hear, me: Pair<Double, Double>?, cty: es.ea7jrs.aprs
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Alp.Panel).border(1.dp, Color(bandColor(h.band)), RoundedCornerShape(12.dp))
         .clickable(onClick = onClose).padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text("${h.skimmer.removeSuffix("-#")} hears ${h.dx}", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(bandColor(h.band)))
-        Text(String.format(Locale.US, "%.1f kHz · %s · %s", h.freqKhz, h.mode, h.kind.label) + (h.snrDb?.let { " · $it dB" } ?: "") +
+        Text(Rbn.freqText(h.freqKhz) + " · ${h.mode} · ${h.kind.label}" + (h.snrDb?.let { " · $it dB" } ?: "") +
             (h.speed?.let { " · $it ${h.speedUnit}" } ?: "") + " · ${h.utc}Z", fontSize = 13.sp, color = Alp.Text)
         val pos = (h.skimmerLocator?.let { "skimmer at $it" } ?: cty?.lookup(h.skimmer.removeSuffix("-#"))?.let { "skimmer in ${it.name} (centre of the entity)" }) ?: ""
         val dist = if (me != null && sp != null) String.format(Locale.US, " · %,.0f km from you at %03.0f°", Geo.distanceKm(me.first, me.second, sp.first, sp.second),
