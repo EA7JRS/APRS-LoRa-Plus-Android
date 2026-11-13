@@ -520,6 +520,13 @@ class Settings(ctx: Context) {
     var mapSeamarks: Boolean
         get() = p.getBoolean("map_sea", false)
         set(v) { p.edit().putBoolean("map_sea", v).apply() }
+    /** Map overlays switched on (ids of MapOverlays, comma separated) and the opacity of each one ("id=pct;id=pct"). */
+    var mapOverlays: String
+        get() = p.getString("map_ovl", "")!!
+        set(v) { p.edit().putString("map_ovl", v).apply() }
+    var mapOpacity: String
+        get() = p.getString("map_opacity", "")!!
+        set(v) { p.edit().putString("map_opacity", v).apply() }
     /** The AEMET OpenData key for the Spanish national radar image of the map. */
     var aemetKey: String
         get() = p.getString("aemet_key", "")!!

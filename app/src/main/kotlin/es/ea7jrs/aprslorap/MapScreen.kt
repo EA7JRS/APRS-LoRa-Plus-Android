@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import es.ea7jrs.aprslorap.core.AprsSymbols
+import es.ea7jrs.aprslorap.core.Terminator
+import es.ea7jrs.aprslorap.core.magnitude
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.MapTileProviderBasic
 import org.osmdroid.tileprovider.tilesource.ITileSource
@@ -75,6 +77,7 @@ object MapLayers {
         Layer("osm", "OpenStreetMap", "© OpenStreetMap contributors"),
         Layer("pnoa", "Satellite (IGN PNOA)", "© Instituto Geográfico Nacional · PNOA (CC BY 4.0)"),
         Layer("ign", "Topographic IGN", "© Instituto Geográfico Nacional (CC BY 4.0)"),
+        Layer("ignbase", "IGN Base", "IGNBaseTodo CC-BY 4.0 ign.es"),
         Layer("esri", "Satellite (Esri)", "Powered by Esri · Esri, Maxar, Earthstar Geographics"),
         Layer("dark", "Dark (night)", "© OpenStreetMap contributors"),
     )
@@ -92,7 +95,21 @@ object MapLayers {
             baseUrl + "${MapTileIndex.getZoom(index)}/${MapTileIndex.getY(index)}/${MapTileIndex.getX(index)}?token=$key"
     }
 
+    /** IGN Base (IGNBaseTodo): ready tiles with TMS numbering (y from the bottom), as in the plotter core. */
+    private object IgnBase : OnlineTileSourceBase("IGN-Base", 0, 17, 256, ".jpeg", arrayOf("https://tms-ign-base.idee.es/1.0.0/IGNBaseTodo/")) {
+        override fun getTileURLString(index: Long): String {
+            val z = MapTileIndex.getZoom(index)
+            return baseUrl + "$z/${MapTileIndex.getX(index)}/${(1 shl z) - 1 - MapTileIndex.getY(index)}.jpeg"
+        }
+    }
+
+    /** Opacity for a tile overlay: the alpha of every pixel scaled. */
+    fun alpha(pct: Int) = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix(floatArrayOf(
+        1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, pct / 100f, 0f,
+    )))
+
     fun source(id: String, arcgisKey: String): ITileSource = when (id) {
+        "ignbase" -> IgnBase
         "pnoa" -> Wmts("IGN-PNOA", "https://www.ign.es/wmts/pnoa-ma", "OI.OrthoimageCoverage")
         "ign" -> Wmts("IGN-MTN", "https://www.ign.es/wmts/mapa-raster", "MTN")
         "esri" -> if (arcgisKey.isNotBlank()) Esri(arcgisKey) else TileSourceFactory.MAPNIK
@@ -160,6 +177,24 @@ private object MarkerArt {
         return b
     }
 
+    /** A small label for the map (alert, warning, earthquake): text on a coloured rounded box. */
+    fun tag(ctx: Context, text: String, bg: Int, fg: Int): Bitmap {
+        val key = "tag|$text|$bg|$fg"
+        cache.get(key)?.let { return it }
+        val d = ctx.resources.displayMetrics.density
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = fg; textSize = 13 * d; isFakeBoldText = true
+            typeface = try { androidx.core.content.res.ResourcesCompat.getFont(ctx, R.font.barlow_condensed_bold) } catch (_: Exception) { null }
+        }
+        val w = (p.measureText(text) + 12 * d).toInt(); val h = (22 * d).toInt()
+        val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        c.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), 6 * d, 6 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bg })
+        c.drawText(text, 6 * d, h / 2f + 4.5f * d, p)
+        cache.put(key, b)
+        return b
+    }
+
     fun own(ctx: Context, courseDeg: Double?): Bitmap {
         val d = ctx.resources.displayMetrics.density
         val s = (34 * d).toInt()
@@ -178,10 +213,15 @@ private object MarkerArt {
     }
 }
 
+/** What a touched shape on the map shows: title, rows and source. */
+private data class MapCard(val title: String, val color: Int, val rows: List<Pair<String, String>>, val source: String)
+
 private class MapHolder(val map: MapView) {
     var layerId = ""
     var esriKey = ""
     var seamarks: TilesOverlay? = null
+    /** Tile overlays on the map, by overlay id, with the name of their source (it changes when a key or the layer names change). */
+    val tiles = LinkedHashMap<String, Pair<String, TilesOverlay>>()
     val dynamic = ArrayList<Overlay>()
     var centered = false
     var focused: String? = null
@@ -206,6 +246,17 @@ fun MapScreen(nav: Navigator) {
     var aemetOpen by remember { mutableStateOf(false) }
     var aemetMsg by remember { mutableStateOf("") }
     var panel by remember { mutableStateOf(false) }
+    var ovOn by remember { mutableStateOf(MapOverlays.parseOn(settings.mapOverlays)) }
+    var ovOp by remember { mutableStateOf(MapOverlays.parseOpacity(settings.mapOpacity)) }
+    var owmKey by remember { mutableStateOf(settings.owmKey) }
+    var card by remember { mutableStateOf<MapCard?>(null) }
+    var aemetTitle by remember { mutableStateOf("AEMET · national radar composite") }
+    val layersVersion by MapOverlays.layersVersion.collectAsState()
+    val navWarnings by NavAreas.warnings.collectAsState()
+    val official by AppState.officialAlerts.collectAsState()
+    val active = MapOverlays.available.filter { it.id in ovOn }
+    fun opacity(id: String) = ovOp[id] ?: MapOverlays.byId(id)?.defaultOpacity ?: 100
+    if ("navarea" in ovOn && !BuildConfig.PLAY) LaunchedEffect(Unit) { NavAreas.refresh() }
     val now = rememberNow(30_000)
     val shown = all.filter { it.lat != null && it.lon != null && now - it.lastMs <= minutes * 60_000L }
     val me = Own.position()
@@ -245,7 +296,73 @@ fun MapScreen(nav: Navigator) {
             } else if (!sea && oldSea != null) {
                 map.overlays.remove(oldSea); oldSea.onDetach(map); holder.seamarks = null
             }
+            // tile overlays (charts, satellite, forecast maps), in the order of the list, under the shapes and the stations
+            layersVersion.let { }
+            val wantTiles = active.filter { it.tile }
+            for (id in holder.tiles.keys.toList()) {
+                val src = MapOverlays.byId(id)?.let { o -> if (o in wantTiles) MapOverlays.source(ctx, o, owmKey) else null }
+                if (src == null || src.name() != holder.tiles[id]!!.first) {
+                    holder.tiles.remove(id)?.second?.let { map.overlays.remove(it); it.onDetach(map) }
+                }
+            }
+            var at = if (holder.seamarks != null) 1 else 0
+            for (o in wantTiles) {
+                val src = MapOverlays.source(ctx, o, owmKey) ?: continue
+                val cur = holder.tiles[o.id]
+                val t = cur?.second ?: TilesOverlay(MapTileProviderBasic(ctx, src), ctx).apply {
+                    setLoadingBackgroundColor(android.graphics.Color.TRANSPARENT); setLoadingLineColor(android.graphics.Color.TRANSPARENT)
+                }.also { holder.tiles[o.id] = src.name() to it; map.overlays.add(at.coerceAtMost(map.overlays.size), it) }
+                t.setColorFilter(MapLayers.alpha(opacity(o.id)))
+                at++
+            }
             map.overlays.removeAll(holder.dynamic.toSet()); holder.dynamic.clear()
+            val nowMs = System.currentTimeMillis()
+            if ("night" in ovOn) holder.dynamic.add(Polygon(map).apply {
+                points = Terminator.nightPolygon(nowMs).map { GeoPoint(it.first, it.second) }
+                fillPaint.color = android.graphics.Color.argb(opacity("night") * 255 / 100, 5, 9, 14)
+                outlinePaint.color = 0xCCFFB347.toInt(); outlinePaint.strokeWidth = 2f; outlinePaint.pathEffect = DashPathEffect(floatArrayOf(4f, 10f), 0f)
+                setOnClickListener { _, _, _ -> false }
+            })
+            if ("alerts" in ovOn) for (a in official.filter { !it.src.quake && it.lat != null && it.lon != null && it.activeAt(nowMs / 1000) }) {
+                val bg = when (a.level) { 3 -> 0xFFE53935.toInt(); 2 -> 0xFFFF8C1A.toInt(); 1 -> 0xFFFDD835.toInt(); else -> 0xFF28B5E1.toInt() }
+                holder.dynamic.add(Marker(map).apply {
+                    position = GeoPoint(a.lat!!, a.lon!!)
+                    icon = BitmapDrawable(ctx.resources, MarkerArt.tag(ctx, a.src.title + " · " + a.event.take(22), bg, 0xFF131A22.toInt()))
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); alpha = opacity("alerts") / 100f
+                    setOnMarkerClickListener { _, _ -> card = MapCard(a.src.title + " · " + a.levelName, bg, listOf("Event" to a.event, "Area" to a.area,
+                        "Text" to a.text.take(300)).filter { it.second.isNotBlank() }, "Official alerts: ${a.src.title}"); true }
+                })
+            }
+            if ("quakes" in ovOn) for (a in official.filter { it.src.quake && it.lat != null && it.lon != null }) {
+                val m = a.magnitude() ?: 0.0
+                val a8 = opacity("quakes") * 255 / 100
+                holder.dynamic.add(Polygon(map).apply {
+                    points = Polygon.pointsAsCircle(GeoPoint(a.lat!!, a.lon!!), 4_000.0 * Math.pow(2.0, (m - 3.0).coerceIn(0.0, 5.0)))
+                    fillPaint.color = android.graphics.Color.argb(a8 / 2, 229, 57, 53); outlinePaint.color = android.graphics.Color.argb(a8, 229, 57, 53); outlinePaint.strokeWidth = 3f
+                    setOnClickListener { _, _, _ -> false }
+                })
+                holder.dynamic.add(Marker(map).apply {
+                    position = GeoPoint(a.lat!!, a.lon!!)
+                    icon = BitmapDrawable(ctx.resources, MarkerArt.tag(ctx, String.format(java.util.Locale.US, "M %.1f", m), 0xD9131A22.toInt(), 0xFFFF8A80.toInt()))
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); alpha = opacity("quakes") / 100f
+                    setOnMarkerClickListener { _, _ -> card = MapCard(a.event, 0xFFFF8A80.toInt(), listOf("Where" to a.area, "When" to Fmt.ago(a.sent * 1000), "Depth" to a.text)
+                        .filter { it.second.isNotBlank() }, "USGS / EMSC-CSEM SeismicPortal"); true }
+                })
+            }
+            if ("navarea" in ovOn && !BuildConfig.PLAY) for (w in navWarnings.filter { it.positions.isNotEmpty() }) {
+                if (w.positions.size > 1) holder.dynamic.add(org.osmdroid.views.overlay.Polyline(map).apply {
+                    setPoints(w.positions.map { GeoPoint(it.first, it.second) })
+                    outlinePaint.color = 0xCCFFB347.toInt(); outlinePaint.strokeWidth = 3f; outlinePaint.pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
+                    setOnClickListener { _, _, _ -> false }
+                })
+                holder.dynamic.add(Marker(map).apply {
+                    position = GeoPoint(w.positions[0].first, w.positions[0].second)
+                    icon = BitmapDrawable(ctx.resources, MarkerArt.tag(ctx, "⚠ NAVAREA " + w.number, 0xFFFFB347.toInt(), 0xFF131A22.toInt()))
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); alpha = opacity("navarea") / 100f
+                    setOnMarkerClickListener { _, _ -> card = MapCard("NAVAREA III " + w.number, 0xFFFFB347.toInt(), listOf("Area" to w.area, "Title" to w.title,
+                        "Issued" to w.date, "Text" to w.text.take(500)).filter { it.second.isNotBlank() }, "Navigational warnings · Armada (IHM)"); true }
+                })
+            }
             val center = me?.let { GeoPoint(it.first, it.second) }
             if (center != null && rings) for (r in listOf(10_000.0, 25_000.0, 50_000.0)) {
                 holder.dynamic.add(Polygon(map).apply {
@@ -324,16 +441,47 @@ fun MapScreen(nav: Navigator) {
                 Toggle("Range rings", rings, color = Alp.Cyan) { rings = !rings; settings.mapRings = rings }
                 Toggle("Rotor beam", beam, color = Alp.Amber) { beam = !beam; settings.mapBeam = beam }
             }
-            SectionLabel("WEATHER RADAR")
+            fun toggle(id: String) { ovOn = if (id in ovOn) ovOn - id else ovOn + id; settings.mapOverlays = ovOn.joinToString(",") }
+            for (g in MapOverlays.Group.entries) {
+                val items = MapOverlays.available.filter { it.group == g }
+                if (items.isEmpty()) continue
+                SectionLabel(g.title)
+                for (row in items.chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (o in row) Toggle(o.label, o.id in ovOn, Modifier.weight(1f), color = androidx.compose.ui.graphics.Color(o.color)) { toggle(o.id) }
+                    if (row.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                }
+                if (g == MapOverlays.Group.FORECAST) {
+                    OutlinedTextField(owmKey, { owmKey = it.trim(); settings.owmKey = owmKey }, label = { Text("Your OpenWeather API key (the same as internet weather)") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth())
+                    if (owmKey.isBlank() && active.any { it.needsOwmKey }) Text("The forecast maps need your free OpenWeather key (openweathermap.org).", fontSize = 12.sp, color = Alp.Muted)
+                }
+                if (g == MapOverlays.Group.SEA && !BuildConfig.PLAY) Text("IHM services: non-commercial use only, not for navigation.", fontSize = 12.sp, color = Alp.Muted)
+            }
+            if (active.isNotEmpty()) {
+                SectionLabel("TRANSPARENCY OF EACH LAYER")
+                for (o in active) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(o.label, Modifier.widthIn(min = 110.dp, max = 130.dp), fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                        color = androidx.compose.ui.graphics.Color(o.color))
+                    androidx.compose.material3.Slider(opacity(o.id).toFloat(), { v -> ovOp = ovOp + (o.id to v.toInt()) }, Modifier.weight(1f),
+                        valueRange = 10f..100f, onValueChangeFinished = { settings.mapOpacity = MapOverlays.formatOpacity(ovOp) })
+                    Text("${opacity(o.id)} %", fontFamily = TechMono, fontSize = 13.sp, color = Alp.Text)
+                }
+                Text("100 % = solid; lower values let the base map show through.", fontSize = 12.sp, color = Alp.Muted)
+            }
+            SectionLabel("AEMET (SPAIN, IMAGES)")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                RadioKey("AEMET Spain", Modifier.height(40.dp), labelSize = 14, enabled = aemetKey.isNotBlank()) {
-                    aemetOpen = true; aemetMsg = "Downloading the AEMET national radar…"; aemet = null
+                RadioKey("Radar", Modifier.height(40.dp), labelSize = 14, enabled = aemetKey.isNotBlank()) {
+                    aemetOpen = true; aemetTitle = "AEMET · national radar composite"; aemetMsg = "Downloading the AEMET national radar…"; aemet = null
                     WxRadarSource.aemetNational(aemetKey) { r -> r.onSuccess { aemet = it; aemetMsg = "" }.onFailure { aemetMsg = it.message ?: "AEMET: error" } }
+                }
+                RadioKey("Lightning", Modifier.height(40.dp), labelSize = 14, enabled = aemetKey.isNotBlank()) {
+                    aemetOpen = true; aemetTitle = "AEMET · lightning"; aemetMsg = "Downloading the AEMET lightning map…"; aemet = null
+                    WxRadarSource.aemetLightning(aemetKey) { r -> r.onSuccess { aemet = it; aemetMsg = "" }.onFailure { aemetMsg = it.message ?: "AEMET: error" } }
                 }
             }
             OutlinedTextField(aemetKey, { aemetKey = it.filterNot { c -> c.isWhitespace() }; settings.aemetKey = aemetKey }, label = { Text("Your AEMET OpenData API key (free, opendata.aemet.es)") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
-            Text("AEMET: the latest national radar composite of Spain, as an image (source: AEMET).",
+            Text("AEMET gives the national radar and the lightning as images of Spain, not as map tiles (source: AEMET).",
                 fontSize = 12.sp, color = Alp.Muted)
             SectionLabel("STATIONS HEARD IN THE LAST")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -342,16 +490,31 @@ fun MapScreen(nav: Navigator) {
         }
 
         val attr = (MapLayers.BASE.firstOrNull { it.id == (if (layer == "esri" && key.isBlank()) "osm" else layer) }?.attribution ?: "") +
-            (if (sea) " · Seamarks © OpenSeaMap" else "") + " · APRS symbols aprs.fi"
+            (if (sea) " · Seamarks © OpenSeaMap" else "") +
+            active.map { it.attribution }.filter { it.isNotBlank() }.distinct().joinToString("") { " · $it" } + " · APRS symbols aprs.fi"
         Text(attr, fontSize = 11.sp, color = Alp.SubText, modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 10.dp, end = 76.dp)
             .widthIn(max = 300.dp).clip(RoundedCornerShape(6.dp)).background(Alp.Bg.copy(alpha = 0.85f)).padding(horizontal = 8.dp, vertical = 3.dp))
         if (aemetOpen) androidx.compose.ui.window.Dialog(onDismissRequest = { aemetOpen = false }) {
             Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Alp.Panel).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("AEMET · national radar composite", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Alp.Text)
+                Text(aemetTitle, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Alp.Text)
                 aemet?.let { androidx.compose.foundation.Image(it.asImageBitmap(), "AEMET national radar", Modifier.fillMaxWidth(), contentScale = androidx.compose.ui.layout.ContentScale.FillWidth) }
                 if (aemetMsg.isNotBlank()) Text(aemetMsg, fontSize = 14.sp, color = Alp.Muted)
                 Text("Source: AEMET (Agencia Estatal de Meteorología)", fontSize = 11.sp, color = Alp.Muted)
                 RadioKey("CLOSE", Modifier.fillMaxWidth().height(44.dp)) { aemetOpen = false }
+            }
+        }
+        card?.let { c ->
+            androidx.compose.ui.window.Dialog(onDismissRequest = { card = null }) {
+                Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Alp.Panel).border(1.dp, androidx.compose.ui.graphics.Color(c.color), RoundedCornerShape(14.dp))
+                    .padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(c.title, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = androidx.compose.ui.graphics.Color(c.color))
+                    for ((k, v) in c.rows) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(k, Modifier.widthIn(min = 70.dp), fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Muted)
+                        Text(v, fontSize = 14.sp, color = Alp.Text)
+                    }
+                    Text(c.source, fontSize = 11.sp, color = Alp.Muted)
+                    RadioKey("CLOSE", Modifier.fillMaxWidth().height(44.dp)) { card = null }
+                }
             }
         }
         Box(Modifier.align(Alignment.BottomEnd).padding(12.dp).size(48.dp).clip(RoundedCornerShape(24.dp)).background(Alp.Bg).border(1.dp, Alp.KeyBorder, RoundedCornerShape(24.dp))

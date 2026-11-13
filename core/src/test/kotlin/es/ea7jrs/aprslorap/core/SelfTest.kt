@@ -1245,6 +1245,63 @@ private fun testNetWeather() {
     eq(TrackerMode.name(TrackerMode.AIS), "AIS receiver", "AIS mode name")
 }
 
+private fun inRing(ring: List<Pair<Double, Double>>, lat: Double, lon: Double): Boolean {
+    var inside = false
+    var j = ring.size - 1
+    for (i in ring.indices) {
+        val (yi, xi) = ring[i]; val (yj, xj) = ring[j]
+        if ((yi > lat) != (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside
+        j = i
+    }
+    return inside
+}
+
+private fun testMapData() {
+    // WMS tile box (EPSG:3857) and address
+    val b0 = Wms.bounds3857(0, 0, 0)
+    near(b0[0], -20037508.34, 0.01, "WMS z0 minX"); near(b0[3], 20037508.34, 0.01, "WMS z0 maxY")
+    val b = Wms.bounds3857(1, 1, 0)
+    near(b[0], 0.0, 0.01, "WMS z1 x1 minX"); near(b[1], 0.0, 0.01, "WMS z1 y0 minY")
+    val u = Wms.tileUrl("https://ideihm.covam.es/wms/enc", "ENC,Luces", 1, 1, 0)
+    check(u.startsWith("https://ideihm.covam.es/wms/enc?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ENC%2CLuces&STYLES=&CRS=EPSG:3857&BBOX=0.00,0.00,20037508.34,20037508.34"), "WMS GetMap address")
+    check(u.endsWith("FORMAT=image%2Fpng&TRANSPARENT=TRUE"), "WMS format")
+    // layers from GetCapabilities: the named root, or the leaves (style names are not layers)
+    val capRoot = "<WMS_Capabilities><Service><Name>WMS</Name></Service><Capability><Layer><Name>enc</Name><Title>ENC</Title>" +
+        "<Layer><Name>a</Name></Layer><Layer><Name>b</Name></Layer></Layer></Capability></WMS_Capabilities>"
+    eq(Wms.layers(capRoot), "enc", "WMS named root layer")
+    val capLeaves = "<WMS_Capabilities><Capability><Layer><Title>IHM</Title><Layer><Name>Luces</Name><Style><Name>default</Name></Style></Layer>" +
+        "<Layer><Title>Group</Title><Layer><Name>Boyas</Name></Layer><Layer><Name>Faros</Name></Layer></Layer></Layer></Capability></WMS_Capabilities>"
+    eq(Wms.layers(capLeaves), "Luces,Boyas,Faros", "WMS leaf layers")
+    check(Wms.layers("<html>error</html>") == null, "WMS without capabilities")
+
+    // navigational warnings (IHM XML) and the positions in their text
+    val xml = "<?xml version=\"1.0\"?><dataroot generated=\"2026-11-10T09:31:41\"><NAVAREASVIGOR><nnunaf>0412/26</nnunaf><nfemi>2026-11-09T10:00:00</nfemi>" +
+        "<nlocae>Mediterráneo</nlocae><nlocai>W Mediterranean</nlocai><nasun>Boya</nasun><nasuni>Buoy adrift</nasuni>" +
+        "<ntees>Boya a la deriva en 37-35.2N 000-38.4W.</ntees><ntein>Buoy adrift in 37-35.2N 000-38.4W &amp; 42 11,718N 009 59,778E. Keep clear.</ntein></NAVAREASVIGOR>" +
+        "<NAVAREASVIGOR><nnunaf>0413/26</nnunaf><ntees>Sin posición</ntees></NAVAREASVIGOR></dataroot>"
+    val w = NavWarn.parseIhm(xml)!!
+    eq(w.size, 2, "NAVAREA warnings"); eq(w[0].number, "0412/26", "NAVAREA number"); eq(w[0].date, "2026-11-09", "NAVAREA date")
+    eq(w[0].title, "Buoy adrift", "NAVAREA title"); check(w[0].text.contains("&"), "NAVAREA entities")
+    eq(w[0].positions.size, 2, "NAVAREA positions"); near(w[0].positions[0].first, 37.58667, 1e-4, "NAVAREA lat"); near(w[0].positions[0].second, -0.64, 1e-4, "NAVAREA lon W")
+    near(w[0].positions[1].first, 42.1953, 1e-4, "NAVAREA lat with comma"); near(w[0].positions[1].second, 9.99630, 1e-4, "NAVAREA lon E")
+    check(w[1].positions.isEmpty(), "NAVAREA without positions")
+    eq(NavWarn.positions("36-31N 006-17W, NE winds 25 KN, 1200 UTC").size, 1, "NAVAREA position among words")
+    check(NavWarn.parseIhm("<html/>") == null, "NAVAREA wrong file")
+
+    // day / night line
+    val june = java.time.Instant.parse("2026-06-21T12:00:00Z").toEpochMilli()
+    val (dec, lon) = Terminator.subsolar(june)
+    near(dec, 23.44, 0.1, "subsolar latitude at the June solstice"); near(lon, 0.4, 1.0, "subsolar longitude at noon UTC")
+    val midnight = java.time.Instant.parse("2026-06-21T00:00:00Z").toEpochMilli()
+    check(Terminator.isNight(midnight, 40.4, -3.7) && !Terminator.isNight(june, 40.4, -3.7), "night in Madrid at 00 UTC, day at 12 UTC")
+    val ring = Terminator.nightPolygon(midnight)
+    check(inRing(ring, 40.4, -3.7), "Madrid inside the night polygon at midnight"); check(!inRing(ring, 35.7, 139.7), "Tokyo outside the night polygon at 00 UTC")
+    check(!inRing(Terminator.nightPolygon(june), 40.4, -3.7), "Madrid outside the night polygon at noon")
+    // earthquake magnitude
+    eq(OfficialAlert("q", AlertSrc.USGS, 0, "M4.1 Earthquake", "Spain").magnitude(), 4.1, "quake magnitude")
+    check(OfficialAlert("a", AlertSrc.AEMET, 2, "Wind", "Murcia").magnitude() == null, "no magnitude for weather alerts")
+}
+
 private fun testCtyFiles() {
     // Win-Test format (CTY_WT_MOD.DAT): "#" comment lines before records and inside the prefix list, overrides <lat/lon>
     val wt = "#\n# RELEASE 2026.01.31.00\n# based on CTY-3607\n#\n# ADIF 246\n" +
@@ -1456,7 +1513,7 @@ private fun testSame() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testOfficialAlerts(); testSame()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

@@ -33,14 +33,20 @@ object WxRadarSource {
     }
 
     /** AEMET national radar composite (Spain): the answer gives the address of the image. */
-    fun aemetNational(keyIn: String, done: (Result<Bitmap>) -> Unit) {
+    fun aemetNational(keyIn: String, done: (Result<Bitmap>) -> Unit) = aemetImage(WxRadar.AEMET_NATIONAL, keyIn, done)
+
+    /** AEMET lightning map of Spain. */
+    fun aemetLightning(keyIn: String, done: (Result<Bitmap>) -> Unit) = aemetImage(WxRadar.AEMET_LIGHTNING, keyIn, done)
+
+    /** An AEMET OpenData product that is an image: first the JSON with the address of the data, then the image. */
+    fun aemetImage(endpoint: String, keyIn: String, done: (Result<Bitmap>) -> Unit) {
         // the key is a long JWT ("eyJ..."): without spaces, line breaks or quotes copied from the e-mail
         val key = keyIn.filterNot { it.isWhitespace() || it == '"' || it == '\'' }
         exec.execute {
             done(runCatching {
                 if (key.isEmpty()) throw IllegalStateException("AEMET: put your OpenData API key")
                 val answer = try {
-                    http(WxRadar.AEMET_NATIONAL + "?api_key=" + java.net.URLEncoder.encode(key, "UTF-8"), key = key)
+                    http(endpoint + "?api_key=" + java.net.URLEncoder.encode(key, "UTF-8"), key = key)
                 } catch (e: HttpError) {
                     val why = WxRadar.aemetData(e.body).exceptionOrNull()?.message?.removePrefix("AEMET: ")?.takeIf { it.isNotBlank() && !it.startsWith("unreadable") }
                     throw IllegalStateException(when (e.code) {

@@ -121,6 +121,7 @@ Código abierto (GPL-3.0). Sin anuncios ni seguimiento.
   - Base de señales de Artemis (sigidwiki): sin licencia explícita → **opcional** (2026-11-10): no va en la app; el usuario la descarga de los servidores de Artemis tras un aviso y la puede quitar.
   - RepeaterBook: su API exige aprobar la app («distributed app») y, siendo de pago, permiso escrito y condiciones de pago → en la versión de Google Play solo **RepeaterBook Connect** (la app de RepeaterBook del usuario con su suscripción; 2026-11-12). Solicitud pendiente.
   - RadioID.net, DAPNET, APRS-IS: comprobar sus condiciones para apps de pago.
+  - Capas del mapa (2026-11-13): IHM (cartas, luces, mareas, límites) y avisos NAVAREA solo para uso no comercial → fuera de la versión de Google Play; pedir permiso al IHM para incluirlos. IGN Base (CC BY 4.0), EUMETSAT (CC BY 4.0), USGS (dominio público), EMSC (CC BY 4.0) y OpenWeather (clave del usuario, atribución) sí.
   - Símbolos APRS de aprs.fi (hessu/aprs-symbols) y logotipos de marcas entre ellos.
 
 ## 5. Pruebas y producción

@@ -12,6 +12,8 @@ package es.ea7jrs.aprslorap.core
  */
 object WxRadar {
     const val AEMET_NATIONAL = "https://opendata.aemet.es/opendata/api/red/radar/nacional"
+    /** Lightning detected by AEMET's network in the last hours, as an image of Spain. */
+    const val AEMET_LIGHTNING = "https://opendata.aemet.es/opendata/api/red/rayos/mapa"
 
     /** Address of the data in an AEMET OpenData answer ({"estado":200,"datos":"https://..."}), or the error text. */
     fun aemetData(json: String): Result<String> {
