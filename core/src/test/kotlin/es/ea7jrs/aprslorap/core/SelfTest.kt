@@ -865,6 +865,15 @@ private fun testAdsb() {
     check(bad.size <= 1, "ADS-B demodulator: (almost) nothing out of noise (${bad.size})")
 }
 
+private fun testFlags() {
+    check(Flags.emoji("ES") == "\uD83C\uDDEA\uD83C\uDDF8" && Flags.emoji("us") == "\uD83C\uDDFA\uD83C\uDDF8" && Flags.emoji("x") == "", "Flags: two letters to regional indicators")
+    check(Flags.emoji("GB-SCT").codePoints().toArray().toList() == listOf(0x1F3F4, 0xE0067, 0xE0062, 0xE0073, 0xE0063, 0xE0074, 0xE007F), "Flags: Scotland as a tag sequence")
+    check(Flags.code("EA") == "ES" && Flags.code("EA6") == "ES" && Flags.code("EA8") == "IC" && Flags.code("*TA1") == "TR" && Flags.code("VP8/g") == "GS" &&
+        Flags.code("DL") == "DE" && Flags.code("K") == "US" && Flags.code("KH6") == "US" && Flags.code("JA") == "JP" && Flags.code("1A") == null, "Flags: cty.dat prefixes")
+    check(Flags.of(Cty.Entity("Spain", 14, 37, "EU", 40.4, -3.7, "EA")) == Flags.emoji("ES") && Flags.of(null) == "" &&
+        Flags.of(Cty.Entity("Spratly Islands", 26, 50, "AS", 9.9, 114.4, "1S")) == "", "Flags: of an entity")
+}
+
 private fun testRateLimiter() {
     val r = RateLimiter(30)
     var late = 0
@@ -1928,7 +1937,7 @@ private fun testRbn() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

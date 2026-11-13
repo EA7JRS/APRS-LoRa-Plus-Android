@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import es.ea7jrs.aprslorap.core.CallsignCheck
 import es.ea7jrs.aprslorap.core.Cty
 import es.ea7jrs.aprslorap.core.DxCluster
+import es.ea7jrs.aprslorap.core.Flags
 import java.util.Locale
 
 @Composable
@@ -153,6 +154,8 @@ fun DxClusterScreen(nav: Navigator) {
                             Text(DxCluster.formatKhz(s.freqKhz), fontFamily = TechMono, fontSize = 17.sp, color = Alp.SubText, modifier = Modifier.width(92.dp), textAlign = TextAlign.End)
                             Text(s.mode, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = mc,
                                 modifier = Modifier.border(1.dp, mc, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp))
+                            val flag = Flags.of(p?.entity)
+                            if (flag.isNotEmpty()) Text(flag, fontSize = 15.sp)
                             Text(s.dx, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Alp.Text, modifier = Modifier.weight(1f), maxLines = 1)
                             Text(s.utc, fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Muted)
                             BearingArrow(p?.shortDeg?.toDouble(), Alp.Amber, 14.dp)
@@ -172,7 +175,7 @@ fun DxClusterScreen(nav: Navigator) {
         Panel(Modifier.fillMaxWidth(), border = if (sel != null) Alp.AmberDim else Alp.PanelBorder, padding = 10.dp) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(sel?.dx ?: "—", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = Alp.Text)
-                Text(listOfNotNull(path?.entity?.name, path?.let { String.format(Locale.US, "%,d km", if (lp) it.longKm else it.shortKm) }).joinToString(" · "),
+                Text(listOfNotNull(path?.entity?.let { (Flags.of(it) + " " + it.name).trim() }, path?.let { String.format(Locale.US, "%,d km", if (lp) it.longKm else it.shortKm) }).joinToString(" · "),
                     fontSize = 14.sp, color = Alp.Muted, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(sel?.let { DxCluster.formatKhz(it.freqKhz) } ?: "", fontFamily = TechMono, fontSize = 18.sp, color = Alp.Green)
             }
