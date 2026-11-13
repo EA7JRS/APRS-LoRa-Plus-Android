@@ -548,9 +548,9 @@ class Settings(ctx: Context) {
         get() = p.getBoolean("alert_torch", false)
         set(v) { p.edit().putBoolean("alert_torch", v).apply() }
 
-    /** Theme: "dark" (default), "light", "system" (as Android) or "auto" (by the Sun at our position). */
+    /** Theme: "auto" (default: by the Sun at our position), "dark", "light" or "system" (as Android). */
     var uiTheme: String
-        get() = p.getString("ui_theme", "dark")!!
+        get() = p.getString("ui_theme", "auto")!!
         set(v) { p.edit().putString("ui_theme", v).apply() }
 
     var uiDispPage: Int
