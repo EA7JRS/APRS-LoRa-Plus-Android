@@ -111,6 +111,7 @@ object AppState {
     val rotorMessage = MutableStateFlow("")
     val rotorFollowSent = MutableStateFlow("")
     val rotorCat = MutableStateFlow<es.ea7jrs.aprslorap.core.RotorProto.CatState?>(null)   // radio on the rotor box (event `cat`)
+    val aircraft = MutableStateFlow<List<es.ea7jrs.aprslorap.core.Adsb.Aircraft>>(emptyList())   // ADS-B received by the app (AdsbLink)
     val phoneCat = MutableStateFlow<es.ea7jrs.aprslorap.core.RotorProto.CatState?>(null)   // radio plugged into the phone (USB CAT)
     val phoneCatStatus = MutableStateFlow("Off")
     val rotorTrackerFollow = MutableStateFlow<es.ea7jrs.aprslorap.core.ControlEvent.Targets?>(null)   // tracker's rotor settings (sources 4 / 5)

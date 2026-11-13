@@ -68,6 +68,7 @@ object SdrControl {
     @Synchronized
     fun connect(ctx: android.content.Context, kind: Sdr.Kind, host: String, port: Int, s: Settings) {
         disconnect()
+        if (kind == Sdr.Kind.RTLTCP && AdsbLink.usesRtl) AdsbLink.stop()      // rtl_tcp takes one client only
         set { State(status = "Connecting to $host:$port...", mode = if (kind == Sdr.Kind.RTLTCP) s.sdrMode else null) }
         val l = when (kind) {
             Sdr.Kind.RIGCTL -> RigctlLink(host, port)

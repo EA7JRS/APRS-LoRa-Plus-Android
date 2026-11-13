@@ -84,7 +84,7 @@ private fun band(c: String) = when (c) { "160m", "80m" -> 0xFFB39DDB; "40m" -> 0
  */
 internal fun hamOverlays(
     map: MapView, ctx: Context, on: Set<String>, opacity: (String) -> Int, d: HamLayersFetcher.Data, me: Pair<Double, Double>?,
-    gcTo: Pair<Double, Double>?, qsos: List<Qso>, nowMs: Long, onCard: (MapCard) -> Unit,
+    gcTo: Pair<Double, Double>?, qsos: List<Qso>, nowMs: Long, aircraft: List<es.ea7jrs.aprslorap.core.Adsb.Aircraft>, onCard: (MapCard) -> Unit,
 ): List<Overlay> {
     val out = ArrayList<Overlay>()
     val dens = ctx.resources.displayMetrics.density
@@ -165,26 +165,6 @@ internal fun hamOverlays(
             })
         }
     }
-    if ("ham_muf" in on) for (s in d.ionosondes) {
-        val muf = s.mufd
-        val col = when { muf == null -> 0xFFE8EEF3; muf < 10 -> 0xFF4FC3F7; muf < 20 -> 0xFF3CE68A; muf < 28 -> 0xFFF2D35B; else -> 0xFFFF6B6B }.toInt()
-        out.add(tag(GeoPoint(s.lat, s.lon), muf?.let { String.format(Locale.US, "MUF %.1f", it) } ?: String.format(Locale.US, "foF2 %.1f", s.fof2), dark, col, "ham_muf") {
-            MapCard(s.name + " · " + s.code, col, listOf("MUF(3000)" to (muf?.let { String.format(Locale.US, "%.1f MHz", it) } ?: "—"),
-                "foF2" to String.format(Locale.US, "%.2f MHz", s.fof2), "Confidence" to (s.cs?.let { "$it / 100" } ?: ""), "Measured" to Fmt.ago(s.timeMs)
-            ).filter { it.second.isNotBlank() }, "GIRO ionosondes via prop.kc2g.com", s.lat, s.lon)
-        })
-    }
-    for ((id, spots) in listOf("ham_wspr" to d.wspr, "ham_psk" to d.psk)) if (id in on) for (s in spots.distinctBy { it.rxCall + it.band }.take(150)) {
-        val col = band(s.band)
-        if (me != null) for (seg in HamLayers.greatCircle(me.first, me.second, s.lat, s.lon, 40)) out.add(Polyline(map).apply {
-            setPoints(seg.map { GeoPoint(it.first, it.second) }); outlinePaint.color = (a255(id) * 70 / 100 shl 24) or (col and 0xFFFFFF); outlinePaint.strokeWidth = 1.5f * dens
-        })
-        out.add(tag(GeoPoint(s.lat, s.lon), s.rxCall + (s.snr?.let { " $it" } ?: ""), dark, col, id) {
-            MapCard(s.rxCall + " heard you", col, listOf("Band" to s.band, "Mode" to s.mode, "SNR" to (s.snr?.let { "$it dB" } ?: ""), "Locator" to s.rxGrid, "When" to Fmt.ago(s.timeMs),
-                "Distance" to (me?.let { String.format(Locale.US, "%,.0f km", Geo.distanceKm(it.first, it.second, s.lat, s.lon)) } ?: "")).filter { it.second.isNotBlank() },
-                if (id == "ham_wspr") "wspr.live" else "PSK Reporter", s.lat, s.lon)
-        })
-    }
     if ("ev_cyclones" in on) for (s in d.storms) {
         if (s.cone.size >= 3) out.add(Polygon(map).apply {
             points = s.cone.map { GeoPoint(it.first, it.second) }
@@ -227,20 +207,16 @@ internal fun hamOverlays(
                 .filter { it.second.isNotBlank() }, "SondeHub amateur", b.lat, b.lon)
         })
     }
-    if ("ev_aircraft" in on) for (p in d.aircraft.filter { inView(it.lat, it.lon) && !it.onGround }.take(200)) {
-        val name = p.flight.ifEmpty { p.hex.uppercase(Locale.US) }
-        out.add(tag(GeoPoint(p.lat, p.lon), "✈ $name" + (p.altFt?.let { " FL" + String.format(Locale.US, "%03d", it / 100) } ?: ""), dark, 0xFFC9D4DE.toInt(), "ev_aircraft") {
-            MapCard(name, 0xFFC9D4DE.toInt(), listOf("Type" to p.type, "Altitude" to (p.altFt?.let { String.format(Locale.US, "%,d ft", it) } ?: ""),
-                "Speed" to (p.gsKt?.let { String.format(Locale.US, "%.0f kn", it) } ?: ""), "Track" to (p.trackDeg?.let { String.format(Locale.US, "%03.0f°", it) } ?: ""), "ICAO" to p.hex)
-                .filter { it.second.isNotBlank() }, "adsb.lol (ODbL)", p.lat, p.lon)
-        })
-    }
-    if ("ev_launches" in on) for (l in d.launches.filter { it.netMs > nowMs - 3_600_000L }) {
-        val inH = (l.netMs - nowMs) / 3_600_000.0
-        val whenTxt = if (inH < 48) String.format(Locale.US, "in %.0f h", inH.coerceAtLeast(0.0)) else String.format(Locale.US, "in %.0f d", inH / 24)
-        out.add(tag(GeoPoint(l.lat, l.lon), "🚀 " + l.name.substringBefore('|').trim().take(18) + " · " + whenTxt, dark, 0xFFB39DDB.toInt(), "ev_launches") {
-            MapCard(l.name, 0xFFB39DDB.toInt(), listOf("Provider" to l.provider, "Pad" to l.pad, "Status" to l.status,
-                "Time" to Fmt.hhmm(l.netMs, utc = true) + " UTC · " + whenTxt).filter { it.second.isNotBlank() }, "The Space Devs Launch Library 2", l.lat, l.lon)
+    if ("ev_aircraft" in on) for (p in aircraft.take(300)) {
+        val la = p.lat ?: continue; val lo = p.lon ?: continue
+        if (!inView(la, lo)) continue
+        val col = if (p.emergency != null) 0xFFFF6B6B.toInt() else 0xFFC9D4DE.toInt()
+        out.add(tag(GeoPoint(la, lo), "✈ ${p.name}" + (p.flightLevel()?.let { " $it" } ?: ""), dark, col, "ev_aircraft") {
+            MapCard(p.name + (p.emergency?.let { " · $it" } ?: ""), col, listOf("Altitude" to (p.altFt?.let { String.format(Locale.US, "%,d ft", it) } ?: ""),
+                "Speed" to (p.gsKt?.let { String.format(Locale.US, "%.0f kn", it) } ?: ""), "Track" to (p.trackDeg?.let { String.format(Locale.US, "%03.0f°", it) } ?: ""),
+                "Vertical" to (p.vrFpm?.let { String.format(Locale.US, "%+d ft/min", it) } ?: ""), "Squawk" to (p.squawk?.let { String.format(Locale.US, "%04d", it) } ?: ""),
+                "ICAO" to p.hex, "Position" to Fmt.ago(p.posMs))
+                .filter { it.second.isNotBlank() }, "ADS-B received by this app", la, lo)
         })
     }
     return out

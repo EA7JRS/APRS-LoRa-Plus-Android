@@ -18,8 +18,7 @@ import kotlin.math.sin
 /**
  * Map layers whose idea and data sources come from OpenHamClock (accius/openhamclock, MIT licence): readers of the public
  * feeds and the computed layers. Sources: NOAA SWPC (aurora OVATION, D-RAP), NOAA NHC (tropical cyclones), NOAA NDBC
- * (buoys), NASA EONET (wildfires, floods), KC2G (ionosondes), SondeHub (balloons), adsb.lol (aircraft), The Space Devs
- * (launches), wspr.live and PSK Reporter (spots); the NCDXF / IARU beacon schedule, Maidenhead grid and great circles are
+ * (buoys), NASA EONET (wildfires, floods), SondeHub (balloons), wspr.live and PSK Reporter (spots); the NCDXF / IARU beacon schedule, Maidenhead grid and great circles are
  * computed. Formats as OpenHamClock reads them (2026).
  */
 object HamLayers {
@@ -151,30 +150,6 @@ object HamLayers {
     /** NHC cone KML: the outer ring of the largest polygon. */
     fun nhcCone(kml: String) = kmlPlacemarks(kml).map { it.polygon }.maxByOrNull { it.size } ?: emptyList()
 
-    // ------------------------------------------------------------------ ionosondes (KC2G, GIRO digisondes)
-
-    data class Ionosonde(val code: String, val name: String, val lat: Double, val lon: Double, val fof2: Double, val mufd: Double?, val cs: Int?, val timeMs: Long)
-
-    const val KC2G_URL = "https://prop.kc2g.com/api/stations.json"
-
-    /** Measurements with foF2 not older than 6 h (the feed keeps long-dead stations); longitudes 0..360 → -180..180. */
-    fun parseKc2g(json: String, nowMs: Long): List<Ionosonde>? {
-        val a = runCatching { Json.parse(json) as? List<*> }.getOrNull() ?: return null
-        return a.mapNotNull { e ->
-            val m = e as? Map<*, *> ?: return@mapNotNull null
-            val st = m["station"] as? Map<*, *> ?: return@mapNotNull null
-            val code = st["code"] as? String ?: return@mapNotNull null
-            val fof2 = num(m["fof2"]) ?: return@mapNotNull null
-            val ts = m["time"] as? String ?: return@mapNotNull null
-            val t = OfficialAlerts.parseIso(if (Regex("(Z|[+-]\\d{2}:?\\d{2})$").containsMatchIn(ts)) ts else ts + "Z") * 1000
-            if (t <= 0 || nowMs - t > 6 * 3_600_000L || t - nowMs > 30 * 60_000L) return@mapNotNull null
-            val lat = num(st["latitude"]) ?: return@mapNotNull null
-            var lon = num(st["longitude"]) ?: return@mapNotNull null
-            if (lon > 180) lon -= 360
-            Ionosonde(code, st["name"] as? String ?: code, lat, lon, fof2, num(m["mufd"]), num(m["cs"])?.toInt()?.takeIf { it >= 0 }, t)
-        }
-    }
-
     // ------------------------------------------------------------------ NCDXF / IARU International Beacon Project
 
     /** A beacon of the project: slot order, entity, location, grid and sponsor as www.ncdxf.org/beacon/beaconlocations.html lists them. */
@@ -302,44 +277,6 @@ object HamLayers {
             }?.sortedBy { it.first } ?: return@mapNotNull null
             val last = frames.lastOrNull() ?: return@mapNotNull null
             Balloon(call, last.second.first, last.second.second, num(last.third["alt"]), last.first, frames.map { it.second }, last.third["comment"] as? String ?: "")
-        }
-    }
-
-    // ------------------------------------------------------------------ aircraft (adsb.lol community ADS-B)
-
-    data class Aircraft(val hex: String, val flight: String, val type: String, val lat: Double, val lon: Double, val altFt: Int?, val onGround: Boolean, val gsKt: Double?, val trackDeg: Double?)
-
-    fun adsbUrl(lat: Double, lon: Double, distNm: Int = 150) = String.format(Locale.US, "https://api.adsb.lol/v2/lat/%.4f/lon/%.4f/dist/%d", lat, lon, distNm)
-
-    fun parseAdsb(json: String): List<Aircraft>? {
-        val o = runCatching { Json.parseObject(json) }.getOrNull() ?: return null
-        val ac = o["ac"] as? List<*> ?: return null
-        return ac.mapNotNull { e ->
-            val a = e as? Map<*, *> ?: return@mapNotNull null
-            val lat = num(a["lat"]) ?: return@mapNotNull null; val lon = num(a["lon"]) ?: return@mapNotNull null
-            val alt = a["alt_geom"] ?: a["alt_baro"]
-            val ground = alt == "ground" || a["alt_baro"] == "ground"
-            Aircraft(a["hex"] as? String ?: "", (a["flight"] as? String)?.trim() ?: "", a["t"] as? String ?: "", lat, lon,
-                if (ground) 0 else num(alt)?.toInt(), ground, num(a["gs"]), num(a["track"]))
-        }
-    }
-
-    // ------------------------------------------------------------------ launches (The Space Devs Launch Library 2)
-
-    data class Launch(val name: String, val netMs: Long, val status: String, val pad: String, val lat: Double, val lon: Double, val provider: String)
-
-    const val LAUNCHES_URL = "https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=20&mode=normal"
-
-    fun parseLaunches(json: String): List<Launch>? {
-        val o = runCatching { Json.parseObject(json) }.getOrNull() ?: return null
-        val r = o["results"] as? List<*> ?: return null
-        return r.mapNotNull { e ->
-            val m = e as? Map<*, *> ?: return@mapNotNull null
-            val pad = m["pad"] as? Map<*, *> ?: return@mapNotNull null
-            val lat = num(pad["latitude"]) ?: return@mapNotNull null; val lon = num(pad["longitude"]) ?: return@mapNotNull null
-            Launch(m["name"] as? String ?: "", OfficialAlerts.parseIso(m["net"] as? String) * 1000,
-                ((m["status"] as? Map<*, *>)?.get("abbrev") as? String) ?: "", pad["name"] as? String ?: "", lat, lon,
-                ((m["launch_service_provider"] as? Map<*, *>)?.get("name") as? String) ?: "")
         }
     }
 

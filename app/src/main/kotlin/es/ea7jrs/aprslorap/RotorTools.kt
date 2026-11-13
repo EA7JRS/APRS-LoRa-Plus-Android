@@ -179,55 +179,17 @@ fun RepeaterBookSearch(onFill: (name: String, mhz: String) -> Unit) {
     val msg by AppState.rbMessage.collectAsState()
     val results by AppState.rbResults.collectAsState()
     val info by AppState.trackerInfo.collectAsState()
-    var token by remember { mutableStateOf(settings.rbToken) }
-    var agent by remember { mutableStateOf(settings.rbUserAgent) }
-    var na by remember { mutableStateOf(settings.rbNorthAmerica) }
-    var call by rememberSaveable { mutableStateOf("") }
-    var city by rememberSaveable { mutableStateOf("") }
-    var country by rememberSaveable { mutableStateOf("Spain") }
-    var freq by rememberSaveable { mutableStateOf("") }
-    var showSetup by rememberSaveable { mutableStateOf(settings.rbToken.isEmpty()) }
-    var useConnect by rememberSaveable { mutableStateOf(settings.rbUseConnect) }
 
     Section("Repeaters from RepeaterBook")
-    // Google Play build: only the RepeaterBook app (Connect); the token API needs RepeaterBook's approval and paid terms for a paid app
-    if (!BuildConfig.PLAY) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for ((label, connect) in listOf("RepeaterBook app" to true, "Token (API)" to false)) {
-            val pick = { useConnect = connect; settings.rbUseConnect = connect }
-            if (useConnect == connect) Button(onClick = pick) { Text(label) } else OutlinedButton(onClick = pick) { Text(label) }
-        }
-    }
-    if (useConnect) {
+    run {
         val installed = remember { RepeaterBookConnect.installed(ctx) }
-        Text(if (installed) "Repeaters near your position from the RepeaterBook app on this phone (RepeaterBook Connect subscription, no token). Its own filters and order apply."
+        Text(if (installed) "Repeaters near your position from the RepeaterBook app on this phone (RepeaterBook Connect subscription). Its own filters and order apply."
             else "Needs the RepeaterBook app with its RepeaterBook Connect subscription.", fontSize = 11.sp)
         if (!installed) TextButtonLike("Get RepeaterBook on Google Play") {
             try { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(RepeaterBook.CONNECT_STORE))) } catch (_: Exception) {}
         }
         Button(onClick = { val me = Own.position(); RepeaterBookConnect.search(ctx, me?.first, me?.second) }, enabled = !busy && installed) { Text("Repeaters near me") }
-    } else if (showSetup) {
-        OutlinedTextField(token, { token = it.trim() }, label = { Text("Your token (rbuapp_...)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation())
-        OutlinedTextField(agent, { agent = it }, label = { Text("User-Agent with your contact e-mail") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("North America (USA, Canada, Mexico)", Modifier.weight(1f), fontSize = 13.sp)
-            Switch(na, { na = it })
-        }
-        Button(onClick = { settings.rbToken = token; settings.rbUserAgent = agent; settings.rbNorthAmerica = na; showSetup = false }) { Text("Save") }
-        Text("Each user makes a personal token for an application approved by RepeaterBook at ${RepeaterBook.TOKEN_PAGE}; the User-Agent must be the one approved for that application, with a contact e-mail. Results are only shown, not stored.", fontSize = 11.sp)
-    } else {
-        TextButtonLike("Token and User-Agent...") { showSetup = true }
     }
-    if (!useConnect) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(call, { call = it.uppercase() }, label = { Text("Callsign") }, singleLine = true, modifier = Modifier.weight(1f))
-        OutlinedTextField(freq, { freq = it }, label = { Text("MHz") }, singleLine = true, modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-    }
-    if (!useConnect) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(city, { city = it }, label = { Text("City") }, singleLine = true, modifier = Modifier.weight(1f))
-        OutlinedTextField(country, { country = it }, label = { Text("Country") }, singleLine = true, modifier = Modifier.weight(1f))
-    }
-    if (!useConnect) Button(onClick = { RepeaterSearch.search(settings, call, city, country, freq) }, enabled = !busy) { Text("Search") }
     if (msg.isNotBlank()) Text(msg, fontSize = 12.sp)
     for (rp in results) {
         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -5,7 +5,6 @@
  */
 package es.ea7jrs.aprslorap.core
 
-import java.net.URLEncoder
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -128,31 +127,16 @@ object PhoneMath {
 }
 
 /**
- * RepeaterBook (repeaterbook.com). Token in the header X-RB-App-Token; redirects are not followed (the API asks it). The
- * documentation does not list the coordinates among the fields: they are read if present, otherwise the user types them.
- * RepeaterBook (repeaterbook.com): search repeaters to make them fixed rotor targets (`tgt`). The API needs a personal token
- * (`rbuapp_...`, asked for at repeaterbook.com, free for personal use) and an identifying User-Agent with a contact e-mail;
- * personal use only, no lists or maps for other people, results not stored. "Data courtesy of RepeaterBook.com".
+ * RepeaterBook (repeaterbook.com): repeaters near the user as fixed rotor targets (`tgt`), read from the RepeaterBook app on
+ * the phone (RepeaterBook Connect, its official way for Android apps). The search with a token of its Export API was
+ * removed (2026-11-13): it needs RepeaterBook's approval and paid terms for a paid app. "Data courtesy of RepeaterBook.com".
  */
 object RepeaterBook {
     const val ATTRIBUTION = "Data courtesy of RepeaterBook.com"
-    const val TOKEN_PAGE = "https://www.repeaterbook.com/user/api_apps.php"
     /** RepeaterBook Connect Data API: the RepeaterBook app's content provider (needs that app and the user's Connect subscription). */
     const val CONNECT_PACKAGE = "com.zbm2.repeaterbook"
     const val CONNECT_URI = "content://com.zbm2.repeaterbook.RBContentProvider/repeaters"
     const val CONNECT_STORE = "https://play.google.com/store/apps/details?id=com.zbm2.repeaterbook"
-
-    /** Readable message for the error codes of the Export API (auth_*, ua_mismatch, rate_limited); others as they come. */
-    fun explain(code: String): String = when (code.trim().lowercase()) {
-        "auth_missing" -> "RepeaterBook: no token sent"
-        "auth_invalid" -> "RepeaterBook: the token is not valid (copy it again, it starts rbuapp_)"
-        "auth_inactive" -> "RepeaterBook: the token or the application is not active yet"
-        "auth_revoked" -> "RepeaterBook: the token was revoked: make a new one"
-        "auth_scope_denied" -> "RepeaterBook: the token is not approved for this region (North America / rest of the world)"
-        "ua_mismatch" -> "RepeaterBook: the User-Agent does not match the one approved with the token"
-        "rate_limited" -> "RepeaterBook: too many searches, wait before searching again"
-        else -> code
-    }
 
     /**
      * One row of the RepeaterBook Connect content provider (column name → value): RX is what the user receives (the repeater's
@@ -168,8 +152,6 @@ object RepeaterBook {
             r.dbl("Lat"), r.dbl("Lng"), r.text("ServiceTxt"), "",
         )
     }
-    private const val NA = "https://www.repeaterbook.com/api/export.php"
-    private const val ROW = "https://www.repeaterbook.com/api/exportROW.php"
 
     data class Repeater(
         val callsign: String, val freqMhz: Double?, val inputMhz: Double?, val tone: String, val city: String, val region: String,
@@ -181,29 +163,6 @@ object RepeaterBook {
         val targetName: String get() = (callsign + (freqMhz?.let { String.format(Locale.US, " %.3f", it) } ?: "")).take(20)
     }
 
-    /** Search address. [northAmerica] = USA, Canada, Mexico (export.php); the rest of the world uses exportROW.php. */
-    fun url(northAmerica: Boolean, callsign: String = "", city: String = "", country: String = "", freqMhz: String = ""): String {
-        val q = ArrayList<String>()
-        fun add(k: String, v: String) { if (v.isNotBlank()) q.add(k + "=" + URLEncoder.encode(v.trim(), "UTF-8")) }
-        add("callsign", callsign.uppercase()); add("city", city); add("country", country); add("frequency", freqMhz.replace(',', '.'))
-        return (if (northAmerica) NA else ROW) + if (q.isEmpty()) "" else "?" + q.joinToString("&")
-    }
-
     private fun Map<String, Any?>.text(k: String): String = when (val v = this[k]) { is String -> v.trim(); is Number -> v.toString(); else -> "" }
     private fun Map<String, Any?>.dbl(k: String): Double? = when (val v = this[k]) { is Number -> v.toDouble(); is String -> v.trim().replace(',', '.').toDoubleOrNull(); else -> null }
-
-    /** The answer of the API: the repeaters, or an error message. */
-    fun parse(text: String): Result<List<Repeater>> {
-        val o = try { Json.parseObject(text.trim()) } catch (e: Exception) { null }
-            ?: return Result.failure(IllegalStateException("not a RepeaterBook answer: " + text.trim().take(80)))
-        val msg = explain(o.text("code").ifEmpty { o.text("error") }).let { c -> listOf(c, o.text("message")).filter { it.isNotEmpty() }.distinct().joinToString(": ") }
-        val results = o.objList("results")
-        if (results.isEmpty() && msg.isNotEmpty()) return Result.failure(IllegalStateException(msg))
-        return Result.success(results.map { r ->
-            Repeater(
-                r.text("Callsign"), r.dbl("Frequency"), r.dbl("Input Freq"), r.text("PL"), r.text("Nearest City"),
-                r.text("Region").ifEmpty { r.text("State") }, r.text("Country"), r.dbl("Lat") ?: r.dbl("Latitude") ?: r.dbl("lat"), r.dbl("Long") ?: r.dbl("Longitude") ?: r.dbl("lng") ?: r.dbl("lon"), r.text("Use"), r.text("Operational Status"),
-            )
-        })
-    }
 }

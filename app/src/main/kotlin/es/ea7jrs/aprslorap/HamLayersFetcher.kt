@@ -16,21 +16,17 @@ import java.util.zip.ZipInputStream
 
 /**
  * Downloads for the map layers that follow OpenHamClock (accius/openhamclock, MIT): each one only while its layer is on and
- * the map is open ([tick] from MapScreen every 30 s), at most as often as its source asks (KC2G 10 min, PSK Reporter 5 min,
- * The Space Devs free tier...). The computed layers (grid, zones, great circle, IBP, worked grids) need no download.
+ * the map is open ([tick] from MapScreen every 30 s), at most as often as its source asks (PSK Reporter 5 min...). The computed layers (grid, zones, great circle, IBP, worked grids) need no download.
  */
 object HamLayersFetcher {
     data class Data(
         val aurora: HamLayers.Aurora? = null,
         val drap: HamLayers.Drap? = null,
         val storms: List<HamLayers.Storm> = emptyList(),
-        val ionosondes: List<HamLayers.Ionosonde> = emptyList(),
         val fires: List<HamLayers.Event> = emptyList(),
         val floods: List<HamLayers.Event> = emptyList(),
         val buoys: List<HamLayers.Buoy> = emptyList(),
         val balloons: List<HamLayers.Balloon> = emptyList(),
-        val aircraft: List<HamLayers.Aircraft> = emptyList(),
-        val launches: List<HamLayers.Launch> = emptyList(),
         val wspr: List<HamLayers.Spot> = emptyList(),
         val psk: List<HamLayers.Spot> = emptyList(),
         val cq: List<HamLayers.Zone> = emptyList(),
@@ -47,8 +43,8 @@ object HamLayersFetcher {
     private const val UA = "APRSLoRaPlus-Android (+https://ea7jrs.github.io/APRS-LoRa-Plus/; ea7jrs.manuel@gmail.com)"
 
     private val EVERY = mapOf(
-        "sp_aurora" to 15, "sp_drap" to 10, "ev_cyclones" to 30, "ham_muf" to 10, "ev_fires" to 60, "ev_floods" to 60, "ev_buoys" to 30,
-        "ev_balloons" to 5, "ev_aircraft" to 1, "ev_launches" to 60, "ham_wspr" to 10, "ham_psk" to 5,
+        "sp_aurora" to 15, "sp_drap" to 10, "ev_cyclones" to 30, "ev_fires" to 60, "ev_floods" to 60, "ev_buoys" to 30,
+        "ev_balloons" to 5, "ham_wspr" to 10, "ham_psk" to 5,
     )
 
     @Synchronized
@@ -91,16 +87,10 @@ object HamLayersFetcher {
                 }
                 set { it.copy(storms = storms) }
             }
-            "ham_muf" -> { val v = HamLayers.parseKc2g(text(HamLayers.KC2G_URL), System.currentTimeMillis()) ?: throw IllegalStateException("not KC2G data"); set { it.copy(ionosondes = v) } }
             "ev_fires" -> { val v = HamLayers.parseEonet(text(HamLayers.eonetUrl("wildfires"))) ?: throw IllegalStateException("not EONET data"); set { it.copy(fires = v) } }
             "ev_floods" -> { val v = HamLayers.parseEonet(text(HamLayers.eonetUrl("floods", 30))) ?: throw IllegalStateException("not EONET data"); set { it.copy(floods = v) } }
             "ev_buoys" -> { val v = HamLayers.parseNdbc(text(HamLayers.NDBC_URL, "text/plain")) ?: throw IllegalStateException("not NDBC data"); set { it.copy(buoys = v) } }
             "ev_balloons" -> { val v = HamLayers.parseSondehub(text(HamLayers.SONDEHUB_URL)) ?: throw IllegalStateException("not SondeHub data"); set { it.copy(balloons = v) } }
-            "ev_aircraft" -> {
-                val here = NetWeatherFetcher.position(ctx) ?: return
-                val v = HamLayers.parseAdsb(text(HamLayers.adsbUrl(here.first, here.second))) ?: throw IllegalStateException("not adsb.lol data"); set { it.copy(aircraft = v) }
-            }
-            "ev_launches" -> { val v = HamLayers.parseLaunches(text(HamLayers.LAUNCHES_URL)) ?: throw IllegalStateException("not Launch Library data"); set { it.copy(launches = v) } }
             "ham_wspr" -> {
                 val call = settings.callsign.substringBefore('-').trim().ifEmpty { return }
                 val v = HamLayers.parseWsprLive(text(HamLayers.wsprLiveUrl(call))) ?: throw IllegalStateException("not wspr.live data"); set { it.copy(wspr = v) }

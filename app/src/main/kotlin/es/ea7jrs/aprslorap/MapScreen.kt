@@ -303,19 +303,18 @@ fun MapScreen(nav: Navigator) {
     var card by remember { mutableStateOf<MapCard?>(null) }
     var aemetTitle by remember { mutableStateOf("AEMET · national radar composite") }
     val layersVersion by MapOverlays.layersVersion.collectAsState()
-    val navWarnings by NavAreas.warnings.collectAsState()
     val official by AppState.officialAlerts.collectAsState()
     val aviation by AviationFetcher.data.collectAsState()
     if ("metar" in ovOn || "sigmet" in ovOn) LaunchedEffect(ovOn) { AviationFetcher.maybeFetch(ctx, settings) }
     val active = MapOverlays.available.filter { it.id in ovOn }
     fun opacity(id: String) = ovOp[id] ?: MapOverlays.byId(id)?.defaultOpacity ?: 100
-    if ("navarea" in ovOn && !BuildConfig.PLAY) LaunchedEffect(Unit) { NavAreas.refresh() }
     val now = rememberNow(30_000)
     val shown = all.filter { it.lat != null && it.lon != null && now - it.lastMs <= minutes * 60_000L }
     val me = Own.position()
     val focus = MapFocus.call
     // layers that follow OpenHamClock (HAM, SPACE, EVENTS): downloads while the map is open
     val ham by HamLayersFetcher.data.collectAsState()
+    val aircraft by AppState.aircraft.collectAsState()
     val gcTarget by HamLayersFetcher.gcTarget.collectAsState()
     val qsos by AppState.qsoLog.collectAsState()
     val ovAvail = ovOn.filter { id -> MapOverlays.available.any { it.id == id } }.toSet()
@@ -450,20 +449,6 @@ fun MapScreen(nav: Navigator) {
                             listOfNotNull("METAR" to m.raw, taf?.let { "TAF" to it })); true }
                 })
             }
-            if ("navarea" in ovOn && !BuildConfig.PLAY) for (w in navWarnings.filter { it.positions.isNotEmpty() }) {
-                if (w.positions.size > 1) holder.dynamic.add(org.osmdroid.views.overlay.Polyline(map).apply {
-                    setPoints(w.positions.map { GeoPoint(it.first, it.second) })
-                    outlinePaint.color = 0xCCFFB347.toInt(); outlinePaint.strokeWidth = 3f; outlinePaint.pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
-                    setOnClickListener { _, _, _ -> false }
-                })
-                holder.dynamic.add(Marker(map).apply {
-                    position = GeoPoint(w.positions[0].first, w.positions[0].second)
-                    icon = BitmapDrawable(ctx.resources, MarkerArt.tag(ctx, "⚠ NAVAREA " + w.number, 0xFFFFB347.toInt(), 0xFF131A22.toInt()))
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); alpha = opacity("navarea") / 100f
-                    setOnMarkerClickListener { _, _ -> card = MapCard("NAVAREA III " + w.number, 0xFFFFB347.toInt(), listOf("Area" to w.area, "Title" to w.title,
-                        "Issued" to w.date, "Text" to w.text.take(500)).filter { it.second.isNotBlank() }, "Navigational warnings · Armada (IHM)"); true }
-                })
-            }
             val center = me?.let { GeoPoint(it.first, it.second) }
             if (center != null && rings) for (r in listOf(10_000.0, 25_000.0, 50_000.0)) {
                 holder.dynamic.add(Polygon(map).apply {
@@ -503,7 +488,7 @@ fun MapScreen(nav: Navigator) {
                 setOnMarkerClickListener { _, _ -> true }
             })
             val gcTo = gcTarget ?: shown.firstOrNull { it.call == focus }?.let { it.lat!! to it.lon!! }
-            holder.dynamic.addAll(0, hamOverlays(map, ctx, ovAvail, { opacity(it) }, ham, me, gcTo, qsos, maxOf(hamNow, System.currentTimeMillis())) { card = it })
+            holder.dynamic.addAll(0, hamOverlays(map, ctx, ovAvail, { opacity(it) }, ham, me, gcTo, qsos, maxOf(hamNow, System.currentTimeMillis()), aircraft) { card = it })
             map.overlays.addAll(holder.dynamic)
             if (focus != null && holder.focused != focus) {
                 shown.firstOrNull { it.call == focus }?.let { map.controller.animateTo(GeoPoint(it.lat!!, it.lon!!)); holder.centered = true }
@@ -558,7 +543,6 @@ fun MapScreen(nav: Navigator) {
                         singleLine = true, modifier = Modifier.fillMaxWidth())
                     if (owmKey.isBlank() && active.any { it.needsOwmKey }) Text("The forecast maps need your free OpenWeather key (openweathermap.org).", fontSize = 12.sp, color = Alp.Muted)
                 }
-                if (g == MapOverlays.Group.SEA && !BuildConfig.PLAY) Text("IHM services: non-commercial use only, not for navigation.", fontSize = 12.sp, color = Alp.Muted)
             }
             if (active.isNotEmpty()) {
                 SectionLabel("TRANSPARENCY OF EACH LAYER")

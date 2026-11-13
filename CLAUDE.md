@@ -115,14 +115,14 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   condiciones por leer), rejilla Maidenhead, zonas CQ / ITU, círculo máximo, balizas IBP y locators trabajados.
 - **Capas al estilo OpenHamClock** (2026-11-13; Manuel: «De openhamclock para la app todas las posibles»): núcleo
   `HamLayers.kt` (lectores con la forma de cada fuente según el código de OpenHamClock, MIT: OVATION, D-RAP, NHC
-  `CurrentStorms.json` + KMZ de trayectoria y cono, KC2G, EONET, SondeHub, adsb.lol, Launch Library 2, NDBC `latest_obs.txt`,
+  `CurrentStorms.json` + KMZ de trayectoria y cono, KC2G, EONET, SondeHub, Launch Library 2, NDBC `latest_obs.txt`,
   wspr.live, PSK Reporter, zonas CQ / ITU; calculados: horario IBP de NCDXF, círculo máximo con camino largo, rejilla
   Maidenhead), `HamLayersFetcher.kt` (solo con la capa encendida y el mapa abierto, cada 30 s comprueba; intervalos por
   fuente), `HamMapDraw.kt` (celdas de aurora / D-RAP / locators trabajados, rejilla, zonas, círculo máximo con pulsación
-  larga, balizas IBP en el aire, MUF, quién me oye, ciclones, incendios, inundaciones, boyas, globos, aviones,
+  larga, balizas IBP en el aire, MUF, quién me oye, ciclones, incendios, inundaciones, boyas, globos,
   lanzamientos; fichas `MapCard`), luces de ciudades (NASA GIBS, teselas). Grupos HAM, SPACE y EVENTS de `MapOverlays`.
   **Fuera de Google Play** hasta leer sus condiciones para una app de pago: KC2G, wspr.live, PSK Reporter, SondeHub,
-  adsb.lol, The Space Devs. Zonas: `assets/zones/{cq,itu}.geojson` (HB9HIL, MIT, simplificadas a 0,05°;
+  The Space Devs. Zonas: `assets/zones/{cq,itu}.geojson` (HB9HIL, MIT, simplificadas a 0,05°;
   `assets/licenses/MIT-hamradio-zones.txt`). Créditos en About; privacidad rev. 5. **No hechas**: Winlink (pide clave de
   desarrollador), Meshtastic y N3FJP (red local / escritorio), RBN (ya está en el DX cluster), rayos de Blitzortung
   (no comercial), VOACAP (lo calcula el servidor de OpenHamClock). 1187 comprobaciones. Sin probar contra los servidores
@@ -175,6 +175,29 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   SDRconnect apagado su audio satura (aviso en el estado). Voz digital, packet 9600 y SAME siguen solo con el RTL-SDR (necesitan
   el discriminador). 1282 comprobaciones. **Sin probar con SDRconnect** (el valor «true» de `audio_stream_enable` como texto está
   deducido de la librería Go).
+
+- **ADS-B en la app** (2026-11-13; Manuel: «Si y elimina adsb.lol» a decodificar en el móvil y leer un receptor de la red): núcleo
+  `Adsb.kt`: paridad Mode S (`crc`, `residual`, reparación de un bit en DF17 / 18), mensajes (identificación, posición aérea con CPR
+  global y local, altitud, velocidad / rumbo / régimen vertical, squawk; DF11, y DF0 / 4 / 5 / 16 / 20 / 21 solo de direcciones ya
+  oídas), `Table` (un avión se muestra con 2 mensajes, se olvida a los 5 min; con la posición propia sitúa desde el primer mensaje y
+  descarta lo que cae a más de 600 km), `Demod` (RTL-SDR a 2 MS/s, I / Q de 8 bits: preámbulo y bits al modo de dump1090, escrito de
+  nuevo) y `NetParser` (dump1090 / readsb: Beast 30005, AVR 30002, BaseStation 30003, detectado solo). Casos de prueba: los ejemplos
+  de «The 1090 MHz Riddle» y una señal sintética con ruido. App: `AdsbLink.kt` (rtl_tcp a 2 MS/s en 1090 MHz —el dongle del móvil
+  con el driver o un rtl_tcp de la red— o receptor de red; `AppState.aircraft` cada segundo; para el receptor de la pestaña SDR
+  porque rtl_tcp admite un cliente), herramienta **Aircraft (ADS-B)** (`AdsbTab.kt`, `Tool.ADSB`, tecla [F] ADS-B en RADIO, menú
+  lateral: lista por distancia con rumbo y elevación desde aquí, emergencias 7500 / 7600 / 7700 arriba, ROTOR con azimut y
+  elevación) y capa del mapa `ev_aircraft` con esos datos (ya también en Google Play). **adsb.lol eliminado** (núcleo, descarga,
+  capa y privacidad rev. 6). 1310 comprobaciones entonces. Sin probar con un dongle ni con un dump1090 real; el squawk (orden de los bits
+  del código de identidad) no tiene caso de prueba publicado.
+
+- **Retirado lo que no podía ir en Google Play** (Manuel, 2026-11-13: «Elimina lo que se quede fuera de la app y deja quién me oye
+  por WSPR (wspr.live) y por PSK Reporter, globos (SondeHub)»): fuera, de todas las versiones, las capas del IHM (carta electrónica
+  y de papel, luces, mareas, límites), los avisos NAVAREA (`NavWarn`, `NavAreas`), las ionosondas / MUF de KC2G, los lanzamientos de
+  The Space Devs y la búsqueda de RepeaterBook con token de su API (`RepeaterSearch.kt`, `rbToken`...; queda RepeaterBook Connect).
+  WSPR, PSK Reporter y SondeHub pasan a **todas las versiones** (`play = true`; decisión de Manuel: sus condiciones para una app
+  de pago siguen **sin leer**). Ya no queda ninguna capa con `play = false`; `BuildConfig.PLAY` sigue definido pero no oculta nada.
+  Lo que se dice más arriba de esas capas y del token de RepeaterBook es historia. Privacidad rev. 7. 1282 comprobaciones.
+  **El plotter conserva** IHM y NAVAREA (uso propio).
 
 ## Pendiente
 - **PORTUS de Puertos del Estado, para después de publicar en Google Play** (Manuel, 2026-11-10): datos y mapas oceanográficos (boyas, mareógrafos, radar HF, previsión de oleaje, viento, nivel del mar y corrientes) en el mapa y quizá en la pestaña AIS. Widgets por iframe (`portus.puertos.es/Portus/docs/widgets.pdf`: su uso implica aceptar el aviso legal de puertos.es y avisar a webmaster@puertos.es) o WMS (`geoserver.puertos.es`, confirmado solo para zonas de servicio). Antes, pedir conformidad a webmaster@puertos.es para una app de pago.

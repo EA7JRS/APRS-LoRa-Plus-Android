@@ -51,6 +51,7 @@ private val CREDITS = listOf(
     Triple("osmdroid (map)", "osmdroid team, Apache-2.0", "https://github.com/osmdroid/osmdroid"),
     Triple("Map data and tiles", "© OpenStreetMap contributors (ODbL); IGN Spain (CC BY 4.0); OpenSeaMap (CC BY-SA); Esri (with your ArcGIS key)", "https://www.openstreetmap.org/copyright"),
     Triple("Country files (cty.dat)", "Jim Reisert AD1C", "https://www.country-files.com/"),
+    Triple("ADS-B / Mode S decoder (message formats and worked examples of \"The 1090 MHz Riddle\"; pulse detection after dump1090)", "Junzi Sun (TU Delft); Salvatore Sanfilippo, BSD", "https://mode-s.org/1090mhz/"),
     Triple("OpenHamClock (ideas and feed formats of the HAM, SPACE and EVENTS map layers)", "OpenHamClock contributors, MIT", "https://github.com/accius/openhamclock"),
     Triple("CQ and ITU zone boundaries (hamradio-zones-geojson)", "HB9HIL, MIT", "https://github.com/HB9HIL/hamradio-zones-geojson"),
     Triple("Weather, space and event feeds", "NOAA (AWC, SWPC, NHC, NDBC) and NASA (EONET, GIBS): public domain", "https://www.noaa.gov/"),

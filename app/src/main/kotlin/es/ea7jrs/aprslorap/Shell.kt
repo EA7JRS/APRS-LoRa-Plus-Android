@@ -62,7 +62,7 @@ import kotlinx.coroutines.launch
 enum class Tool(val title: String) {
     TRACKER("Tracker"), SENSORS("Sensors"), HEARD("Heard by the tracker"), SAT("Satellites"), ROTOR("Rotor box"), SDR("SDR receivers"),
     MODES("Digital modes"), AIS("AIS ships"), LOG("Log & QSL"), SIGID("Signal ID"), REMOTE("Remote screen"), CONFIG("Tracker configuration"),
-    DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"),
+    DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"), ADSB("Aircraft (ADS-B)"),
 }
 
 /** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "IBP", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
@@ -115,6 +115,8 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
     val rotorPos by AppState.rotorPos.collectAsState()
     val sdr by AppState.sdr.collectAsState()
     val phoneCat by AppState.phoneCat.collectAsState()
+    val adsb by AdsbLink.state.collectAsState()
+    val aircraftCount = AppState.aircraft.collectAsState().value.size
     val wsjt by AppState.wsjt.collectAsState()
     val extra by AppState.extraStatus.collectAsState()
     val spot by AppState.spotter.collectAsState()
@@ -144,6 +146,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
         FKey("SAT", "SAT", sat?.name ?: "passes", if (sat?.ok == true) 1 else 0) { nav.tool(Tool.SAT) },
         FKey("ROTOR", "ROTOR", rotorPos?.let { String.format(java.util.Locale.US, "%03.0f° / %.0f°", it.azDeg, it.elDeg ?: 0.0) } ?: "box") { nav.tool(Tool.ROTOR) },
         FKey("CAT", "CAT", phoneCat?.takeIf { it.link }?.let { es.ea7jrs.aprslorap.core.RotorProto.freq(it.freqHz) } ?: "USB radio", if (phoneCat?.link == true) 1 else 0) { nav.tool(Tool.CAT) },
+        FKey("ADSB", "ADS-B", if (adsb.running) "${aircraftCount} aircraft" else "1090 MHz", if (adsb.running) 1 else 0) { nav.tool(Tool.ADSB) },
         FKey("SDR", "SDR", if (sdr.connected) sdr.device.ifEmpty { "on" } else "receivers", if (sdr.connected) 1 else 0) { nav.tool(Tool.SDR) },
         FKey("MODES", "MODES", if (wsjt.running) "decoding" else "FT8 · CW", if (wsjt.running) 1 else 0) { nav.tool(Tool.MODES) },
         FKey("CWKEY", "CW KEY", "paddle") { nav.tool(Tool.TRACKER) },
@@ -167,7 +170,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 
 val FMENU_PAGES = listOf(
     "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
-    "RADIO" to listOf("DX", "RBN", "IBP", "SAT", "ROTOR", "CAT", "SDR", "MODES", "CWKEY", "SPOTS", "AIS"),
+    "RADIO" to listOf("DX", "RBN", "IBP", "SAT", "ROTOR", "CAT", "SDR", "MODES", "CWKEY", "SPOTS", "AIS", "ADSB"),
     "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS"),
 )
 
@@ -402,7 +405,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "Spotting" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "Official alerts" to Tool.ALERTS, "Compass · GPS" to null, "About" to Tool.ABOUT,
+                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "Aircraft (ADS-B)" to Tool.ADSB, "Official alerts" to Tool.ALERTS, "Compass · GPS" to null, "About" to Tool.ABOUT,
             )
             for (row in grid.chunked(2)) {
                 Row {
@@ -520,6 +523,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.ABOUT -> AboutTab()
                 Tool.ALERTS -> AlertsTab()
                 Tool.CAT -> CatTab()
+                Tool.ADSB -> AdsbTab()
             }
         }
     }

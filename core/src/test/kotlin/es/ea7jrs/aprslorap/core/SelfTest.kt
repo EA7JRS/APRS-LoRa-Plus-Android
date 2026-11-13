@@ -641,16 +641,6 @@ private fun testRotator() {
     check(abs(PhoneMath.baroAltitude(1013.25)) < 1e-9, "baro altitude at QNH"); check(abs(PhoneMath.baroAltitude(899.0) - 1000.0) < 15.0, "baro altitude 1000 m")
     check(abs(PhoneMath.qnh(1013.25 * Math.pow(1.0 - 1000.0 / 44330.0, 5.255), 1000.0) - 1013.25) < 0.01, "QNH back")
 
-    val json = """{"count":2,"results":[{"State ID":"","Rptr ID":"","Frequency":"145.6500","Input Freq":"145.0500","PL":"","Nearest City":"Granada","Region":null,"Country":"Spain","Lat":"37.1951","Long":"-3.4194","Callsign":"ED7ZAB","Use":"OPEN","Operational Status":"On-air"},
-        {"Frequency":438.9,"Input Freq":431.3,"PL":"77.0","Nearest City":"X","Country":"Spain","Lat":"","Long":"","Callsign":"ED7YAA","Use":"OPEN","Operational Status":"Off-air"}]}"""
-    val reps = RepeaterBook.parse(json).getOrThrow()
-    eq(reps.size, 2, "RepeaterBook results"); eq(reps[0].callsign, "ED7ZAB", "RepeaterBook callsign"); eq(reps[0].freqHz, 145_650_000L, "RepeaterBook frequency")
-    check(reps[0].hasPosition && abs(reps[0].lon!! + 3.4194) < 1e-9, "RepeaterBook position"); check(!reps[1].hasPosition, "RepeaterBook without position")
-    eq(reps[0].targetName, "ED7ZAB 145.650", "RepeaterBook target name"); eq(reps[1].tone, "77.0", "RepeaterBook tone")
-    eq(RepeaterBook.parse("{\"status\":\"error\",\"message\":\"Invalid token\"}").exceptionOrNull()?.message, "Invalid token", "RepeaterBook error")
-    check(RepeaterBook.parse("<html>").isFailure, "RepeaterBook not JSON")
-    eq(RepeaterBook.url(false, callsign = "ed7zab"), "https://www.repeaterbook.com/api/exportROW.php?callsign=ED7ZAB", "RepeaterBook url")
-    eq(RepeaterBook.url(false, city = "La Línea", country = "Spain"), "https://www.repeaterbook.com/api/exportROW.php?city=La+L%C3%ADnea&country=Spain", "RepeaterBook url encoded")
 
     check(Control.parse("{\"e\":\"rot\",\"az\":10,\"el\":5,\"aaz\":9.5,\"ael\":4}").let { it is ControlEvent.Rotor && it.pointing.actualAzDeg == 9.5 && it.pointing.actualElDeg == 4.0 }, "rot actual position")
     check(Control.parse("{\"e\":\"info\",\"caps\":{\"rotor\":true}}").let { it is ControlEvent.Info && it.info.hasRotor }, "caps.rotor")
@@ -772,6 +762,107 @@ private fun testRotorFollow() {
     eq(Sat.rotorSource(5), "CW beacon", "rotor source name")
     eq(Sat.rotorSource(7), "Moon", "rotor source moon")
     check(RotorFollow.TRACKER_SOURCES.containsAll(listOf(RotorFollow.SRC_SUN, RotorFollow.SRC_MOON)), "tracker sources sun / moon")
+}
+
+// Worked examples of "The 1090 MHz Riddle" (J. Sun), and a synthetic 2 MS/s signal for the demodulator
+private fun testAdsb() {
+    fun h(x: String) = Adsb.unhex(x)!!
+    check(Adsb.residual(h("8D406B902015A678D4D220AA4BDA")) == 0 && Adsb.residual(h("8D4840D6202CC371C32CE0576098")) == 0 && Adsb.crc(h("8D406B902015A678D4D220"), 11) == 0xAA4BDA, "ADS-B: parity of good messages")
+    val id = Adsb.decode(h("8D4840D6202CC371C32CE0576098"))
+    check(id != null && id.df == 17 && id.icao == 0x4840D6 && id.typeCode == 4 && id.callsign == "KLM1023", "ADS-B: identification")
+    val ev = Adsb.decode(h("8D40621D58C382D690C8AC2863A7"))!!; val od = Adsb.decode(h("8D40621D58C386435CC412692AD6"))!!
+    check(ev.icao == 0x40621D && ev.cprOdd == false && od.cprOdd == true && ev.cprLat == 93000 && ev.cprLon == 51372 && od.cprLat == 74158 && od.cprLon == 50194 &&
+        ev.altFt == 38000, "ADS-B: airborne position fields and altitude")
+    val g = Adsb.cprGlobal(ev.cprLat, ev.cprLon, od.cprLat, od.cprLon, latestOdd = false)
+    check(g != null && Math.abs(g.first - 52.25720) < 1e-4 && Math.abs(g.second - 3.91937) < 1e-4, "ADS-B: position from an even and an odd message")
+    val l = Adsb.cprLocal(ev.cprLat, ev.cprLon, false, 52.258, 3.918)
+    check(Math.abs(l.first - 52.25720) < 1e-4 && Math.abs(l.second - 3.91937) < 1e-4, "ADS-B: position from one message and a reference")
+    check(Adsb.nl(0.0) == 59 && Adsb.nl(52.2572) == 36 && Adsb.nl(87.0) == 2 && Adsb.nl(89.0) == 1, "ADS-B: longitude zones")
+    val v = Adsb.decode(h("8D485020994409940838175B284F"))!!
+    check(Math.abs(v.gsKt!! - 159.20) < 0.01 && Math.abs(v.trackDeg!! - 182.88) < 0.01 && v.vrFpm == -832, "ADS-B: speed, track and vertical rate")
+    val a = Adsb.decode(h("8DA05F219B06B6AF189400CBC33F"))!!
+    check(a.gsKt == null && Math.abs(a.trackDeg!! - 243.98) < 0.01 && a.vrFpm == -2304, "ADS-B: airspeed message (heading, vertical rate)")
+    // one wrong bit is repaired, two are not; the format bits are never repaired
+    val one = h("8D4840D6202CC371C32CE0576098"); one[6] = (one[6].toInt() xor 0x10).toByte()
+    val fixed = Adsb.decode(one)
+    check(fixed != null && fixed.callsign == "KLM1023" && fixed.fixedBit == 51 && Adsb.hex(one) == "8D4840D6202CC371C32CE0576098", "ADS-B: one wrong bit repaired")
+    val two = h("8D4840D6202CC371C32CE0576098"); two[6] = (two[6].toInt() xor 0x18).toByte()
+    check(Adsb.decode(two) == null && Adsb.decode(h("8D4840D6202CC371C32CE0576098").also { it[6] = (it[6].toInt() xor 0x10).toByte() }, fix = false) == null, "ADS-B: two wrong bits rejected")
+    // address-parity formats only for addresses already heard
+    val s = h("5D4840D6000000"); val r = Adsb.crc(s, 4)
+    s[4] = (r shr 16).toByte(); s[5] = (r shr 8).toByte(); s[6] = r.toByte()
+    check(Adsb.decode(s)?.let { it.df == 11 && it.icao == 0x4840D6 } == true, "ADS-B: all-call reply")
+    val alt = h("20001838000000"); val ra = Adsb.crc(alt, 4) xor 0x4840D6       // address mixed with the parity
+    alt[4] = (ra shr 16).toByte(); alt[5] = (ra shr 8).toByte(); alt[6] = ra.toByte()
+    check(Adsb.decode(alt) == null && Adsb.decode(alt, known = { it == 0x4840D6 })?.let { it.icao == 0x4840D6 && it.altFt == 38000 } == true, "ADS-B: altitude reply of a known aircraft")
+
+    // table: identification + position pair + speed
+    val t = Adsb.Table()
+    t.onFrame(h("8D40621D58C386435CC412692AD6"), 1000)
+    check(t.list(1000).isEmpty(), "ADS-B table: one message is not enough to show an aircraft")
+    t.onFrame(h("8D40621D58C382D690C8AC2863A7"), 2000)
+    val p = t.list(2000).single()
+    check(p.hex == "40621D" && Math.abs(p.lat!! - 52.25720) < 1e-4 && Math.abs(p.lon!! - 3.91937) < 1e-4 && p.altFt == 38000 && p.flightLevel() == "FL380", "ADS-B table: position")
+    val t2 = Adsb.Table()
+    t2.onFrame(h("8D40621D58C382D690C8AC2863A7"), 1000, 52.0, 4.0); t2.onFrame(h("8D40621D58C382D690C8AC2863A7"), 1500, 52.0, 4.0)
+    check(t2.list(2000).single().lat?.let { Math.abs(it - 52.25720) < 1e-4 } == true, "ADS-B table: position from the first message with the receiver position")
+    val t3 = Adsb.Table()
+    t3.onFrame(h("8D40621D58C382D690C8AC2863A7"), 1000, -30.0, 100.0); t3.onFrame(h("8D40621D58C382D690C8AC2863A7"), 1500, -30.0, 100.0)
+    check(t3.list(2000).single().lat?.let { Math.abs(it - -30.0) < 4 } == true, "ADS-B table: one message places the aircraft near the receiver")
+    check(t.list(2000 + 301_000L).isEmpty(), "ADS-B table: forgotten after 5 minutes")
+    check(t.onSbs("MSG,3,1,1,4CA2D6,1,2026/11/13,10:00:00.000,2026/11/13,10:00:00.000,,37000,,,36.7000,-6.1000,,,0,0,0,0", 5000) &&
+        t.onSbs("MSG,1,1,1,4CA2D6,1,2026/11/13,10:00:01.000,2026/11/13,10:00:01.000,RYR12AB ,,,,,,,,,,,", 6000) &&
+        t.onSbs("MSG,4,1,1,4CA2D6,1,2026/11/13,10:00:02.000,2026/11/13,10:00:02.000,,,450.0,270.5,,,-64,,,,,", 7000), "ADS-B: BaseStation lines")
+    val b = t.list(8000).first { it.icao == 0x4CA2D6 }
+    check(b.callsign == "RYR12AB" && b.altFt == 37000 && b.lat == 36.7 && b.gsKt == 450.0 && b.trackDeg == 270.5 && b.vrFpm == -64, "ADS-B: BaseStation fields")
+    check(Adsb.Aircraft(1, squawk = 7700).emergency == "EMERGENCY 7700" && Adsb.Aircraft(1, squawk = 1000).emergency == null, "ADS-B: emergency squawk")
+
+    // receiver on the network: Beast, AVR, BaseStation
+    val got = ArrayList<String>(); val sbs = ArrayList<String>()
+    val long = h("8D4840D6202CC371C32CE0576098")
+    val beast = java.io.ByteArrayOutputStream()
+    fun esc(x: ByteArray) { for (c in x) { beast.write(c.toInt()); if (c == 0x1A.toByte()) beast.write(0x1A) } }
+    beast.write(0x1A); beast.write('3'.code); esc(byteArrayOf(0, 0, 0x1A, 0, 0, 1, 80)); esc(long)
+    beast.write(0x1A); beast.write('1'.code); esc(byteArrayOf(0, 0, 0, 0, 0, 2, 80, 0x12, 0x34))
+    beast.write(0x1A); beast.write('2'.code); esc(byteArrayOf(0, 0, 0, 0, 0, 3, 80)); esc(s)
+    val bp = Adsb.NetParser({ got.add(Adsb.hex(it)) }, { sbs.add(it) })
+    val bb = beast.toByteArray(); bp.feed(bb.copyOfRange(0, 11)); bp.feed(bb.copyOfRange(11, bb.size))
+    check(bp.format == "Beast" && got == listOf("8D4840D6202CC371C32CE0576098", Adsb.hex(s)), "ADS-B: Beast frames (escapes, split data, Mode A/C skipped)")
+    got.clear()
+    val ap = Adsb.NetParser({ got.add(Adsb.hex(it)) }, { sbs.add(it) })
+    ap.feed("*8D4840D6202CC371C32CE0576098;\n@0123456789AB8D40621D58C382D690C8AC2863A7;\r\n*zz;\n".toByteArray())
+    check(ap.format == "AVR" && got == listOf("8D4840D6202CC371C32CE0576098", "8D40621D58C382D690C8AC2863A7"), "ADS-B: raw AVR lines, with and without time")
+    val sp = Adsb.NetParser({ got.add("x") }, { sbs.add(it) })
+    sp.feed("MSG,3,1,1,4CA2D6,1,,,,,,37000,,,36.7,-6.1,,,0,0,0,0\r\n".toByteArray())
+    check(sp.format == "BaseStation" && sbs.size == 1 && sbs[0].startsWith("MSG,3"), "ADS-B: BaseStation detected")
+
+    // demodulator: three messages as 2 MS/s pulses over noise, split across blocks
+    val rnd = java.util.Random(7)
+    val frames = listOf("8D4840D6202CC371C32CE0576098", "8D40621D58C382D690C8AC2863A7", Adsb.hex(s))
+    val n = 6000
+    val iq = ByteArray(n * 2)
+    val amp = DoubleArray(n)
+    var at = 300
+    for (f in frames) {
+        val m = h(f)
+        for (k in intArrayOf(0, 2, 7, 9)) amp[at + k] = 60.0
+        for (bit in 0 until m.size * 8) { val one1 = (m[bit / 8].toInt() shr (7 - bit % 8)) and 1 == 1; amp[at + 16 + 2 * bit + (if (one1) 0 else 1)] = 60.0 }
+        at += 1500
+    }
+    for (i in 0 until n) {
+        val ph = rnd.nextDouble() * 2 * Math.PI
+        iq[2 * i] = Math.round(127.5 + amp[i] * Math.cos(ph) + rnd.nextGaussian() * 4).toInt().coerceIn(0, 255).toByte()
+        iq[2 * i + 1] = Math.round(127.5 + amp[i] * Math.sin(ph) + rnd.nextGaussian() * 4).toInt().coerceIn(0, 255).toByte()
+    }
+    val out = ArrayList<String>()
+    val d = Adsb.Demod { out.add(Adsb.hex(it)) }
+    var o = 0
+    for (len in intArrayOf(1000, 2222, 3000, 5778)) { d.process(iq.copyOfRange(o, o + len)); o += len }
+    check(out == frames, "ADS-B demodulator: three messages out of the samples, across blocks (${out.size})")
+    val noise = ByteArray(400_000) { (127.5 + rnd.nextGaussian() * 6).toInt().coerceIn(0, 255).toByte() }
+    val bad = ArrayList<String>()
+    Adsb.Demod { bad.add(Adsb.hex(it)) }.process(noise)
+    check(bad.size <= 1, "ADS-B demodulator: (almost) nothing out of noise (${bad.size})")
 }
 
 private fun testRateLimiter() {
@@ -1317,20 +1408,6 @@ private fun testMapData() {
     eq(Wms.layers(capLeaves), "Luces,Boyas,Faros", "WMS leaf layers")
     check(Wms.layers("<html>error</html>") == null, "WMS without capabilities")
 
-    // navigational warnings (IHM XML) and the positions in their text
-    val xml = "<?xml version=\"1.0\"?><dataroot generated=\"2026-11-10T09:31:41\"><NAVAREASVIGOR><nnunaf>0412/26</nnunaf><nfemi>2026-11-09T10:00:00</nfemi>" +
-        "<nlocae>Mediterráneo</nlocae><nlocai>W Mediterranean</nlocai><nasun>Boya</nasun><nasuni>Buoy adrift</nasuni>" +
-        "<ntees>Boya a la deriva en 37-35.2N 000-38.4W.</ntees><ntein>Buoy adrift in 37-35.2N 000-38.4W &amp; 42 11,718N 009 59,778E. Keep clear.</ntein></NAVAREASVIGOR>" +
-        "<NAVAREASVIGOR><nnunaf>0413/26</nnunaf><ntees>Sin posición</ntees></NAVAREASVIGOR></dataroot>"
-    val w = NavWarn.parseIhm(xml)!!
-    eq(w.size, 2, "NAVAREA warnings"); eq(w[0].number, "0412/26", "NAVAREA number"); eq(w[0].date, "2026-11-09", "NAVAREA date")
-    eq(w[0].title, "Buoy adrift", "NAVAREA title"); check(w[0].text.contains("&"), "NAVAREA entities")
-    eq(w[0].positions.size, 2, "NAVAREA positions"); near(w[0].positions[0].first, 37.58667, 1e-4, "NAVAREA lat"); near(w[0].positions[0].second, -0.64, 1e-4, "NAVAREA lon W")
-    near(w[0].positions[1].first, 42.1953, 1e-4, "NAVAREA lat with comma"); near(w[0].positions[1].second, 9.99630, 1e-4, "NAVAREA lon E")
-    check(w[1].positions.isEmpty(), "NAVAREA without positions")
-    eq(NavWarn.positions("36-31N 006-17W, NE winds 25 KN, 1200 UTC").size, 1, "NAVAREA position among words")
-    check(NavWarn.parseIhm("<html/>") == null, "NAVAREA wrong file")
-
     // day / night line
     val june = java.time.Instant.parse("2026-06-21T12:00:00Z").toEpochMilli()
     val (dec, lon) = Terminator.subsolar(june)
@@ -1373,8 +1450,6 @@ private fun testRepeaterBookConnect() {
     eq(r.tone, "88.5", "Connect CTCSS"); eq(r.region, "Andalucía", "Connect region"); check(r.hasPosition, "Connect position"); eq(r.freqHz, 145_637_500L, "Connect Hz")
     eq(RepeaterBook.fromConnect(mapOf("Call" to "X", "CTCSS" to 0.0, "DCS" to 23L)).tone, "D023", "Connect DCS")
     check(!RepeaterBook.fromConnect(mapOf("Call" to "X", "Lat" to 0.0, "Lng" to 0.0)).hasPosition, "Connect without position")
-    eq(RepeaterBook.explain("ua_mismatch"), "RepeaterBook: the User-Agent does not match the one approved with the token", "Export API error code")
-    check(RepeaterBook.parse("""{"code":"auth_scope_denied","message":"Scope"}""").exceptionOrNull()?.message?.contains("region") == true, "Export API error message")
 }
 
 private fun testAprsWx() {
@@ -1645,10 +1720,6 @@ private fun testHamLayers() {
     check(fc.size == 2 && fc[0].hour == 0 && fc[1].hour == 24 && fc[1].windKt == 60 && fc[1].validAt.startsWith("2:00 AM"), "NHC forecast points")
     check(H.nhcCone(kml).size == 4, "NHC cone ring")
     val now = 1794558600_000L                                         // 2026-11-13 08:30 UTC
-    val io = H.parseKc2g("""[{"fof2":"6.2","mufd":19.4,"md":3.1,"cs":85,"time":"2026-11-13T08:15:00","station":{"code":"EB040","name":"Roquetes","latitude":"40.8","longitude":"0.5"}},
-        {"fof2":5.0,"cs":-1,"time":"2026-11-13T08:00:00","station":{"code":"AU930","name":"Learmonth","latitude":-21.9,"longitude":"242.0"}},
-        {"fof2":4.0,"time":"2019-01-01T00:00:00","station":{"code":"OLD","latitude":0,"longitude":0}},{"mufd":10,"time":"2026-11-13T08:00:00","station":{"code":"NOF2"}}]""", now)
-    check(io != null && io.size == 2 && io[0].mufd == 19.4 && io[0].cs == 85 && io[1].cs == null && io[1].lon == -118.0, "KC2G ionosondes (age, foF2, 0..360)")
     check(H.ibpSlot(Date0 + 0) == 0 && H.ibpSlot(Date0 + 35_000) == 3 && H.ibpSlot(Date0 + 180_000) == 0, "IBP slot")
     val ibp = H.ibpNow(Date0 + 5_000)
     check(ibp[0].second.call == "4U1UN" && ibp[1].second.call == "YV5B" && ibp[4].second.call == "CS3B", "IBP: 20 m 4U1UN, 17 m YV5B, 10 m CS3B at slot 0")
@@ -1671,12 +1742,6 @@ private fun testHamLayers() {
     val bl = H.parseSondehub("""{"EA7XYZ-11":{"2026-11-13T08:00:00.000Z":{"lat":36.5,"lon":-6.2,"alt":9000,"datetime":"2026-11-13T08:00:00.000Z"},
         "2026-11-13T08:10:00.000Z":{"lat":36.6,"lon":-6.0,"alt":11000,"datetime":"2026-11-13T08:10:00.000Z","comment":"pico"}}}""")
     check(bl != null && bl.size == 1 && bl[0].lat == 36.6 && bl[0].altM == 11000.0 && bl[0].track.size == 2 && bl[0].comment == "pico", "SondeHub balloon")
-    val ac = H.parseAdsb("""{"ac":[{"hex":"3443c1","flight":"IBE1234 ","t":"A320","lat":36.7,"lon":-6.1,"alt_baro":35000,"alt_geom":35500,"gs":450.5,"track":45.2},
-        {"hex":"abc","lat":36.74,"lon":-6.06,"alt_baro":"ground"},{"hex":"nopos"}]}""")
-    check(ac != null && ac.size == 2 && ac[0].flight == "IBE1234" && ac[0].altFt == 35500 && ac[1].onGround && ac[1].altFt == 0, "adsb.lol aircraft")
-    val la = H.parseLaunches("""{"results":[{"name":"Falcon 9 | Starlink","net":"2026-11-14T02:30:00Z","status":{"abbrev":"Go"},
-        "launch_service_provider":{"name":"SpaceX"},"pad":{"name":"SLC-40","latitude":"28.56","longitude":"-80.57"}}]}""")
-    check(la != null && la.size == 1 && la[0].lat == 28.56 && la[0].status == "Go" && la[0].provider == "SpaceX", "launches")
     val nd = H.parseNdbc("""#STN       LAT      LON  YYYY MM DD hh mm WDIR WSPD   GST WVHT  DPD APD MWD   PRES  PTDY  ATMP  WTMP  DEWP  VIS   TIDE
 #text      deg      deg   yr mo day hr mn degT  m/s   m/s   m   sec sec degT   hPa   hPa  degC  degC  degC  nmi     ft
 41047   27.520  -71.530  2026 11 13 08 00  80   7.0   9.0  2.1  10  MM  MM 1018.5    MM  24.5  26.8    MM   MM     MM
@@ -1859,7 +1924,7 @@ private fun testRbn() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

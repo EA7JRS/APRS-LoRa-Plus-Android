@@ -276,20 +276,6 @@ class Settings(ctx: Context) {
         get() = p.getInt("rot_server_port", es.ea7jrs.aprslorap.core.RotCtl.DEFAULT_PORT)
         set(v) { p.edit().putInt("rot_server_port", v.coerceIn(1024, 65535)).apply() }
 
-    // RepeaterBook: the user's own token and User-Agent (with contact e-mail), as RepeaterBook asks
-    var rbToken: String
-        get() = p.getString("rb_token", "")!!
-        set(v) { p.edit().putString("rb_token", v.trim()).apply() }
-    var rbUserAgent: String
-        get() = p.getString("rb_agent", "APRSLoRaPlus/${BuildConfig.VERSION_NAME} (+https://ea7jrs.github.io/APRS-LoRa-Plus/; ea7jrs.manuel@gmail.com)")!!
-        set(v) { p.edit().putString("rb_agent", v.trim()).apply() }
-    /** Source of the repeater search: the RepeaterBook app (Connect, no token) or the Export API with the user's token. */
-    var rbUseConnect: Boolean
-        get() = BuildConfig.PLAY || p.getBoolean("rb_connect", true)
-        set(v) { p.edit().putBoolean("rb_connect", v).apply() }
-    var rbNorthAmerica: Boolean
-        get() = p.getBoolean("rb_na", false)
-        set(v) { p.edit().putBoolean("rb_na", v).apply() }
 
     // SDR program or server under control
     /** SDRconnect: ask for its audio (decoders of the app) and play it on the phone. */
@@ -299,6 +285,16 @@ class Settings(ctx: Context) {
     var sdrConnectPlay: Boolean
         get() = p.getBoolean("sdrconnect_play", true)
         set(v) { p.edit().putBoolean("sdrconnect_play", v).apply() }
+    // ---- ADS-B (aircraft on 1090 MHz)
+    var adsbSource: String                           // USB (RTL-SDR on this phone), RTLTCP (rtl_tcp on the network), NET (dump1090 / readsb)
+        get() = p.getString("adsb_source", "USB")!!
+        set(v) { p.edit().putString("adsb_source", v).apply() }
+    var adsbHost: String
+        get() = p.getString("adsb_host", "")!!
+        set(v) { p.edit().putString("adsb_host", v).apply() }
+    var adsbPort: Int
+        get() = p.getInt("adsb_port", 30005)
+        set(v) { p.edit().putInt("adsb_port", v).apply() }
     var sdrKind: String
         get() = p.getString("sdr_kind", es.ea7jrs.aprslorap.core.Sdr.Kind.RIGCTL.name)!!
         set(v) { p.edit().putString("sdr_kind", v).apply() }
