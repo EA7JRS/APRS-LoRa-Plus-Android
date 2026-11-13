@@ -1610,6 +1610,10 @@ private fun testHamLayers() {
     val ibp = H.ibpNow(Date0 + 5_000)
     check(ibp[0].second.call == "4U1UN" && ibp[1].second.call == "YV5B" && ibp[4].second.call == "CS3B", "IBP: 20 m 4U1UN, 17 m YV5B, 10 m CS3B at slot 0")
     check(H.ibpNow(Date0 + 15_000)[1].second.call == "4U1UN" && H.ibpSecondsLeft(Date0 + 13_000) == 7, "IBP: 4U1UN on 17 m in slot 1")
+    check(H.ibpSecondsUntil(Date0 + 5_000, 0, H.IBP_BANDS[0]) == 0 && H.ibpSecondsUntil(Date0 + 5_000, 0, H.IBP_BANDS[1]) == 5, "IBP: 4U1UN on 17 m in 5 s")
+    check(H.ibpSecondsUntil(Date0 + 5_000, 14, H.IBP_BANDS[0]) == 135 && H.ibpSecondsUntil(Date0 + 5_000, 14, H.IBP_BANDS[4]) == 0, "IBP: CS3B on 10 m now, on 20 m in 135 s")
+    val cs3b = H.BEACONS[14]
+    check(cs3b.grid == "IM12jt" && abs(cs3b.lat - 32.81) < 0.05 && abs(cs3b.lon - (-17.21)) < 0.05, "IBP: CS3B position from IM12jt")
     val gc = H.greatCircle(36.53, -6.29, 35.68, 139.69)
     check(gc.size == 1 && abs(gc[0].first().first - 36.53) < 1e-9 && abs(gc[0].last().first - 35.68) < 1e-6 && gc[0].maxOf { it.first } > 60, "great circle to Tokyo goes north")
     val gcl = H.greatCircle(36.53, -6.29, 35.68, 139.69, longPath = true)

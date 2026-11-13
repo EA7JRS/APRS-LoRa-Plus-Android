@@ -127,6 +127,16 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   desarrollador), Meshtastic y N3FJP (red local / escritorio), RBN (ya está en el DX cluster), rayos de Blitzortung
   (no comercial), VOACAP (lo calcula el servidor de OpenHamClock). 1176 comprobaciones. Sin probar contra los servidores
   reales ni en el móvil.
+- **Pantalla IBP** (2026-11-13; Manuel: «Mapa para NCDXF/IARU International Beacon Project», enlaces a
+  `ncdxf.org/beacon/beaconlocations.html` y `beaconprograms.html`): `IbpScreen.kt`, ruta `IBP`, tecla [F] IBP (página
+  RADIO) y menú lateral «IBP beacons». Mapa del mundo (OSM oscuro) con la línea gris, las 18 balizas (posición = centro
+  del locator de 6 caracteres de la tabla oficial de NCDXF, que no da coordenadas; `HamLayers.BEACONS` con entidad,
+  lugar, locator y patrocinador de esa tabla) y las 5 en el aire con su círculo máximo; banda elegida con ficha
+  (camino corto / largo, día o noche en la baliza y aquí, cuándo sale en las otras bandas: `ibpSecondsUntil`), lista
+  de las 5 en el aire, rejilla 18 × 5 de lo oído (botón HEARD, guardado en `prefs` «ibp», como el registro manual de
+  BeSpeak), TUNE (SDR y CAT de la caja del rotor en CW), ROTOR (apuntar; pulsación larga = seguir a la baliza de la
+  banda cada 10 s) y MAP (abre el mapa con la capa IBP). Ideas de los programas de la página (Faros, BeaconTime,
+  BeSpeak); sin medida automática de las rayas de 100 / 10 / 1 / 0,1 W (posible con el receptor RTL-SDR de la app).
 
 ## Pendiente
 - **PORTUS de Puertos del Estado, para después de publicar en Google Play** (Manuel, 2026-11-10): datos y mapas oceanográficos (boyas, mareógrafos, radar HF, previsión de oleaje, viento, nivel del mar y corrientes) en el mapa y quizá en la pestaña AIS. Widgets por iframe (`portus.puertos.es/Portus/docs/widgets.pdf`: su uso implica aceptar el aviso legal de puertos.es y avisar a webmaster@puertos.es) o WMS (`geoserver.puertos.es`, confirmado solo para zonas de servicio). Antes, pedir conformidad a webmaster@puertos.es para una app de pago.

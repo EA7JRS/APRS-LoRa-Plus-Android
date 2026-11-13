@@ -65,7 +65,7 @@ enum class Tool(val title: String) {
     DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"),
 }
 
-/** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
+/** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "IBP", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
 class Navigator(initial: List<String>) {
     val stack = mutableStateListOf<String>().apply { addAll(initial.ifEmpty { listOf("RADIO") }) }
     val top: String get() = stack.last()
@@ -138,6 +138,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
         FKey("IGATE", "iGATE", if (settings.igateEnabled) "ON" else "OFF", if (settings.igateEnabled) 1 else 0) { nav.tool(Tool.CONNECT) },
         FKey("DAPNET", "DAPNET", "pager") { nav.tool(Tool.DAPNET) },
         FKey("DX", "DX", if (dx.connected) "${dx.spots.size} spots" else "cluster", if (dx.connected) 1 else 0) { nav.go("DX") },
+        FKey("IBP", "IBP", es.ea7jrs.aprslorap.core.HamLayers.ibpNow(System.currentTimeMillis())[0].second.call + " 20m") { nav.go("IBP") },
         FKey("SAT", "SAT", sat?.name ?: "passes", if (sat?.ok == true) 1 else 0) { nav.tool(Tool.SAT) },
         FKey("ROTOR", "ROTOR", rotorPos?.let { String.format(java.util.Locale.US, "%03.0f° / %.0f°", it.azDeg, it.elDeg ?: 0.0) } ?: "box") { nav.tool(Tool.ROTOR) },
         FKey("SDR", "SDR", if (sdr.connected) sdr.device.ifEmpty { "on" } else "receivers", if (sdr.connected) 1 else 0) { nav.tool(Tool.SDR) },
@@ -163,7 +164,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 
 val FMENU_PAGES = listOf(
     "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
-    "RADIO" to listOf("DX", "SAT", "ROTOR", "SDR", "MODES", "CWKEY", "SPOTS", "AIS"),
+    "RADIO" to listOf("DX", "IBP", "SAT", "ROTOR", "SDR", "MODES", "CWKEY", "SPOTS", "AIS"),
     "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS"),
 )
 
@@ -206,6 +207,7 @@ fun App() {
                     "MESSAGES" -> MessageListScreen(nav)
                     "THREAD" -> ThreadScreen(nav, nav.arg)
                     "DX" -> DxClusterScreen(nav)
+                    "IBP" -> IbpScreen(nav)
                     "TOOL" -> ToolScreen(nav, Tool.entries.firstOrNull { it.name == nav.arg } ?: Tool.CONNECT)
                     else -> RadioScreen(nav, openDrawer)
                 }
@@ -266,7 +268,7 @@ private fun TouchKeys(nav: Navigator, keys: Map<String, FKey>, ids: List<String>
         ) { Text("F", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Alp.Bg) }
         for (id in ids) {
             val k = keys[id] ?: continue
-            val active = when (id) { "SLIST" -> nav.kind == "STATIONS"; "MSG" -> nav.kind == "MESSAGES"; "MAP" -> nav.kind == "MAP"; "DISP" -> nav.kind == "DISP"; "DX" -> nav.kind == "DX"; "WX" -> nav.kind == "WX"; else -> false }
+            val active = when (id) { "SLIST" -> nav.kind == "STATIONS"; "MSG" -> nav.kind == "MESSAGES"; "MAP" -> nav.kind == "MAP"; "DISP" -> nav.kind == "DISP"; "DX" -> nav.kind == "DX"; "WX" -> nav.kind == "WX"; "IBP" -> nav.kind == "IBP"; else -> false }
             val sub = when (id) { "BCN" -> "TX"; "MSG" -> k.sub?.takeIf { k.lit == 2 }; else -> null }
             RadioKey(k.label, Modifier.weight(1f).fillMaxHeight(), sub = sub, border = if (active) Alp.Amber else Alp.KeyBorder,
                 color = if (active) Alp.Amber else Alp.Text, subColor = if (k.lit == 2) Alp.Amber else Alp.Muted, onClick = k.action)
@@ -382,6 +384,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             MenuItem("Weather stations", right = "${stations.count { it.wx != null }}", active = nav.kind == "WX") { open("WX") }
             MenuItem("Messages", badge = unread, active = nav.kind == "MESSAGES") { open("MESSAGES") }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
+            MenuItem("IBP beacons", active = nav.kind == "IBP") { open("IBP") }
             MenuItem("Log & QSL") { tool(Tool.LOG) }
         }
         MenuGroup("DEVICES") {

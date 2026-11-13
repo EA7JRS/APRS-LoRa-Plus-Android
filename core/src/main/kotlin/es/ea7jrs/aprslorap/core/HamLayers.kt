@@ -177,19 +177,25 @@ object HamLayers {
 
     // ------------------------------------------------------------------ NCDXF / IARU International Beacon Project
 
-    data class Beacon(val call: String, val location: String, val grid: String, val lat: Double, val lon: Double)
+    /** A beacon of the project: slot order, entity, location, grid and sponsor as www.ncdxf.org/beacon/beaconlocations.html lists them. */
+    data class Beacon(val call: String, val entity: String, val location: String, val grid: String, val sponsor: String) {
+        private val pos = RotorFollow.locatorToLatLon(grid)
+        /** Centre of the 6-character grid square (the page gives no coordinates). */
+        val lat: Double get() = pos?.first ?: 0.0
+        val lon: Double get() = pos?.second ?: 0.0
+    }
     data class IbpBand(val mhz: Double, val label: String, val offset: Int)
 
     val BEACONS = listOf(
-        Beacon("4U1UN", "United Nations, NY", "FN30as", 40.749, -73.968), Beacon("VE8AT", "Inuvik, Canada", "CP38gh", 68.317, -133.533),
-        Beacon("W6WX", "Mt. Umunhum, CA", "CM97bn", 37.159, -121.929), Beacon("KH6RS", "Hawaii, US", "BL11bm", 21.441, -157.763),
-        Beacon("ZL6B", "Masterton, New Zealand", "RF70mc", -40.683, 175.567), Beacon("VK6RBP", "Bickley, Australia", "OF87av", -31.802, 116.126),
-        Beacon("JA2IGY", "Mt. Asama, Japan", "PM84jk", 34.634, 136.873), Beacon("RR9O", "Novosibirsk, Russia", "NO14kx", 54.853, 83.125),
-        Beacon("VR2B", "Hong Kong", "OL72bg", 22.255, 114.137), Beacon("4S7B", "Colombo, Sri Lanka", "MJ96wh", 6.816, 79.924),
-        Beacon("ZS6DN", "Pretoria, South Africa", "KG44dc", -25.683, 28.183), Beacon("5Z4B", "Nairobi, Kenya", "KI88er", -1.267, 36.8),
-        Beacon("4X6TU", "Tel Aviv, Israel", "KM72jb", 32.04, 34.78), Beacon("OH2B", "Lohja, Finland", "KP20eh", 60.167, 24.667),
-        Beacon("CS3B", "Madeira, Portugal", "IM12or", 32.7, -16.883), Beacon("LU4AA", "Buenos Aires, Argentina", "GF05rj", -34.617, -58.367),
-        Beacon("OA4B", "Lima, Peru", "FH17mw", -12.043, -77.017), Beacon("YV5B", "Caracas, Venezuela", "FK60ab", 10.483, -66.983),
+        Beacon("4U1UN", "United Nations", "New York City", "FN30as", "UNRC"), Beacon("VE8AT", "Canada", "Inuvik, NT", "CP38gh", "RAC / NARC"),
+        Beacon("W6WX", "United States", "Mt. Umunhum", "CM97bd", "NCDXF"), Beacon("KH6RS", "Hawaii", "Maui", "BL10ts", "Maui ARC"),
+        Beacon("ZL6B", "New Zealand", "Masterton", "RE78tw", "NZART"), Beacon("VK6RBP", "Australia", "Rolystone", "OF87av", "WIA"),
+        Beacon("JA2IGY", "Japan", "Mt. Asama", "PM84jk", "JARL"), Beacon("RR9O", "Russia", "Novosibirsk", "NO14kx", "SRR"),
+        Beacon("VR2B", "Hong Kong", "Hong Kong", "OL72bg", "HARTS"), Beacon("4S7B", "Sri Lanka", "Colombo", "MJ96wv", "RSSL"),
+        Beacon("ZS6DN", "South Africa", "Pretoria", "KG33xi", "SARL (operated by ZS6YI)"), Beacon("5Z4B", "Kenya", "Kikuyu", "KI88hr", "ARSK"),
+        Beacon("4X6TU", "Israel", "Tel Aviv", "KM72jb", "IARC"), Beacon("OH2B", "Finland", "Lohja", "KP20eh", "SRAL"),
+        Beacon("CS3B", "Madeira", "São Jorge", "IM12jt", "Delegação Madeira"), Beacon("LU4AA", "Argentina", "Buenos Aires", "GF05tj", "RCA"),
+        Beacon("OA4B", "Peru", "Lima", "FH17mw", "RCP"), Beacon("YV5B", "Venezuela", "Caracas", "FK60nd", "RCV"),
     )
     /** Each beacon starts on 14.100 and steps up one band every 10 s: the beacon on band N started N slots earlier. */
     val IBP_BANDS = listOf(IbpBand(14.100, "20m", 0), IbpBand(18.110, "17m", 17), IbpBand(21.150, "15m", 16), IbpBand(24.930, "12m", 15), IbpBand(28.200, "10m", 14))
@@ -199,6 +205,14 @@ object HamLayers {
     /** The beacon on the air on each band now. */
     fun ibpNow(utcMs: Long): List<Pair<IbpBand, Beacon>> { val s = ibpSlot(utcMs); return IBP_BANDS.map { it to BEACONS[(s + it.offset) % BEACONS.size] } }
     fun ibpSecondsLeft(utcMs: Long) = 10 - (Math.floorMod(utcMs / 1000, 86_400L) % 10).toInt()
+    /** Seconds until [beacon] (index in [BEACONS]) starts on [band] (0 = on the air now). */
+    fun ibpSecondsUntil(utcMs: Long, beacon: Int, band: IbpBand): Int {
+        val s = ibpSlot(utcMs)
+        val slot = Math.floorMod(beacon - band.offset, BEACONS.size)                // slot in which it is on that band
+        if (slot == s) return 0
+        val sec = (Math.floorMod(utcMs / 1000, 86_400L) % 180).toInt()
+        return Math.floorMod(slot * 10 - sec, 180)
+    }
 
     // ------------------------------------------------------------------ great circle and Maidenhead
 
