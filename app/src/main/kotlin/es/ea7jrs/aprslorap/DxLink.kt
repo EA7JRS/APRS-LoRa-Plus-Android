@@ -33,6 +33,8 @@ object DxLink {
     )
 
     val state = MutableStateFlow(State())
+    /** Every skimmer reception (RBN through the cluster), newest first, the last 60 min and at most 3000: the RBN map. */
+    val rbn = MutableStateFlow<List<es.ea7jrs.aprslorap.core.Rbn.Hear>>(emptyList())
     @Volatile var cty: Cty.Table? = null
         private set
 
@@ -141,6 +143,10 @@ object DxLink {
         if (l.isEmpty()) return
         val spot = DxCluster.parse(l, call, System.currentTimeMillis())
         if (spot == null) { console(l); return }
+        es.ea7jrs.aprslorap.core.Rbn.of(spot)?.let { h ->
+            val old = spot.receivedMs - 60 * 60_000L
+            rbn.value = (listOf(h) + rbn.value.filter { it.receivedMs > old && !(it.skimmer == h.skimmer && it.dx == h.dx && Math.abs(it.freqKhz - h.freqKhz) < 1) }).take(3000)
+        }
         var fresh = false
         set { s ->
             val old = s.spots.firstOrNull { it.key == spot.key }

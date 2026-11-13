@@ -137,6 +137,14 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   BeSpeak), TUNE (SDR y CAT de la caja del rotor en CW), ROTOR (apuntar; pulsación larga = seguir a la baliza de la
   banda cada 10 s) y MAP (abre el mapa con la capa IBP). Ideas de los programas de la página (Faros, BeaconTime,
   BeSpeak); sin medida automática de las rayas de 100 / 10 / 1 / 0,1 W (posible con el receptor RTL-SDR de la app).
+  Manuel (2026-11-13): «Si» a la medida automática de las rayas con el receptor RTL-SDR (pendiente).
+- **Mapa RBN** (2026-11-13; Manuel: «Mapa para balizas https://www.reversebeacon.net»): `RbnScreen.kt`, ruta `RBN`, tecla
+  [F] RBN (página RADIO) y menú lateral «RBN map». Los avisos de los skimmers («CALL-#») llegan por la conexión del DX
+  cluster (RBN pide que los usuarios finales usen un cluster «retail», no sus nodos telnet 7000 / 7001), `DxLink.rbn`
+  (todas las recepciones, 60 min, 3000) y núcleo `Rbn.kt` (SNR, WPM / BPS, CQ / BEACON / NCDXF; posición = locator del
+  nodo o centro de la entidad de cty.dat). Filtros: yo, un indicativo, balizas, todo; banda; 10 / 30 / 60 min. Mapa con
+  la línea gris y líneas de círculo máximo skimmer → estación (color por banda, opacidad por SNR), lista y ficha; ASK
+  manda `sh/dx <indicativo> 50`. Sin probar con un nodo real.
 
 ## Pendiente
 - **PORTUS de Puertos del Estado, para después de publicar en Google Play** (Manuel, 2026-11-10): datos y mapas oceanográficos (boyas, mareógrafos, radar HF, previsión de oleaje, viento, nivel del mar y corrientes) en el mapa y quizá en la pestaña AIS. Widgets por iframe (`portus.puertos.es/Portus/docs/widgets.pdf`: su uso implica aceptar el aviso legal de puertos.es y avisar a webmaster@puertos.es) o WMS (`geoserver.puertos.es`, confirmado solo para zonas de servicio). Antes, pedir conformidad a webmaster@puertos.es para una app de pago.

@@ -1651,9 +1651,25 @@ private fun testHamLayers() {
 }
 private const val Date0 = 1794528000_000L                             // 2026-11-13 00:00 UTC (slot 0)
 
+// Reverse Beacon Network spots through a DX cluster
+private fun testRbn() {
+    val now = 1794558600_000L
+    val a = DxCluster.parse("DX de DL8LAS-#:   14025.0  EA7JRS       CW    12 dB  22 WPM  CQ      0830Z", "EA1XYZ", now)!!
+    val h = Rbn.of(a)
+    check(h != null && h.skimmer == "DL8LAS-#" && h.snrDb == 12 && h.speed == 22 && h.speedUnit == "WPM" && h.kind == Rbn.Kind.CQ && h.band == "20m", "RBN CW CQ spot")
+    val b = Rbn.of(DxCluster.parse("DX de EA5WU-#:    14100.0  4X6TU        CW    25 dB  22 WPM  NCDXF B 0830Z", "", now)!!)
+    check(b != null && b.kind == Rbn.Kind.NCDXF, "RBN NCDXF beacon")
+    val c = Rbn.of(DxCluster.parse("DX de OH6BG-#:    28222.0  OH2B         CW    -3 dB  15 WPM  BEACON  0831Z", "", now)!!)
+    check(c != null && c.kind == Rbn.Kind.BEACON && c.snrDb == -3, "RBN beacon, negative SNR")
+    val d = Rbn.of(DxCluster.parse("DX de K1TTT-#:    14085.0  EA7JRS       RTTY  8 dB  45 BPS CQ      0832Z", "", now)!!)
+    check(d != null && d.speed == 45 && d.speedUnit == "BPS", "RBN RTTY speed")
+    check(Rbn.of(DxCluster.parse("DX de EA7DEF:     18075.0  3B8ABC       TNX QSO                        1830Z", "", now)!!) == null, "a person's spot is not RBN")
+    check(Rbn.position(null, "G4XYZ-#", "IO91wm")?.let { abs(it.first - 51.5) < 0.1 } == true && Rbn.position(null, "G4XYZ-#", null) == null, "RBN position from locator")
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
