@@ -230,13 +230,25 @@ object DxLink {
 
     // ------------------------------------------------------------------ cty.dat
 
-    /** Loads cty.dat from the app folder; downloads it (www.country-files.com) when missing or older than 14 days. */
+    @Volatile private var ctyTriedMs = 0L
+
+    /**
+     * Reads the saved cty.dat and downloads a new one when it is more than a week old (or missing). Called when the app
+     * opens and when the DX cluster or the RBN map open; a failed download is tried again an hour later at the earliest.
+     * Nothing here runs on the UI thread.
+     */
     fun loadCty(ctx: Context) {
-        val f = File(ctx.filesDir, "cty.dat")
-        if (cty == null && f.exists()) parseCty(f)
-        val old = !f.exists() || System.currentTimeMillis() - f.lastModified() > 14L * 24 * 3600 * 1000
-        if (old) Thread({ download(f) }, "cty-download").apply { isDaemon = true; start() }
+        val f = File(ctx.applicationContext.filesDir, "cty.dat")
+        Thread({
+            synchronized(this) {
+                if (cty == null && f.exists()) parseCty(f)
+                val now = System.currentTimeMillis()
+                val old = !f.exists() || now - f.lastModified() > CTY_MAX_AGE_MS
+                if (old && now - ctyTriedMs > 3_600_000L) { ctyTriedMs = now; download(f) }
+            }
+        }, "cty-load").apply { isDaemon = true; start() }
     }
+    private const val CTY_MAX_AGE_MS = 7L * 24 * 3600 * 1000
 
     private fun parseCty(f: File) {
         try {

@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
         Spotter.init(this)
         AlertCenter.init(this)
         LogStore.init(this)
+        DxLink.loadCty(this)                          // cty.dat: read it, and a new one if it is more than a week old
         enableEdgeToEdge(
             statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),

@@ -106,6 +106,7 @@ fun RbnScreen(nav: Navigator) {
             else -> true
         }
     }.take(if (who == 3) 400 else 1000)
+    LaunchedEffect(Unit) { DxLink.loadCty(ctx) }
     val cty = DxLink.cty
 
     val map = remember {
