@@ -292,6 +292,13 @@ class Settings(ctx: Context) {
         set(v) { p.edit().putBoolean("rb_na", v).apply() }
 
     // SDR program or server under control
+    /** SDRconnect: ask for its audio (decoders of the app) and play it on the phone. */
+    var sdrConnectAudio: Boolean
+        get() = p.getBoolean("sdrconnect_audio", false)
+        set(v) { p.edit().putBoolean("sdrconnect_audio", v).apply() }
+    var sdrConnectPlay: Boolean
+        get() = p.getBoolean("sdrconnect_play", true)
+        set(v) { p.edit().putBoolean("sdrconnect_play", v).apply() }
     var sdrKind: String
         get() = p.getString("sdr_kind", es.ea7jrs.aprslorap.core.Sdr.Kind.RIGCTL.name)!!
         set(v) { p.edit().putString("sdr_kind", v).apply() }

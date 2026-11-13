@@ -111,7 +111,7 @@ fun DigimodesTab() {
             Text("AFC", fontSize = 13.sp)
             Switch(st.afc, { ModemRunner.setAfc(it) })
         }
-        if (source == ModemRunner.Source.RECEIVER) Text("Use the RTL-SDR receiver of the SDR tab in USB (CW: USB or CW). Tap the waterfall on the signal.", fontSize = 11.sp)
+        if (source == ModemRunner.Source.RECEIVER) Text("Use the RTL-SDR receiver of the SDR tab, or SDRconnect with \"Audio to the phone\", in USB (CW: USB or CW). Tap the waterfall on the signal.", fontSize = 11.sp)
         else Text("Put the phone next to the radio's speaker (SSB / USB). Tap the waterfall on the signal.", fontSize = 11.sp)
         Text(String.format(Locale.US, "%s at %.0f Hz · quality %.0f %%", st.mode, st.centerHz, st.quality * 100) + if (st.info.isNotEmpty()) " · ${st.info}" else "", fontSize = 12.sp)
 

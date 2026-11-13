@@ -775,6 +775,34 @@ private fun testRotorFollow() {
 }
 
 private fun testSdr() {
+    run {   // SDRconnect audio to the phone: 48 kHz stereo -> 12 kHz mono
+        check(Sdr.SdrConnect.audioStream(true) == """{"event_type":"audio_stream_enable","property":"","value":"true"}""", "SDRconnect: audio stream on")
+        check(Sdr.SdrConnect.binaryType(byteArrayOf(1, 0, 5)) == Sdr.SdrConnect.BIN_AUDIO && Sdr.SdrConnect.binaryType(byteArrayOf(2, 0)) == Sdr.SdrConnect.BIN_IQ &&
+            Sdr.SdrConnect.binaryType(byteArrayOf(1)) == -1, "SDRconnect: kind of a binary message")
+        fun tone(hz: Double, n: Int, amp: Double): ByteArray {
+            val b = ByteArray(2 + n * 4); b[0] = 1
+            for (i in 0 until n) {
+                val v = Math.round(amp * 32767 * Math.sin(2 * Math.PI * hz * i / 48000.0)).toInt()
+                for (c in 0..1) { b[2 + i * 4 + c * 2] = (v and 0xFF).toByte(); b[3 + i * 4 + c * 2] = ((v shr 8) and 0xFF).toByte() }
+            }
+            return b
+        }
+        fun rms(x: FloatArray, from: Int, to: Int): Double { var s = 0.0; for (i in from until to) s += x[i] * x[i]; return Math.sqrt(s / (to - from)) }
+        val out = FloatArray(4000)
+        val d = Sdr.SdrConnect.AudioDown()
+        val n = d.process(tone(1000.0, 9600, 0.5), out)
+        check(n == 2400, "SDRconnect audio: one sample out of four")
+        check(Math.abs(rms(out, 200, n) - 0.5 / Math.sqrt(2.0)) < 0.01 && Math.abs(d.peak - 0.5f) < 0.01f, "SDRconnect audio: 1 kHz passes at its level")
+        var cross = 0; for (i in 201 until n) if (out[i - 1] < 0 && out[i] >= 0) cross++
+        check(Math.abs(cross - 183) <= 2, "SDRconnect audio: 1 kHz stays 1 kHz at 12 kHz")
+        val d2 = Sdr.SdrConnect.AudioDown()
+        val n2 = d2.process(tone(9000.0, 9600, 0.5), out)
+        check(rms(out, 200, n2) < 0.01, "SDRconnect audio: 9 kHz is removed before decimating")
+        val d3 = Sdr.SdrConnect.AudioDown(); var total = 0
+        val whole = tone(1000.0, 9600, 0.5)
+        for (part in listOf(whole.copyOfRange(0, 2 + 1001 * 4), byteArrayOf(1, 0) + whole.copyOfRange(2 + 1001 * 4, whole.size))) total += d3.process(part, out)
+        check(total == 2400, "SDRconnect audio: state kept between messages")
+    }
     eq(Sdr.dopplerRx(437_800_000L, -7.0), 437_810_222L, "Doppler approaching raises the frequency")
     eq(Sdr.dopplerRx(437_800_000L, 0.0), 437_800_000L, "no Doppler")
     eq(Sdr.parseFreq("145,8"), 145_800_000L, "freq in MHz with comma"); eq(Sdr.parseFreq("433775000"), 433_775_000L, "freq in Hz"); eq(Sdr.parseFreq("x"), null, "bad freq")

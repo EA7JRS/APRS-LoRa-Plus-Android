@@ -77,6 +77,64 @@ object Sdr {
         fun setMode(mode: String) = setProperty("demodulator", mode)                   // AM, USB, LSB, CW, SAM, NFM, WFM
         fun setBandwidth(hz: Int) = setProperty("filter_bandwidth", hz.toString())
         fun setGain(lnaState: Int) = setProperty("lna_state", lnaState.toString())
+        /** The demodulated audio as binary messages (48 kHz, stereo, 16 bits), on or off. */
+        fun audioStream(on: Boolean) = event("audio_stream_enable", if (on) "true" else "false")
+        const val BIN_AUDIO = 1
+        const val BIN_IQ = 2
+        const val BIN_SPECTRUM = 3
+        /** Kind of a binary message: its first two bytes, little-endian; -1 if it is too short. */
+        fun binaryType(payload: ByteArray): Int = if (payload.size < 2) -1 else (payload[0].toInt() and 0xFF) or ((payload[1].toInt() and 0xFF) shl 8)
+
+        /**
+         * Audio of SDRconnect (after the 2 bytes of the kind: 16-bit little-endian samples, left and right, 48 kHz) down to
+         * the 12 kHz mono the decoders of the app take: mean of both channels, low-pass at 5 kHz and one sample out of four.
+         * It keeps its state between messages.
+         */
+        class AudioDown {
+            private val taps = FloatArray(TAPS).also { h ->
+                var sum = 0.0
+                for (i in 0 until TAPS) {
+                    val x = i - (TAPS - 1) / 2.0
+                    val sinc = if (x == 0.0) 2 * CUT else Math.sin(2 * Math.PI * CUT * x) / (Math.PI * x)
+                    val w = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (TAPS - 1))          // Hamming
+                    h[i] = (sinc * w).toFloat(); sum += h[i]
+                }
+                for (i in 0 until TAPS) h[i] = (h[i] / sum).toFloat()
+            }
+            private val hist = FloatArray(TAPS)
+            private var pos = 0
+            private var phase = 0
+            /** Loudest sample of the last message, 0..1 (1 = full scale: SDRconnect's audio is clipping, turn its AGC on). */
+            var peak = 0f; private set
+
+            /** Samples from [payload] (a whole audio message, kind included) into [out]; returns how many. */
+            fun process(payload: ByteArray, out: FloatArray): Int {
+                var n = 0
+                var pk = 0f
+                var i = 2
+                while (i + 3 < payload.size && n < out.size) {
+                    val l = (payload[i].toInt() and 0xFF) or (payload[i + 1].toInt() shl 8)
+                    val r = (payload[i + 2].toInt() and 0xFF) or (payload[i + 3].toInt() shl 8)
+                    val v = (l + r) / 65536f
+                    val a = if (v < 0) -v else v
+                    if (a > pk) pk = a
+                    hist[pos] = v
+                    pos = (pos + 1) % TAPS
+                    if (++phase == 4) {
+                        phase = 0
+                        var acc = 0f
+                        var k = pos
+                        for (t in 0 until TAPS) { acc += taps[t] * hist[k]; k++; if (k == TAPS) k = 0 }
+                        out[n++] = acc
+                    }
+                    i += 4
+                }
+                peak = pk
+                return n
+            }
+            private companion object { const val TAPS = 49; const val CUT = 5000.0 / 48000.0 }
+        }
+
         /** Properties read when connecting. */
         val READ = listOf("api_version", "active_device", "can_control", "started", "device_center_frequency", "device_vfo_frequency",
             "demodulator", "filter_bandwidth", "lna_state", "lna_state_min", "lna_state_max", "device_sample_rate", "signal_power", "signal_snr")

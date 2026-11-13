@@ -123,7 +123,7 @@ fun SdrTab() {
         if (st.device.isNotEmpty()) Field("Device", st.device)
         Text(when (kind) {
             Sdr.Kind.RIGCTL -> "SDR++: Module manager > add \"Rigctl Server\", tick Tuning, Listen (port 4532). Also SDR++ on this phone with a USB SDR (127.0.0.1). gqrx: Tools > Remote control (port 7356)."
-            Sdr.Kind.SDRCONNECT -> "SDRconnect (GUI or headless) with the WebSocket interface on (port 5454). Audio stays in SDRconnect."
+            Sdr.Kind.SDRCONNECT -> "SDRconnect (GUI or headless) on the PC or Raspberry with the RSP, WebSocket interface on (port 5454; Windows firewall: private network). With \"Audio to the phone\" the app also decodes and plays what SDRconnect receives."
             Sdr.Kind.SPYSERVER -> "Airspy SpyServer (port 5555): the app keeps the device running with a tiny spectrum and tunes it if it is the first client (allow control in spyserver.config). Mode and filter belong to the program that listens (SDR#, SDR++)."
             Sdr.Kind.RTLTCP -> "The app is the receiver: it demodulates and plays the audio. 127.0.0.1 = RTL-SDR on this phone's USB (OTG) through the free \"RTL-SDR driver\" app; another address = an rtl_tcp server on the network (rtl_tcp -a 0.0.0.0)."
         }, fontSize = 11.sp)
@@ -135,6 +135,21 @@ fun SdrTab() {
                 Switch(biasT, { biasT = it; settings.sdrBiasTee = it })
             }
             if (local) RtlUsbPanel()
+        }
+        if (kind == Sdr.Kind.SDRCONNECT) {
+            var scAudio by remember { mutableStateOf(settings.sdrConnectAudio) }
+            var scPlay by remember { mutableStateOf(settings.sdrConnectPlay) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Audio to the phone (decoders: CW, RTTY, PSK, FT8, FT4, WSPR, FST4W, spots)", Modifier.weight(1f), fontSize = 13.sp)
+                Switch(scAudio, { scAudio = it; settings.sdrConnectAudio = it })
+            }
+            if (scAudio) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Play it on the phone", Modifier.weight(1f), fontSize = 13.sp)
+                    Switch(scPlay, { scPlay = it; settings.sdrConnectPlay = it })
+                }
+                Text("Applies at the next Connect. In Digital modes choose \"App receiver\" and put SDRconnect in USB (CW: USB or CW). Keep SDRconnect's AGC on: with it off the audio it sends clips. About 1.5 Mbit/s on the WiFi.", fontSize = 11.sp)
+            }
         }
 
         // ---- tuning

@@ -71,7 +71,7 @@ object SdrControl {
         set { State(status = "Connecting to $host:$port...", mode = if (kind == Sdr.Kind.RTLTCP) s.sdrMode else null) }
         val l = when (kind) {
             Sdr.Kind.RIGCTL -> RigctlLink(host, port)
-            Sdr.Kind.SDRCONNECT -> SdrConnectLink(host, port)
+            Sdr.Kind.SDRCONNECT -> SdrConnectLink(host, port, s.sdrConnectAudio, s.sdrConnectPlay)
             Sdr.Kind.SPYSERVER -> SpyLink(host, port)
             Sdr.Kind.RTLTCP -> RtlTcpLink(ctx.applicationContext, host, port, s.sdrPpm, s.sdrGainPercent, s.sdrSquelchDb.toDouble())
         }
@@ -209,7 +209,39 @@ object SdrControl {
 
     // ------------------------------------------------------------------ SDRconnect (WebSocket)
 
-    private class SdrConnectLink(val host: String, val port: Int) : Link {
+    /**
+     * [audio]: SDRconnect also sends its demodulated audio (48 kHz) and the app takes it as "app receiver" audio at 12 kHz
+     * for its decoders (CW, RTTY, PSK, FT8, FT4, WSPR, FST4W, spots); [play]: and plays it on the phone.
+     */
+    private class SdrConnectLink(val host: String, val port: Int, val audio: Boolean = false, val play: Boolean = false) : Link {
+        private val down = Sdr.SdrConnect.AudioDown()
+        private val pcmF = FloatArray(8192)
+        private val pcmS = ShortArray(8192)
+        private var track: android.media.AudioTrack? = null
+        private var clipped = 0
+
+        private fun onAudio(payload: ByteArray) {
+            val n = down.process(payload, pcmF)
+            if (n <= 0) return
+            ModemRunner.feedReceiver12k(pcmF, n)
+            WsjtRunner.feedReceiver12k(pcmF, n)
+            if (down.peak > 0.98f) { if (++clipped == 20) SdrControl.set { it.copy(status = "SDRconnect audio is clipping: turn its AGC on") } } else if (clipped > 0) clipped--
+            if (play) {
+                val t = track ?: try {
+                    val rate = 12_000
+                    val min = android.media.AudioTrack.getMinBufferSize(rate, android.media.AudioFormat.CHANNEL_OUT_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+                    android.media.AudioTrack.Builder()
+                        .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                        .setAudioFormat(android.media.AudioFormat.Builder().setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).build())
+                        .setBufferSizeInBytes(maxOf(min * 4, rate / 2))
+                        .setTransferMode(android.media.AudioTrack.MODE_STREAM)
+                        .build().also { it.play(); track = it }
+                } catch (_: Exception) { null } ?: return
+                for (i in 0 until n) pcmS[i] = (pcmF[i].coerceIn(-1f, 1f) * 32767f).toInt().toShort()
+                t.write(pcmS, 0, n, android.media.AudioTrack.WRITE_NON_BLOCKING)
+            }
+        }
+
         private val q = LinkedBlockingQueue<Pair<Int, ByteArray>>()
         @Volatile private var running = true
         private var sock: Socket? = null
@@ -232,7 +264,12 @@ object SdrControl {
             text(if (on) Sdr.SdrConnect.event("start_recording", "audio") else Sdr.SdrConnect.event("stop_recording", ""))
             SdrControl.set { it.copy(recording = on) }
         }
-        override fun close() { running = false; try { sock?.close() } catch (_: Exception) {} }
+        override fun close() {
+            running = false
+            try { sock?.close() } catch (_: Exception) {}
+            try { track?.release() } catch (_: Exception) {}
+            track = null
+        }
 
         private fun send(out: OutputStream, op: Int, payload: ByteArray) {
             val mask = ByteArray(4).also { rnd.nextBytes(it) }
@@ -263,6 +300,7 @@ object SdrControl {
                         val writer = Thread({
                             try {
                                 for (p in Sdr.SdrConnect.READ) send(out, 1, Sdr.SdrConnect.getProperty(p).toByteArray())
+                                if (audio) send(out, 1, Sdr.SdrConnect.audioStream(true).toByteArray())
                                 while (running && !s.isClosed) {
                                     val (op, data) = q.poll(1, TimeUnit.SECONDS) ?: continue
                                     send(out, op, data)
@@ -270,16 +308,27 @@ object SdrControl {
                             } catch (_: Exception) { try { s.close() } catch (_: Exception) {} }
                         }, "sdr-sdrconnect-tx").also { it.isDaemon = true; it.start() }
                         val partial = java.io.ByteArrayOutputStream()
+                        var kind = 1                                           // opcode of the message being put together (1 text, 2 binary)
                         while (running) {
                             val f = Sdr.WebSocket.read(inp)
                             when (f.opcode) {
                                 8 -> { send(out, 8, ByteArray(0)); throw java.io.EOFException("closed by SDRconnect") }
                                 9 -> send(out, 10, f.payload)
-                                1, 0 -> {
-                                    partial.write(f.payload)
-                                    if (f.fin) { onText(String(partial.toByteArray(), Charsets.UTF_8)); partial.reset() }
+                                0, 1, 2 -> {
+                                    if (f.opcode != 0) { kind = f.opcode; partial.reset() }
+                                    if (f.fin && partial.size() == 0) {       // the usual case: a whole message in one frame
+                                        if (kind == 1) onText(String(f.payload, Charsets.UTF_8))
+                                        else if (audio && Sdr.SdrConnect.binaryType(f.payload) == Sdr.SdrConnect.BIN_AUDIO) onAudio(f.payload)
+                                    } else {
+                                        if (partial.size() < (1 shl 18)) partial.write(f.payload)
+                                        if (f.fin) {
+                                            val b = partial.toByteArray(); partial.reset()
+                                            if (kind == 1) onText(String(b, Charsets.UTF_8))
+                                            else if (audio && Sdr.SdrConnect.binaryType(b) == Sdr.SdrConnect.BIN_AUDIO) onAudio(b)
+                                        }
+                                    }
                                 }
-                                else -> {}                                     // binary (audio, IQ, spectrum): not asked for
+                                else -> {}
                             }
                         }
                         writer.interrupt()
