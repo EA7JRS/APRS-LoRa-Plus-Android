@@ -269,6 +269,29 @@ fun ConfigTab() {
     var dirty by remember { mutableStateOf(false) }
     var askSave by remember { mutableStateOf(false) }
     val c = AppState.controller
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val info by AppState.trackerInfo.collectAsState()
+
+    // copy of the configuration in a file of the phone (or Drive...): what is on screen, edits included
+    val saver = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) try {
+            ctx.contentResolver.openOutputStream(uri)?.use { it.write(Json.encode(root).toByteArray(Charsets.UTF_8)) } ?: throw IllegalStateException("cannot write there")
+            AppState.configMessage.value = "Configuration saved to the file (it holds your passwords: keep it safe)"
+        } catch (e: Exception) { AppState.configMessage.value = "Not saved: ${e.message}" }
+    }
+    val opener = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) try {
+            val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("cannot read it")
+            if (bytes.size > 200_000) throw IllegalStateException("too large for a tracker configuration")
+            val parsed = Json.parse(String(bytes, Charsets.UTF_8).trim().removePrefix("\uFEFF"))
+            if (parsed !is Map<*, *> || parsed.isEmpty()) throw IllegalStateException("not a tracker configuration (a JSON object was expected)")
+            val now = root as? Map<*, *>
+            val missing = now?.keys?.count { it !in parsed.keys } ?: 0
+            root = parsed; dirty = true; epoch++
+            AppState.configMessage.value = "File loaded (${parsed.size} groups" + (if (missing > 0) ", $missing of this tracker's groups are not in it: is it from another board or version?" else "") +
+                "). Check it and press \"Store in tracker\"."
+        } catch (e: Exception) { AppState.configMessage.value = "File not loaded: ${e.message}" }
+    }
 
     // a new file from the tracker replaces what is being edited
     val loaded = remember(text) { text?.let { try { Json.parse(it) } catch (e: Exception) { null } } }
@@ -282,10 +305,19 @@ fun ConfigTab() {
             Button(enabled = !busy, onClick = { c?.configRead() }) { Text("Read from tracker") }
             Button(enabled = !busy && dirty, onClick = { askSave = true }) { Text("Store in tracker") }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(enabled = root is Map<*, *>, onClick = {
+                val board = (info?.board ?: "tracker").replace(Regex("[^A-Za-z0-9-]+"), "_").trim('_').ifEmpty { "tracker" }
+                val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+                saver.launch("tracker_conf_${board}_$day.json")
+            }) { Text("Save to a file") }
+            OutlinedButton(enabled = !busy, onClick = { opener.launch(arrayOf("application/json", "text/plain", "*/*")) }) { Text("Load a file") }
+        }
         if (message.isNotEmpty()) Text(message, fontSize = 12.sp)
         Text(
             "Same settings as the web interface. Passwords are hidden on screen but travel over the paired, encrypted link. " +
-                "Storing replaces the whole file and restarts the tracker; anything out of range is replaced by its default at start-up.",
+                "Storing replaces the whole file and restarts the tracker; anything out of range is replaced by its default at start-up. " +
+                "A saved file is the whole configuration, passwords included, as a copy or to bring it back later.",
             fontSize = 11.sp,
         )
         HorizontalDivider()
