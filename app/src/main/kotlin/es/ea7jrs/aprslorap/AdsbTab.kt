@@ -135,7 +135,8 @@ fun AdsbTab() {
             HorizontalDivider(Modifier.padding(vertical = 6.dp))
         }
         items(rows, key = { it.first.icao }) { (a, d, brg) ->
-            val el = if (d != null && a.altFt != null) elevationDeg(d, a.altFt * 0.3048) else null
+            val altFt = a.altFt
+            val el = if (d != null && altFt != null) elevationDeg(d, altFt * 0.3048) else null
             Column(Modifier.fillMaxWidth().clickable { open = if (open == a.icao) -1 else a.icao }.padding(vertical = 5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(a.name, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if (a.emergency != null) Alp.RedSoft else Alp.Text, modifier = Modifier.width(96.dp))
