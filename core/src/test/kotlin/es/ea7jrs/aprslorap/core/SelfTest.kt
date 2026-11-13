@@ -1511,9 +1511,67 @@ private fun testSame() {
     }
 }
 
+// METAR, TAF and SIGMET as the aviationweather.gov API sends them (fields of its metar1_0.json schema; invented values;
+// the same cases as testAviation of the plotter core)
+private fun testAviation() {
+    val A = Aviation
+    check(A.flightCategory(-1, 10.0) == Aviation.FlightCat.VFR, "flight cat VFR")
+    check(A.flightCategory(2500, 10.0) == Aviation.FlightCat.MVFR, "flight cat MVFR by ceiling")
+    check(A.flightCategory(5000, 2.0) == Aviation.FlightCat.IFR, "flight cat IFR by visibility")
+    check(A.flightCategory(300, 10.0) == Aviation.FlightCat.LIFR, "flight cat LIFR")
+    check(A.flightCategory(-1, -1.0) == Aviation.FlightCat.UNKNOWN, "flight cat unknown")
+    val js = """[
+ {"icaoId":"LERT","receiptTime":"2026-11-13 08:32:11","obsTime":1794558600,"reportTime":"2026-11-13 08:30:00","temp":17,"dewp":11,
+  "wdir":100,"wspd":22,"wgst":32,"visib":"6+","altim":1016,"wxString":null,"vertVis":null,"metarType":"METAR",
+  "rawOb":"METAR LERT 130830Z 10022G32KT 9999 FEW030 17/11 Q1016","lat":36.645,"lon":-6.349,"elev":26,"name":"Rota Naval Station, AN, ES",
+  "clouds":[{"cover":"FEW","base":3000}]},
+ {"icaoId":"GMTN","obsTime":1794558600,"temp":14,"dewp":14,"wdir":"VRB","wspd":3,"wgst":null,"visib":0.5,"altim":1017,"wxString":"FG",
+  "vertVis":200,"rawOb":"METAR GMTN 130830Z VRB03KT 0800 FG VV002 14/14 Q1017","lat":35.594,"lon":-5.32,"name":"Tetouan","clouds":[]},
+ {"icaoId":"LPFR","obsTime":1794558600,"temp":15,"dewp":14,"wdir":320,"wspd":6,"visib":"1.55","altim":1018,"fltCat":"IFR",
+  "rawOb":"METAR LPFR 130830Z 32006KT 2500 BR BKN007 15/14 Q1018","lat":37.014,"lon":-7.966,"clouds":[{"cover":"BKN","base":700}]},
+ {"icaoId":"XXXX","name":"sin posicion"}
+]"""
+    val ms = A.parseMetars(js) ?: emptyList()
+    check(ms.size == 3, "METAR: 3 with position")
+    if (ms.size == 3) {
+        val r = ms[0]
+        check(r.icao == "LERT" && r.wdir == 100 && r.wspdKt == 22 && r.wgstKt == 32 && r.visibPlus && r.cat == Aviation.FlightCat.VFR, "METAR LERT fields")
+        check(r.qnhHpa == 1016.0 && r.obsTime == 1794558600L && r.ceilingFt < 0, "METAR LERT QNH, time, no ceiling")
+        check(A.windText(r) == "Wind 100° 22 kn, gusts 32 kn", "METAR wind text: " + A.windText(r))
+        check(A.skyText(r) == "Visibility 10 km or more · Clouds: few at 3000 ft", "METAR sky text: " + A.skyText(r))
+        check(A.tempText(r) == "Temperature 17 °C · Dew point 11 °C · QNH 1016 hPa", "METAR temp text: " + A.tempText(r))
+        val t = ms[1]
+        check(t.wdir == -2 && t.ceilingFt == 200 && t.cat == Aviation.FlightCat.LIFR && t.wgstKt < 0, "METAR GMTN fog, VV002")
+        check(A.windText(t) == "Wind variable 3 kn", "METAR variable wind")
+        check(A.skyText(t) == "Visibility 800 m · FG · Clouds: vertical visibility 200 ft", "METAR fog sky: " + A.skyText(t))
+        check(ms[2].cat == Aviation.FlightCat.IFR && ms[2].ceilingFt == 700, "METAR fltCat from the API")
+    }
+    check(A.parseMetars("{\"error\":1}") == null, "METAR: not an array")
+    val ts = A.parseTafs("""[{"icaoId":"LERT","issueTime":"2026-11-13T05:00:00Z","rawTAF":"TAF LERT 130500Z 1306/1406 09020G30KT 9999 FEW030"}]""") ?: emptyList()
+    check(ts.size == 1 && ts[0].raw.startsWith("TAF LERT") && ts[0].issueTime == 1794546000L, "TAF")
+    val gj = """{"type":"FeatureCollection","features":[
+ {"type":"Feature","properties":{"icaoId":"LPMG","firId":"LPPO","firName":"SANTA MARIA OCEANIC","seriesId":"2","hazard":"CONV",
+  "qualifier":"EMBD","validTimeFrom":1794556800,"validTimeTo":"2026-11-13T12:00:00Z","base":10000,"top":35000,"dir":"NE","spd":15,
+  "rawSigmet":"LPPO SIGMET 2 VALID 130800/131200 LPMG- EMBD TS"},
+  "geometry":{"type":"Polygon","coordinates":[[[-9.2,36.4],[-8.3,36.9],[-7.4,36.3],[-7.9,35.5],[-9.0,35.5],[-9.2,36.4]]]}},
+ {"type":"Feature","properties":{"firId":"X"},"geometry":{"type":"Point","coordinates":[0,0]}}]}"""
+    val ss = A.parseSigmets(gj) ?: emptyList()
+    check(ss.size == 1, "SIGMET: one with hazard")
+    if (ss.size == 1) {
+        val g = ss[0]
+        check(g.id == "LPPO 2" && g.hazard == "CONV" && g.baseFt == 10000 && g.topFt == 35000 && g.spdKt == 15, "SIGMET fields")
+        check(g.points.size == 6 && g.points[0].first == 36.4 && g.points[0].second == -9.2, "SIGMET GeoJSON lon, lat order")
+        check(g.from == 1794556800L && g.to == 1794571200L, "SIGMET validity (number and ISO)")
+        check(A.sigmetDistanceNm(g, 36.0, -8.4) == 0.0 && A.sigmetDistanceNm(g, 36.53, -6.29) > 40, "SIGMET distance")
+        check(A.hazardName(g.hazard) == "Thunderstorms", "SIGMET hazard name")
+    }
+    check(A.sigmetUrl(A.sigmetRegion(36.5, -6.3)) == "https://aviationweather.gov/api/data/isigmet?format=geojson&loc=eur", "SIGMET url")
+    check(A.metarUrl(35.0, -8.0, 38.0, -4.0) == "https://aviationweather.gov/api/data/metar?bbox=35.00,-8.00,38.00,-4.00&format=json", "METAR url")
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }

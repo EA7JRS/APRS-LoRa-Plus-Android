@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import es.ea7jrs.aprslorap.core.AprsSymbols
+import es.ea7jrs.aprslorap.core.Aviation
 import es.ea7jrs.aprslorap.core.Terminator
 import es.ea7jrs.aprslorap.core.magnitude
 import org.osmdroid.config.Configuration
@@ -195,6 +196,55 @@ private object MarkerArt {
         return b
     }
 
+    /**
+     * A METAR station for the map: dot in the flight-category colour, wind barb towards where the wind comes from
+     * (barb 10 kn, half 5 kn, flag 50 kn), temperature over the dew point on the left and the ICAO code with the gust on the
+     * right. Returns the bitmap and the anchor (fractions) of the dot.
+     */
+    fun metar(ctx: Context, m: Aviation.Metar): Triple<Bitmap, Float, Float> {
+        val d = ctx.resources.displayMetrics.density
+        val key = "metar|${m.icao}|${m.cat}|${m.wdir}|${m.wspdKt}|${m.wgstKt}|${m.tempC}|${m.dewpC}"
+        val w = (150 * d).toInt(); val h = (80 * d).toInt()
+        val cx = 50 * d; val cy = 40 * d
+        val cached = cache.get(key)
+        if (cached != null) return Triple(cached, cx / w, cy / h)
+        val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF131A22.toInt(); strokeWidth = 2 * d; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+        val halo = Paint(ink).apply { color = 0xCCFFFFFF.toInt(); strokeWidth = 4.5f * d }
+        if (m.wspdKt > 2 && m.wdir >= 0) {
+            val a = Math.toRadians(m.wdir.toDouble()); val sx = Math.sin(a).toFloat(); val sy = -Math.cos(a).toFloat(); val px = Math.cos(a).toFloat(); val py = Math.sin(a).toFloat()
+            val l = 30 * d
+            val path = android.graphics.Path()
+            path.moveTo(cx + 8 * d * sx, cy + 8 * d * sy); path.lineTo(cx + l * sx, cy + l * sy)
+            var k = (m.wspdKt + 2) / 5 * 5; var pos = 0f
+            fun at(t: Float) = (cx + (l - t) * sx) to (cy + (l - t) * sy)
+            val flags = android.graphics.Path()
+            while (k >= 50) { val (x1, y1) = at(pos); val (x2, y2) = at(pos + 7 * d); flags.moveTo(x1, y1); flags.lineTo(x1 + 12 * d * px, y1 + 12 * d * py); flags.lineTo(x2, y2); flags.close(); k -= 50; pos += 9 * d }
+            while (k >= 10) { val (x, y) = at(pos); path.moveTo(x, y); path.lineTo(x + 12 * d * px, y + 12 * d * py); k -= 10; pos += 6 * d }
+            if (k >= 5) { if (pos == 0f) pos = 6 * d; val (x, y) = at(pos); path.moveTo(x, y); path.lineTo(x + 6 * d * px, y + 6 * d * py) }
+            c.drawPath(path, halo); c.drawPath(flags, halo); c.drawPath(path, ink)
+            c.drawPath(flags, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF131A22.toInt() })
+        }
+        c.drawCircle(cx, cy, 8 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = m.cat.color.toInt() })
+        c.drawCircle(cx, cy, 8 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f * d; color = 0xFFFFFFFF.toInt() })
+        val tf = try { androidx.core.content.res.ResourcesCompat.getFont(ctx, R.font.barlow_condensed_bold) } catch (_: Exception) { null }
+        fun txt(color: Int, size: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; textSize = size * d; typeface = tf; textAlign = Paint.Align.RIGHT }
+        val outline = { p: Paint -> Paint(p).apply { style = Paint.Style.STROKE; strokeWidth = 3 * d; color = 0xE6FFFFFF.toInt() } }
+        m.tempC?.let { val p = txt(0xFFB8460B.toInt(), 13f); val t = String.format(java.util.Locale.US, "%.0f", it); c.drawText(t, cx - 11 * d, cy - 3 * d, outline(p)); c.drawText(t, cx - 11 * d, cy - 3 * d, p) }
+        m.dewpC?.let { val p = txt(0xFF1565C0.toInt(), 13f); val t = String.format(java.util.Locale.US, "%.0f", it); c.drawText(t, cx - 11 * d, cy + 12 * d, outline(p)); c.drawText(t, cx - 11 * d, cy + 12 * d, p) }
+        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE8EEF3.toInt(); textSize = 12.5f * d; typeface = tf }
+        val gust = Paint(label).apply { color = 0xFFFFB347.toInt() }
+        val gs = if (m.wgstKt > 0) " G${m.wgstKt}" else ""
+        val lw = label.measureText(m.icao) + gust.measureText(gs) + 8 * d
+        val lx = cx + 11 * d; val ly = cy + 3 * d
+        c.drawRoundRect(RectF(lx, ly, lx + lw, ly + 18 * d), 4 * d, 4 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xD9131A22.toInt() })
+        c.drawText(m.icao, lx + 4 * d, ly + 13.5f * d, label)
+        if (gs.isNotEmpty()) c.drawText(gs, lx + 4 * d + label.measureText(m.icao), ly + 13.5f * d, gust)
+        cache.put(key, b)
+        return Triple(b, cx / w, cy / h)
+    }
+
     fun own(ctx: Context, courseDeg: Double?): Bitmap {
         val d = ctx.resources.displayMetrics.density
         val s = (34 * d).toInt()
@@ -214,7 +264,8 @@ private object MarkerArt {
 }
 
 /** What a touched shape on the map shows: title, rows and source. */
-private data class MapCard(val title: String, val color: Int, val rows: List<Pair<String, String>>, val source: String)
+private data class MapCard(val title: String, val color: Int, val rows: List<Pair<String, String>>, val source: String,
+                           val lat: Double? = null, val lon: Double? = null, val mono: List<Pair<String, String>> = emptyList())
 
 private class MapHolder(val map: MapView) {
     var layerId = ""
@@ -254,6 +305,8 @@ fun MapScreen(nav: Navigator) {
     val layersVersion by MapOverlays.layersVersion.collectAsState()
     val navWarnings by NavAreas.warnings.collectAsState()
     val official by AppState.officialAlerts.collectAsState()
+    val aviation by AviationFetcher.data.collectAsState()
+    if ("metar" in ovOn || "sigmet" in ovOn) LaunchedEffect(ovOn) { AviationFetcher.maybeFetch(ctx, settings) }
     val active = MapOverlays.available.filter { it.id in ovOn }
     fun opacity(id: String) = ovOp[id] ?: MapOverlays.byId(id)?.defaultOpacity ?: 100
     if ("navarea" in ovOn && !BuildConfig.PLAY) LaunchedEffect(Unit) { NavAreas.refresh() }
@@ -347,6 +400,45 @@ fun MapScreen(nav: Navigator) {
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); alpha = opacity("quakes") / 100f
                     setOnMarkerClickListener { _, _ -> card = MapCard(a.event, 0xFFFF8A80.toInt(), listOf("Where" to a.area, "When" to Fmt.ago(a.sent * 1000), "Depth" to a.text)
                         .filter { it.second.isNotBlank() }, "USGS / EMSC-CSEM SeismicPortal"); true }
+                })
+            }
+            if ("sigmet" in ovOn) for (g in aviation.sigmets.filter { it.to == 0L || it.to * 1000 > nowMs }) {
+                val a8 = opacity("sigmet") * 255 / 100
+                if (g.points.size >= 3) holder.dynamic.add(Polygon(map).apply {
+                    points = g.points.map { GeoPoint(it.first, it.second) }
+                    fillPaint.color = android.graphics.Color.argb(a8 * 22 / 100, 255, 82, 82); outlinePaint.color = android.graphics.Color.argb(a8, 229, 57, 53)
+                    outlinePaint.strokeWidth = 3f; outlinePaint.pathEffect = DashPathEffect(floatArrayOf(18f, 10f), 0f)
+                    setOnClickListener { _, _, _ -> false }
+                })
+                val cla = g.points.map { it.first }.average(); val clo = g.points.map { it.second }.average()
+                val fl = if (g.baseFt >= 0 || g.topFt >= 0) String.format(java.util.Locale.US, " · FL%03d/%03d", g.baseFt.coerceAtLeast(0) / 100, g.topFt.coerceAtLeast(0) / 100) else ""
+                holder.dynamic.add(Marker(map).apply {
+                    position = GeoPoint(cla, clo)
+                    icon = BitmapDrawable(ctx.resources, MarkerArt.tag(ctx, "SIGMET ${g.id} · ${g.hazard}$fl", 0xE6131A22.toInt(), 0xFFFF6B6B.toInt()))
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); alpha = opacity("sigmet") / 100f
+                    setOnMarkerClickListener { _, _ ->
+                        card = MapCard("SIGMET ${g.id} · ${Aviation.hazardName(g.hazard)}", 0xFFFF6B6B.toInt(), listOf(
+                            "FIR" to g.firName.ifEmpty { g.fir }, "Severity" to g.qualifier,
+                            "Levels" to fl.removePrefix(" · "),
+                            "Valid" to listOf(g.from, g.to).filter { it > 0 }.joinToString(" – ") { (Fmt.hhmm(it * 1000, utc = true) + " UTC") },
+                            "Moving" to if (g.dir.isNotEmpty()) g.dir + (if (g.spdKt > 0) " at ${g.spdKt} kn" else "") else "",
+                        ).filter { it.second.isNotBlank() }, "SIGMET: NOAA aviationweather.gov", mono = listOf("Text" to g.raw)); true }
+                })
+            }
+            if ("metar" in ovOn) for (m in aviation.metars) {
+                val art = MarkerArt.metar(ctx, m)
+                holder.dynamic.add(Marker(map).apply {
+                    position = GeoPoint(m.lat, m.lon)
+                    icon = BitmapDrawable(ctx.resources, art.first)
+                    setAnchor(art.second, art.third); alpha = opacity("metar") / 100f
+                    setOnMarkerClickListener { _, _ ->
+                        val taf = aviation.tafs.firstOrNull { it.icao == m.icao }?.raw
+                        val name = m.name.substringBefore(',')
+                        card = MapCard(listOf(m.cat.label, m.icao, name).filter { it.isNotEmpty() }.joinToString(" · "), m.cat.color.toInt(), listOf(
+                            "Observed" to if (m.obsTime > 0) Fmt.hhmm(m.obsTime * 1000, utc = true) + " UTC" + " · " + Fmt.ago(m.obsTime * 1000) else "",
+                            "Wind" to Aviation.windText(m), "Sky" to Aviation.skyText(m), "Air" to Aviation.tempText(m),
+                        ).filter { it.second.isNotBlank() }, "METAR / TAF: NOAA aviationweather.gov", m.lat, m.lon,
+                            listOfNotNull("METAR" to m.raw, taf?.let { "TAF" to it })); true }
                 })
             }
             if ("navarea" in ovOn && !BuildConfig.PLAY) for (w in navWarnings.filter { it.positions.isNotEmpty() }) {
@@ -512,7 +604,15 @@ fun MapScreen(nav: Navigator) {
                         Text(k, Modifier.widthIn(min = 70.dp), fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Muted)
                         Text(v, fontSize = 14.sp, color = Alp.Text)
                     }
+                    for ((k, v) in c.mono) {
+                        Text(k, fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Muted)
+                        Text(v, Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Alp.Bg).padding(8.dp), fontFamily = TechMono, fontSize = 13.sp, color = Alp.Text)
+                    }
                     Text(c.source, fontSize = 11.sp, color = Alp.Muted)
+                    if (c.lat != null && c.lon != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        RadioKey("GO TO", Modifier.weight(1f).height(44.dp)) { goToPos(ctx, c.lat, c.lon, c.title); card = null }
+                        RadioKey("ROTOR", Modifier.weight(1f).height(44.dp)) { aimRotorAt(c.lat, c.lon, c.title); card = null }
+                    }
                     RadioKey("CLOSE", Modifier.fillMaxWidth().height(44.dp)) { card = null }
                 }
             }

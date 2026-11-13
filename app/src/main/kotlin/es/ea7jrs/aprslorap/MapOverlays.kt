@@ -18,10 +18,11 @@ import java.net.URL
 /**
  * Map overlays brought from the plotter, each with its own transparency. Terms (2026-11-13): IHM services and NAVAREA
  * warnings are for non-commercial reuse only, so the Google Play build hides them (BuildConfig.PLAY); EUMETSAT imagery is
- * CC BY 4.0; OpenWeather maps use the user's own key; USGS is public domain and EMSC CC BY 4.0; the day / night line is computed.
+ * CC BY 4.0; OpenWeather maps use the user's own key; USGS is public domain and EMSC CC BY 4.0; the day / night line is computed;
+ * METAR, TAF and SIGMET come from the NOAA Aviation Weather Center (public domain, AviationFetcher).
  */
 object MapOverlays {
-    enum class Group(val title: String) { SEA("SEA"), WARNINGS("WARNINGS"), SKY("SKY"), SATELLITE("SATELLITE"), FORECAST("FORECAST MAPS (OPENWEATHER, YOUR KEY)") }
+    enum class Group(val title: String) { SEA("SEA"), WARNINGS("WARNINGS"), AVIATION("AVIATION · NOAA AVIATIONWEATHER.GOV"), SKY("SKY"), SATELLITE("SATELLITE"), FORECAST("FORECAST MAPS (OPENWEATHER, YOUR KEY)") }
 
     /** [tile]: a tile layer (null = drawn by the app: markers or shapes). [play]: allowed in the paid Google Play build. */
     data class Ov(
@@ -38,6 +39,8 @@ object MapOverlays {
         Ov("navarea", "NAVAREA warnings", Group.WARNINGS, 0xFFFFB347, "NAVAREA III: Armada (IHM)", 100, play = false, tile = false),
         Ov("alerts", "Official alerts", Group.WARNINGS, 0xFFFF8C1A, "Alerts: AEMET, MeteoAlarm, NWS", 80, play = true, tile = false),
         Ov("quakes", "Earthquakes", Group.WARNINGS, 0xFFFF8A80, "Earthquakes: USGS, EMSC-CSEM SeismicPortal", 80, play = true, tile = false),
+        Ov("metar", "METAR + TAF", Group.AVIATION, 0xFF3CE68A, "METAR / TAF: NOAA aviationweather.gov", 100, play = true, tile = false),
+        Ov("sigmet", "SIGMET", Group.AVIATION, 0xFFFF6B6B, "SIGMET: NOAA aviationweather.gov", 80, play = true, tile = false),
         Ov("night", "Day / night line", Group.SKY, 0xFFFFB347, "", 40, play = true, tile = false),
         Ov("meteosat", "Clouds (Meteosat IR)", Group.SATELLITE, 0xFFE8EEF3, "Contains modified EUMETSAT Meteosat data", 55, play = true, tile = true),
         Ov("owm_clouds", "Cloud cover", Group.FORECAST, 0xFFC9D4DE, "Weather data provided by OpenWeather", 50, play = true, tile = true, needsOwmKey = true),

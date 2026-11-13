@@ -651,7 +651,7 @@ class Controller(
         if (engine.tick().isNotEmpty()) publish()
         val nowWx = System.currentTimeMillis()
         if (controlOn && nowWx - netWxCheckMs > 30_000) { netWxCheckMs = nowWx; AppState.appContext?.let { NetWeatherFetcher.maybeFetch(it, settings) } }
-        if (nowWx - officialCheckMs > 60_000) { officialCheckMs = nowWx; AppState.appContext?.let { OfficialAlertsFetcher.maybeFetch(it, settings) } }
+        if (nowWx - officialCheckMs > 60_000) { officialCheckMs = nowWx; AppState.appContext?.let { OfficialAlertsFetcher.maybeFetch(it, settings); AviationFetcher.maybeFetch(it, settings) } }
         drainTx()
         val now = System.currentTimeMillis()
         if (AppState.configBusy.value && now > configDeadlineMs) {
