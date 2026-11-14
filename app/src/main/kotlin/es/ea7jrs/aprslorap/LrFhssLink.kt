@@ -187,9 +187,9 @@ object LrFhssLink {
                     while (n < head.size) { val r = inp.read(head, n, head.size - n); if (r < 0) break; n += r }
                     val info = IqWav.parse(head, n) ?: throw java.io.IOException("not an I / Q WAV file (two channels, 8 / 16 / 24 / 32 bits or float)")
                     if (info.sampleRate < 48_000) throw java.io.IOException("${info.sampleRate} S/s is too little: the beacon needs 62.5 kS/s or more")
-                    val centre = info.centreHz
-                    val shift = if (centre != null && Math.abs(freqHz - centre) < info.sampleRate / 2 - 25_000) (freqHz - centre).toDouble() else 0.0
-                    val base = if (centre != null && shift == 0.0 && Math.abs(freqHz - centre) > 1000) centre else freqHz
+                    val name = try { app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } } catch (_: Exception) { null }
+                    val centre = info.centreHz ?: name?.let { IqWav.centreFromName(it) }     // SDRconnect writes it in the name of the file
+                    val (shift, base) = IqWav.plan(info.sampleRate, centre, freqHz)
                     val rx = LrFhss.Receiver { p -> found++; onPacket(p, base, false) }
                     val rs = LrFhss.Resampler(info.sampleRate.toDouble(), shift) { i, q -> rx.feed(i, q) }
                     val fb = info.frameBytes

@@ -575,23 +575,27 @@ object LrFhss {
 
         private fun finish(p: Pending) {
             val soft = FloatArray(p.h.codedBits)
-            var lost = 0
+            val level = DoubleArray(p.h.fragments)                      // 0 = samples gone
             var o = 0
             for (i in 0 until p.h.fragments) {
                 val syms = p.h.fragmentSymbols(i)
                 val b = boundaries(p.payloadStart + i.toLong() * BLOCK_BITS * SPS, syms, p.f0 + p.hops[1 + i])
-                if (b == null) { o += syms - 2; lost++; continue }
+                if (b == null) { o += syms - 2; continue }
                 val d = diffs(b)
                 // what is left of the carrier error in this fragment, from the bits as they look
                 var sr = 0.0; var si = 0.0; var pw = 0.0
                 for (k in 2 until syms) { if (d.second[k] >= 0) { sr += d.second[k]; si -= d.first[k] } else { sr -= d.second[k]; si += d.first[k] }; pw += Math.hypot(d.first[k].toDouble(), d.second[k].toDouble()) }
                 val ang = Math.atan2(si, sr).coerceIn(-0.6, 0.6)
                 val c = Math.cos(ang).toFloat(); val s = Math.sin(ang).toFloat()
-                if (pw / (syms - 2) < p.ref * 0.1) lost++
+                level[i] = pw / (syms - 2)
                 for (k in 2 until syms) soft[o++] = (d.second[k] * c - d.first[k] * s) / p.ref
             }
             val data = decodePayload(soft, p.h)
             if (data == null) { payloadErrors++; return }
+            // fragments much weaker than the usual one of this packet (out of the band, faded, covered); not against the header:
+            // a receiver with AGC is still turning its gain down during the first header
+            val median = level.sorted()[level.size / 2]
+            val lost = level.count { it < median * 0.2 }
             done.add(p.payloadStart); if (done.size > 16) done.removeAt(0)
             onPacket(Packet(p.h, data, p.f0, p.snrDb, p.hdrStart, lost))
         }
@@ -622,7 +626,10 @@ object LrFhss {
         private var c = 1.0; private var s = 0.0
         private val dc = Math.cos(w); private val ds = Math.sin(w)
 
+        private val direct = shiftHz == 0.0 && Math.abs(inRate - SAMPLE_RATE) < 0.5     // nothing to do: the whole band goes through untouched
+
         fun feed(i: Float, q: Float) {
+            if (direct) { out(i, q); return }
             val p = (n and (L - 1).toLong()).toInt()
             if (shiftHz == 0.0) { br[p] = i; bi[p] = q }
             else {

@@ -116,6 +116,24 @@ object IqWav {
         return null
     }
 
+    private val NAME_HZ = Regex("(?<![0-9])([0-9]{6,10})\\s*HZ", RegexOption.IGNORE_CASE)
+    private val NAME_KHZ = Regex("(?<![0-9])([0-9]{3,8})\\s*KHZ", RegexOption.IGNORE_CASE)
+
+    /** Centre frequency written in the name of the file: "SDRconnect_IQ_20261114_102737_434017780HZ.wav", "..._434000kHz_IQ.wav" (SDR#, HDSDR). */
+    fun centreFromName(name: String): Long? =
+        (NAME_KHZ.find(name)?.groupValues?.get(1)?.toLongOrNull()?.times(1000) ?: NAME_HZ.find(name)?.groupValues?.get(1)?.toLongOrNull())?.takeIf { it in 10_000L..6_000_000_000L }
+
+    /**
+     * How to read a recording centred on [centreHz] (null = unknown) for a beacon on [freqHz]: the shift to give the
+     * resampler and the frequency its output is centred on. A narrow recording is not shifted (the receiver looks in the
+     * whole band and shifting would cut hops off); a wide one is, when the beacon is inside it.
+     */
+    fun plan(sampleRate: Int, centreHz: Long?, freqHz: Long): Pair<Double, Long> {
+        if (centreHz == null) return 0.0 to freqHz
+        val off = freqHz - centreHz
+        return if (sampleRate >= 100_000 && Math.abs(off) > 2000 && Math.abs(off) < sampleRate / 2 - 25_000) off.toDouble() to freqHz else 0.0 to centreHz
+    }
+
     /** [frames] I / Q pairs of [raw] (from [offset]) as floats in -1..1, interleaved. */
     fun toFloat(info: Info, raw: ByteArray, offset: Int, frames: Int, out: FloatArray) {
         var o = offset

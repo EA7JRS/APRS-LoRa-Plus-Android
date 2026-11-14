@@ -2074,6 +2074,12 @@ private fun testBeacons() {
     val aux = java.nio.ByteBuffer.allocate(8 + 36).order(java.nio.ByteOrder.LITTLE_ENDIAN).put("auxi".toByteArray()).putInt(36).put(ByteArray(32)).putInt(434_000_000).array()
     eq(IqWav.parse(wav(3, 32, 62500, aux))?.let { listOf<Any?>(it.format, it.dataOffset, it.centreHz) }, listOf<Any?>(3, 88, 434_000_000L), "IqWav: float file with the centre frequency")
     check(IqWav.parse(ByteArray(64)) == null, "IqWav: not a WAV")
+    eq(IqWav.centreFromName("SDRconnect_IQ_20261114_102737_434017780HZ.wav"), 434_017_780L, "IqWav: centre in SDRconnect's file name")
+    eq(IqWav.centreFromName("SDRSharp_20261114_092737Z_434000kHz_IQ.wav"), 434_000_000L, "IqWav: centre in kHz")
+    eq(IqWav.centreFromName("recording.wav"), null, "IqWav: no frequency in the name")
+    eq(IqWav.plan(62500, 434_017_780L, 434_000_000L), 0.0 to 434_017_780L, "IqWav: narrow recording off centre is read as it is")
+    eq(IqWav.plan(250_000, 434_050_000L, 434_000_000L), -50_000.0 to 434_000_000L, "IqWav: wide recording is shifted to the beacon")
+    eq(IqWav.plan(62500, null, 434_000_000L), 0.0 to 434_000_000L, "IqWav: unknown centre")
 }
 
 fun main() {
