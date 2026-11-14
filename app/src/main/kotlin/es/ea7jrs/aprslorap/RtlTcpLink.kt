@@ -149,6 +149,7 @@ internal class RtlTcpLink(
                         }
                         var n = 0
                         while (n < buf.size) { val r = inp.read(buf, n, buf.size - n); if (r < 0) throw java.io.EOFException(); n += r }
+                        if (AisSdrRunner.active) AisSdrRunner.feed(buf, n, tunerHz)
                         val m = rx.process(buf, n, audio)
                         val dv = DigitalVoiceRunner.active
                         val pk = PacketRunner.active

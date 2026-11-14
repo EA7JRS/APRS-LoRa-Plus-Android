@@ -10,6 +10,7 @@ import es.ea7jrs.aprslorap.core.AprsPacket
 import es.ea7jrs.aprslorap.core.Ax25Frame
 import es.ea7jrs.aprslorap.core.Control
 import es.ea7jrs.aprslorap.core.ControlEvent
+import es.ea7jrs.aprslorap.core.Vessel
 import es.ea7jrs.aprslorap.core.Json
 import es.ea7jrs.aprslorap.core.Gnss
 import es.ea7jrs.aprslorap.core.IGate
@@ -216,6 +217,11 @@ class Controller(
         exec.execute { safe { if (controlOn && AppState.trackerInfo.value?.hasAlerts == true) sendControlLine(line) } }
     }
 
+    /** Reads the own vessel data of the nautical AIS profile (a query, no transmission). */
+    fun queryVessel() {
+        exec.execute { safe { if (controlOn) sendControlLine(Vessel.queryCommand()) } }
+    }
+
     fun control(name: String, vararg fields: Pair<String, Any?>) {
         if (!controlOn) { AppState.error.value = "The tracker has no control service (update its firmware)"; return }
         // stopping the own emergency (SOS / EAI) or answering the man-down warning does not transmit
@@ -273,6 +279,7 @@ class Controller(
             is ControlEvent.Info -> {
                 AppState.trackerInfo.value = ev.info
                 if (ev.info.hasAlerts) OfficialAlertsFetcher.trackerConnected()
+                if (ev.info.hasVessel) sendControlLine(Vessel.queryCommand())
                 nmeaFromTracker = ev.info.hasNmea
                 setTrackerNmea(wantNmea && nmeaFromTracker)
             }
@@ -340,6 +347,7 @@ class Controller(
                 AppState.aisMessages.value = ev.messages
                 if (ev.from + ev.items.size < ev.total && ev.items.isNotEmpty()) sendControlLine(Control.command("aislist", "from" to ev.from + ev.items.size, "cnt" to 15))
             }
+            is ControlEvent.VesselEv -> AppState.vessel.value = ev.vessel
             is ControlEvent.OfficialAlertEv -> OfficialAlertsFetcher.onSame(ev.alert, byTracker = true)   // SAME decoded by the T-TWR
             is ControlEvent.AlertsVersion -> {}
             is ControlEvent.NetRequest -> {                  // the tracker asks (its menu): weather or satellite file with the phone's internet

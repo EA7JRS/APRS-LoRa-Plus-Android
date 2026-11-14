@@ -47,7 +47,6 @@ import java.util.Locale
 @Composable
 fun AisTab() {
     val ready by AppState.controlReady.collectAsState()
-    if (!ready) { NoControl(); return }
     val info by AppState.trackerInfo.collectAsState()
     val vessels by AppState.aisVessels.collectAsState()
     val source by AppState.aisSource.collectAsState()
@@ -58,17 +57,17 @@ fun AisTab() {
     var cpa by rememberSaveable { mutableStateOf("0.5") }
     var tcpa by rememberSaveable { mutableStateOf("15") }
     var guard by rememberSaveable { mutableStateOf("0") }
+    val trackerAis = ready && info?.hasAis == true
 
-    LaunchedEffect(Unit) { while (true) { c?.control("aislist", "from" to 0, "cnt" to 15); delay(10_000) } }
-    DisposableEffect(Unit) { onDispose { } }
+    // Ask the tracker for its AIS list only when it has an AIS receiver.
+    LaunchedEffect(trackerAis) { while (trackerAis) { c?.control("aislist", "from" to 0, "cnt" to 15); delay(10_000) } }
 
-    if (info?.hasAis != true) { Text("The tracker firmware has no AIS receiver (update it).", Modifier.padding(12.dp)); return }
     val list = vessels.values.sortedWith(compareBy({ !it.danger }, { it.rangeNm ?: 1e9 }))
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         item {
             Section("AIS vessels (${list.size})")
-            Text("Source: ${source.ifBlank { "—" }} · $msgs messages" + if (info?.mode == TrackerMode.AIS) "" else "  (T-TWR: AIS receiver mode; other boards: AIS module on the UART, WebUI > AIS receiver)", fontSize = 12.sp)
-            if (info?.mode == TrackerMode.AIS) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Source: ${source.ifBlank { "—" }} · $msgs messages", fontSize = 12.sp)
+            if (trackerAis && info?.mode == TrackerMode.AIS) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedButton(onClick = { c?.control("aisset", "ch" to 0) }) { Text("A 161.975") }
                 OutlinedButton(onClick = { c?.control("aisset", "ch" to 1) }) { Text("B 162.025") }
                 OutlinedButton(onClick = { c?.control("aisset", "ch" to 2) }) { Text("Alternate") }
@@ -102,7 +101,7 @@ fun AisTab() {
             }
             HorizontalDivider()
         }
-        item {
+        if (trackerAis) item {
             Section("Alarms (tracker)")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(cpa, { cpa = it.filter { ch -> ch.isDigit() || ch == '.' }.take(4) }, label = { Text("CPA nm") }, singleLine = true, modifier = Modifier.weight(1f))
@@ -120,6 +119,25 @@ fun AisTab() {
                 OutlinedButton(onClick = { c?.control("aisset", "clear" to true); AppState.aisVessels.value = emptyMap() }) { Text("Clear") }
             }
             Text("Collision risk when the closest point of approach is under the CPA within the TCPA, or a vessel enters the guard zone (0 = off). AIS-SART, MOB and EPIRB always sound (WebUI can turn them off).", fontSize = 11.sp)
+        }
+        item {
+            HorizontalDivider(Modifier.padding(vertical = 6.dp))
+            Section("Phone RTL-SDR (both channels)")
+            val sdr by AppState.sdr.collectAsState()
+            var on by rememberSaveable { mutableStateOf(AisSdrRunner.active) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(on, { want ->
+                    on = want
+                    if (want) {
+                        if (!sdr.connected) { on = false; AppState.error.value = "Connect the RTL-SDR first in the SDR tab"; return@Switch }
+                        SdrControl.mode("NFM", 25_000)
+                        SdrControl.tune(es.ea7jrs.aprslorap.core.AisRx.CENTER_HZ)
+                        AisSdrRunner.start()
+                    } else AisSdrRunner.stop()
+                })
+                Text("Decode AIS with the phone's RTL-SDR and feed the tracker", fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp))
+            }
+            Text("Tunes the dongle to 162.000 MHz (between the two channels). The app decodes both channels and lists the vessels here; if a tracker with an AIS receiver is connected it also forwards them (\"aisin\"). Listen only.", fontSize = 11.sp)
         }
     }
 }

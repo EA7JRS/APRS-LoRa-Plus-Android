@@ -82,6 +82,8 @@ data class TrackerInfo(
     val elfSha: String = "",                    // app_elf_sha256 of the running firmware (FirmwareSite.origin)
     val hasAlerts: Boolean = false,             // official alerts from the app ("alert", "alertdel", "alertclr", "spacewx")
     val hasSame: Boolean = false,               // NOAA Weather Radio (SAME) decoded by the T-TWR in FM (event "alert")
+    val hasVessel: Boolean = false,             // own vessel data of the nautical AIS profile ("vessel" command and event)
+    val isMaprs: Boolean = false,               // APRS LoRa+ MAPRS transponder (class B only)
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -232,6 +234,8 @@ sealed class ControlEvent {
     data class AlertsVersion(val version: Int, val count: Int, val maxLevel: Int) : ControlEvent()
     data class Ais(val vessel: AisVessel) : ControlEvent()
     data class AisList(val total: Int, val from: Int, val messages: Int, val source: String, val channel: String, val items: List<AisVessel>) : ControlEvent()
+    /** Own vessel data of the nautical AIS profile (event "vessel"). */
+    data class VesselEv(val vessel: Vessel.State) : ControlEvent()
     data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?, val freqHz: Long? = null) : ControlEvent()
     /** Radio activity for the TX / RX lights: "tx" while a frame is being sent, "idle" after it, "rx" for each frame heard. */
     data class Rf(val state: String, val rssi: Int?, val snr: Double?) : ControlEvent()
@@ -355,6 +359,7 @@ object Control {
             "alert" -> OfficialAlerts.fromEvent(o)?.let { ControlEvent.OfficialAlertEv(it) } ?: ControlEvent.Unknown(line)
             "alertsv" -> ControlEvent.AlertsVersion(o.int("v") ?: 0, o.int("n") ?: 0, o.int("max") ?: -1)
             "ais" -> AisVessel.parse(o, System.currentTimeMillis())?.let { ControlEvent.Ais(it) } ?: ControlEvent.Unknown(line)
+            "vessel" -> ControlEvent.VesselEv(Vessel.parse(o))
             "aislist" -> ControlEvent.AisList(o.int("tot") ?: 0, o.int("from") ?: 0, o.int("msgs") ?: 0, o.str("src") ?: "", o.str("ch") ?: "",
                 o.objList("items").mapNotNull { AisVessel.parse(it, System.currentTimeMillis()) })
             "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"), o.long("f"))
@@ -462,6 +467,8 @@ object Control {
             o.str("elf") ?: "",
             caps.bool("alerts") ?: false,
             caps.bool("same") ?: false,
+            caps.bool("vessel") ?: false,
+            caps.bool("maprs") ?: false,
         )
     }
 }

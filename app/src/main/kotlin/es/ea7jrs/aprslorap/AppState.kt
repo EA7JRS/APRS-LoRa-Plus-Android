@@ -77,6 +77,7 @@ object AppState {
     val aisVessels = MutableStateFlow<Map<Long, es.ea7jrs.aprslorap.core.AisVessel>>(emptyMap())
     val aisSource = MutableStateFlow("")
     val aisMessages = MutableStateFlow(0)
+    val vessel = MutableStateFlow<es.ea7jrs.aprslorap.core.Vessel.State?>(null)  // own vessel data of the nautical AIS profile
     val satList = MutableStateFlow<List<SatEntry>>(emptyList())
     val satSelected = MutableStateFlow(-1)                                       // index in the tracker's list
     val satListTotal = MutableStateFlow(0)
