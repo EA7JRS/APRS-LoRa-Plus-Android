@@ -6,6 +6,7 @@
 package es.ea7jrs.aprslorap.core
 
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private var failures = 0
 private var checks = 0
@@ -2084,7 +2085,7 @@ private fun testBeacons() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2119,6 +2120,168 @@ private fun testRadioUi() {
     eq(x.courseDeg, 88, "course"); near(x.speedKmh ?: 0.0, 66.672, 0.01, "speed km/h"); near(x.altitudeM ?: 0.0, 376.1, 0.1, "altitude m")
     eq(AprsExtra.cleanComment("088/036/A=001234 QRV 433.775"), "QRV 433.775", "clean comment")
     eq(AprsExtra.parse("LoRa tracker").courseDeg, null, "no course")
+}
+
+// GMSK BT 0.4 at 48 kHz from the NRZI levels (Gaussian-shaped NRZ = FM discriminator output), plus optional noise.
+private fun aisGmsk(lv: IntArray, fs: Float, noise: Float, seed: Long): FloatArray {
+    val baud = AisRx.BAUD
+    val sps = fs / baud; val bt = 0.4f
+    val sigma = (kotlin.math.sqrt(kotlin.math.ln(2.0)) / (2.0 * Math.PI * bt) * sps).toFloat()
+    val half = (3 * sigma).toInt().coerceAtLeast(1)
+    val g = FloatArray(2 * half + 1); var gs = 0f
+    for (i in -half..half) { g[i + half] = kotlin.math.exp(-0.5 * i * i / (sigma * sigma)).toFloat(); gs += g[i + half] }
+    for (i in g.indices) g[i] /= gs
+    val lead = (fs * 0.004f).toInt()
+    val n = (lv.size * sps).toInt() + 2 * lead
+    val nrz = FloatArray(n)
+    for (i in 0 until n) {
+        val sym = ((i - lead) / sps).toInt()
+        nrz[i] = if (sym in lv.indices) (if (lv[sym] == 1) 1f else -1f) else 0f
+    }
+    val out = FloatArray(n)
+    for (i in 0 until n) { var s = 0f; for (k in g.indices) { val j = i + k - half; if (j in 0 until n) s += g[k] * nrz[j] }; out[i] = s }
+    val rng = java.util.Random(seed)
+    for (i in out.indices) out[i] += noise * rng.nextGaussian().toFloat()
+    return out
+}
+
+private fun aisUnarmor(payload: String): Pair<ByteArray, Int> {
+    val bits = ArrayList<Int>()
+    for (ch in payload) { var v = ch.code - 48; if (v > 40) v -= 8; for (b in 5 downTo 0) bits.add((v ushr b) and 1) }
+    val bytes = ByteArray((bits.size + 7) / 8)
+    for (i in bits.indices) if (bits[i] == 1) { val by = i ushr 3; bytes[by] = (bytes[by].toInt() or (0x80 ushr (i and 7))).toByte() }
+    return bytes to bits.size
+}
+
+private fun testAisRx() {
+    // CRC and NMEA against a real AIS type-1 sentence.
+    val payload = "15NG6V0P01G?cFhE`R2IU?wn28R>"
+    val (bytes, nbits) = aisUnarmor(payload)
+    eq(nbits, 168, "type 1 is 168 bits"); eq(bytes.size, 21, "21 bytes")
+    val nmea = AisRx.toNmea(bytes, nbits, 'B')
+    eq(nmea.trim(), "!AIVDM,1,1,,B,$payload,0*05", "toNmea reproduces the sentence")
+
+    // Local decode of the type-1 message.
+    val dv = AisRx.decodeVessel(bytes, 21, 'B', 1L)!!
+    eq(dv.cls, "A", "type 1 is class A"); check(dv.mmsi in 1..999_999_999L, "mmsi decoded")
+    check(dv.lat != null && dv.lon != null, "type 1 has a position")
+    eq(AisRx.decodeVessel(ByteArray(2), 2, 'A', 1L), null, "too short -> null")
+
+    // CPA: head-on, own north at 10 kn, target 1 nm ahead southbound at 10 kn -> CPA ~0 at ~3 min.
+    val (cpaNm, tcpa) = AisRx.cpa(0.0, 0.0, 10.0, 0.0, 1.0 / 60.0, 0.0, 10.0, 180.0)
+    near(cpaNm, 0.0, 0.01, "head-on CPA ~0"); near(tcpa, 3.0, 0.1, "head-on TCPA ~3 min")
+    // Stationary own and target: CPA = current range.
+    val (cpaStat, tStat) = AisRx.cpa(0.0, 0.0, 0.0, 0.0, 2.0 / 60.0, 0.0, 0.0, 0.0)
+    near(cpaStat, 2.0, 0.01, "stationary CPA = range"); near(tStat, 0.0, 1e-9, "stationary TCPA 0")
+
+    // Demod round trip: frameBits -> GMSK at 48 kHz -> Demod recovers the same 21 bytes.
+    val lv = AisRx.frameBits(bytes, 21)
+    var got: ByteArray? = null; var gotN = 0
+    val sink = AisRx.FrameSink { d, n -> got = d.copyOf(n); gotN = n }
+    for (noise in listOf(0.0f, 0.05f, 0.10f)) {
+        val d = AisRx.Demod(48_000f); got = null
+        for (v in aisGmsk(lv, 48_000f, noise, 7)) d.feed(v, sink)
+        check(got != null && gotN == 21 && got!!.copyOf(21).contentEquals(bytes), "AIS demod round trip, noise $noise")
+    }
+    // Decoded frame turns back into the same sentence.
+    val back = AisRx.toNmea(got!!, gotN * 8, 'B')
+    eq(back.trim(), "!AIVDM,1,1,,B,$payload,0*05", "round-trip sentence")
+    // Noise only: no frames.
+    val d2 = AisRx.Demod(48_000f); var spurious = 0
+    val sink2 = AisRx.FrameSink { _, _ -> spurious++ }
+    val noiseOnly = aisGmsk(IntArray(0), 48_000f, 0.3f, 5)
+    for (v in noiseOnly) d2.feed(v, sink2)
+    for (i in 0 until 48_000) d2.feed((java.util.Random(11).nextGaussian() * 0.3).toFloat(), sink2)
+    eq(spurious, 0, "no frames from noise")
+
+    // Full IQ chain: synthesize 960 kS/s IQ for channel B (162.025 MHz), tuner at 162.000 + IF_OFFSET, and decode it.
+    val fsIq = Dsp.INPUT_RATE.toFloat()
+    val sps = fsIq / AisRx.BAUD
+    val bt = 0.4f
+    val sigma = (kotlin.math.sqrt(kotlin.math.ln(2.0)) / (2.0 * Math.PI * bt) * sps).toFloat()
+    val half = (3 * sigma).toInt().coerceAtLeast(1)
+    val g = FloatArray(2 * half + 1); var gs = 0f
+    for (i in -half..half) { g[i + half] = kotlin.math.exp(-0.5 * i * i / (sigma * sigma)).toFloat(); gs += g[i + half] }
+    for (i in g.indices) g[i] /= gs
+    val lead = (fsIq * 0.003f).toInt()
+    val ns = (lv.size * sps).toInt() + 2 * lead
+    val nrz = FloatArray(ns)
+    for (i in 0 until ns) { val sym = ((i - lead) / sps).toInt(); nrz[i] = if (sym in lv.indices) (if (lv[sym] == 1) 1f else -1f) else 0f }
+    val shaped = FloatArray(ns)
+    for (i in 0 until ns) { var s = 0f; for (k in g.indices) { val j = i + k - half; if (j in 0 until ns) s += g[k] * nrz[j] }; shaped[i] = s }
+    val tunerHz = AisRx.CENTER_HZ + Dsp.IF_OFFSET
+    val carrier = (162_025_000L - tunerHz).toDouble()            // channel B in the dongle baseband
+    val dev = 2400.0                                             // GMSK h=0.5 at 9600 bd
+    val iq = ByteArray(2 * ns)
+    var phase = 0.0
+    for (i in 0 until ns) {
+        phase += 2.0 * Math.PI * (carrier + dev * shaped[i]) / fsIq
+        iq[2 * i] = (127.5 + 110.0 * kotlin.math.cos(phase)).roundToInt().coerceIn(0, 255).toByte()
+        iq[2 * i + 1] = (127.5 + 110.0 * kotlin.math.sin(phase)).roundToInt().coerceIn(0, 255).toByte()
+    }
+    var sentence: String? = null
+    val rxr = AisRx.Receiver({ sentence = it })
+    rxr.center(tunerHz)
+    // feed in blocks
+    var off = 0
+    while (off < iq.size) { val take = minOf(32_768, iq.size - off); rxr.process(iq.copyOfRange(off, off + take), take); off += take }
+    check(sentence != null && sentence!!.contains(",B,") && sentence!!.contains(payload), "AIS IQ chain decodes channel B: ${sentence?.trim()}")
+}
+
+private fun testVessel() {
+    // type table
+    eq(Vessel.TYPES.size, 17, "17 vessel types")
+    eq(Vessel.type(0).classB, true, "sailing yacht is class B"); eq(Vessel.type(0).cls, 'C', "type 0 CS")
+    eq(Vessel.type(1).cls, 'O', "power boat SO"); eq(Vessel.type(2).classB, false, "cargo is class A")
+    eq(Vessel.type(99).id, 0, "out of range -> first"); eq(Vessel.className('C'), "Class B (CS)", "class name CS")
+
+    // base callsign
+    eq(Vessel.baseCall("ea7jrs-5"), "EA7JRS", "base call strips SSID, upper"); eq(Vessel.baseCall("AB"), "", "too short")
+    eq(Vessel.baseCall("WORD12"), "WORD12", "6 chars ok"); eq(Vessel.validMmsi(224123456L), true, "valid MMSI")
+    eq(Vessel.validMmsi(12345L), false, "short MMSI")
+
+    // parse the event
+    val o = Json.parseObject("{\"e\":\"vessel\",\"b\":true,\"ok\":true,\"i\":3,\"act\":true,\"call\":\"EA7JRS-5\",\"mmsi\":224123456,\"n\":\"SEA BREEZE\",\"mc\":\"EBXY\",\"mcok\":1,\"mcu\":false,\"t\":0,\"cls\":\"C\",\"st\":36,\"len\":12,\"beam\":4,\"dr\":1.8}")!!
+    val st = Vessel.parse(o)
+    eq(st.classBTransponder, true, "b"); eq(st.hasProfile, true, "ok"); eq(st.index, 3, "i"); eq(st.active, true, "act")
+    eq(st.callsign, "EA7JRS-5", "call"); eq(st.mmsi, 224123456L, "mmsi"); eq(st.name, "SEA BREEZE", "name")
+    eq(st.maritimeCall, "EBXY", "mc"); eq(st.maritimeVerified, 1, "mcok"); eq(st.shipType, 36, "st")
+    eq(st.lengthM, 12, "len"); eq(st.beamM, 4, "beam"); near(st.draughtM, 1.8, 1e-9, "dr"); eq(st.maritimeToSend, "EBXY", "mc to send")
+    eq(Vessel.parse(mapOf("call" to "EA7JRS")).maritimeToSend, "EA7JRS", "empty mc -> base call")
+
+    // set command
+    val cmd = Vessel.setCommand("SEA BREEZE", 224123456L, "EA7JRS-5", "EBXY", 0, 12, 4, 1.8, mcok = 1, unverified = false)
+    val p = Json.parseObject(cmd)!!
+    eq(p["c"], "vessel", "command name"); eq((p["mmsi"] as Number).toLong(), 224123456L, "mmsi field")
+    eq(p["call"], "EA7JRS", "call stripped"); eq(p["mc"], "EBXY", "mc field"); eq((p["mcok"] as Number).toInt(), 1, "mcok sent")
+    eq(p.containsKey("mcok"), true, "mcok present when 1")
+    eq(Json.parseObject(Vessel.setCommand("X", 0, "EA7JRS", "", 1, 0, 0, 0.0))!!.containsKey("mcok"), false, "mcok absent when 0")
+}
+
+private fun testMtCheckApp() {
+    eq(MtCheck.validKey("0123456789abcdef0123456789ABCDEF01234567"), true, "40 hex key ok")
+    eq(MtCheck.validKey("123"), false, "short key"); eq(MtCheck.validKey("0123456789abcdef0123456789ABCDEF0123456g"), false, "bad char")
+    eq(MtCheck.searchUrl("abc", 224123456L), "https://services.marinetraffic.com/api/shipsearch/abc?mmsi=224123456&protocol=jsono", "search url")
+    val two = "[{\"SHIPNAME\":\"SEA BREEZE\",\"MMSI\":\"224123456\",\"IMO\":\"0\",\"CALLSIGN\":\"EBXY\"},{\"SHIPNAME\":\"X\",\"MMSI\":\"224123456\",\"CALLSIGN\":\"EA1234\"}]"
+    eq(MtCheck.parse(200, two, "ebxy"), MtCheck.Result.MATCH to "EBXY", "match first")
+    eq(MtCheck.parse(200, two, "EA1234"), MtCheck.Result.MATCH to "EA1234", "match second")
+    eq(MtCheck.parse(200, two, "EBZZ").first, MtCheck.Result.MISMATCH, "mismatch")
+    eq(MtCheck.parse(200, "[]", "EBXY").first, MtCheck.Result.NOT_FOUND, "empty not found")
+    eq(MtCheck.parse(200, "[{\"MMSI\":\"224123456\",\"CALLSIGN\":\"\"}]", "EBXY").first, MtCheck.Result.NOT_FOUND, "blank call not found")
+    eq(MtCheck.parse(200, "{\"errors\":[{\"code\":\"5\",\"detail\":\"INVALID API KEY\"}]}", "EBXY").first, MtCheck.Result.BAD_KEY, "bad key error")
+    eq(MtCheck.parse(200, "{\"errors\":[{\"code\":\"2\",\"detail\":\"ABOVE SERVICE CALL RATE LIMIT\"}]}", "EBXY").first, MtCheck.Result.LIMIT, "rate limit")
+    eq(MtCheck.parse(200, "{\"errors\":[{\"code\":\"7\",\"detail\":\"NO DATA\"}]}", "EBXY").first, MtCheck.Result.NOT_FOUND, "no data")
+    eq(MtCheck.parse(429, "", "EBXY").first, MtCheck.Result.LIMIT, "429 limit")
+    eq(MtCheck.parse(401, "", "EBXY").first, MtCheck.Result.BAD_KEY, "401 bad key")
+    eq(MtCheck.parse(200, "{\"DATA\":[{\"CALLSIGN\":\"EBXY\"}]}", "EBXY").first, MtCheck.Result.MATCH, "DATA array")
+    eq(MtCheck.pairKey(224123456L, "eb-xy"), "224123456/EBXY", "pair key")
+    eq(MtCheck.verified(1, "224123456/EBXY", 224123456L, "EBXY"), true, "verified MT")
+    eq(MtCheck.verified(2, "224123456/EBXY", 224123456L, "ebxy"), true, "verified MARS lowercase")
+    eq(MtCheck.verified(0, "224123456/EBXY", 224123456L, "EBXY"), false, "none not verified")
+    eq(MtCheck.verified(2, "224123456/EBXY", 224123457L, "EBXY"), false, "other MMSI not verified")
+    eq(MtCheck.verified(2, "224123456/EBXY", 224123456L, "EBXZ"), false, "other call not verified")
+    eq(MtCheck.sourceName(2), "ITU MARS", "source name MARS"); eq(MtCheck.sourceName(0), "", "source name none")
+    eq(MtCheck.resultText(MtCheck.Result.NOT_FOUND).contains("MARS"), true, "not found text points to MARS")
 }
 
 private fun testDxCluster() {

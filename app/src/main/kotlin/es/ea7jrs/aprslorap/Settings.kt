@@ -384,6 +384,11 @@ class Settings(ctx: Context) {
         p.edit().remove("valid_call").remove("valid_ids").remove("valid_name").remove("valid_country").remove("valid_at").apply()
     }
 
+    /** MarineTraffic API key (40 hex), to check the maritime call sign of the MMSI on the Vessel screen. */
+    var marineTrafficKey: String
+        get() = p.getString("mt_key", "")!!.trim()
+        set(v) { p.edit().putString("mt_key", v.trim()).apply() }
+
     val pathList: List<String> get() = path.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     // Spotting (Modes > Spotting): what the app decodes goes to PSK Reporter, WSPRnet, a WSJT-X UDP listener, a skimmer port
