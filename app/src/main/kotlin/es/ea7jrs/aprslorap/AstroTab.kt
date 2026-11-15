@@ -5,6 +5,8 @@
  */
 package es.ea7jrs.aprslorap
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -131,6 +133,48 @@ fun AstroTab() {
         fix(me, list)
     }
 
+    /** Latitude from the same sight: by the meridian, by Polaris or (with a warning) off the meridian; and when the body crosses the meridian. */
+    fun latitude() {
+        val me = Own.position()
+        if (me == null) { out = "An assumed position is needed: the tracker's GNSS or your locator in Modes > Spotting."; return }
+        if (hms.length != 6) { out = "Type the UTC time as hhmmss or press NOW."; return }
+        val hh = hms.substring(0, 2).toInt(); val mm = hms.substring(2, 4).toInt(); val ss = hms.substring(4, 6).toInt()
+        if (hh > 23 || mm > 59 || ss > 59) { out = "Invalid UTC time."; return }
+        val nowMs = System.currentTimeMillis()
+        var t = nowMs - nowMs % 86_400_000L + (hh * 3600 + mm * 60 + ss) * 1000L
+        if (t > nowMs + 3_600_000L) t -= 86_400_000L
+        val hs = num(deg) + num(min) / 60.0
+        if (hs <= 0 || hs >= 90) { out = "Sextant altitude between 0 and 90 degrees."; return }
+        val jd = Celnav.julianDay(t)
+        val g = ephem(jd)
+        var sd = g[2]
+        if (body == 2 || body == 3) sd *= 1.0 + kotlin.math.sin(Math.toRadians(hs)) * kotlin.math.sin(Math.toRadians(g[3] / 60.0))
+        val ho = Celnav.observedAltitude(hs, num(index), num(eye),
+            if (body >= 4) Celnav.Limb.CENTER else if (body % 2 == 0) Celnav.Limb.LOWER else Celnav.Limb.UPPER, sd, g[3])
+        val polaris = body == 8 && Celnav.STARS[star].name == "Polaris"
+        val lha = Math.IEEEremainder(g[0] + me.second, 360.0)
+        val lat = Celnav.latitudeFromAltitude(ho, g[1], lha, me.first)
+        val sb = StringBuilder()
+        if (lat == null) sb.append("No latitude gives that altitude at that time: check the body, the UTC time and the altitude.")
+        else {
+            val how = if (polaris) "by Polaris" else if (abs(lha) <= 2.5) "by meridian altitude" else "from the altitude (off the meridian)"
+            val dn = (lat - me.first) * 60.0
+            sb.append(String.format(Locale.US, "Latitude %s: %s %s · assumed %s %s (%.1f nm %s)", how, dm(lat), if (lat >= 0) "N" else "S",
+                dm(me.first), if (me.first >= 0) "N" else "S", abs(dn), if (dn >= 0) "north" else "south"))
+            if (polaris) sb.append(String.format(Locale.US, "\nPolaris correction at that time: %s%s", if (lat - ho < 0) "-" else "+", dm(lat - ho)))
+            else if (abs(lha) > 2.5) sb.append(String.format(Locale.US, "\nLocal hour angle %.1f°: it depends on the assumed longitude. The good one is at meridian passage.", abs(lha)))
+        }
+        if (!polaris) {
+            val tp = Celnav.meridianPassageJd(jd, me.second) { ephem(it)[0] }
+            val d = ephem(tp)[1]
+            val hmax = 90.0 - abs(me.first - d)
+            val ms = Math.round((tp - 2440587.5) * 86_400_000.0)
+            if (hmax > 0) sb.append(String.format(Locale.US, "\nMeridian passage: %s UTC, true altitude %s bearing %s.", utc(ms), dm(hmax), if (d < me.first) "S" else "N"))
+            else sb.append("\nThat body does not rise above the horizon at meridian passage.")
+        }
+        out = sb.toString()
+    }
+
     fun sign(v: Double) = if (v >= 0) "E" else "W"
     /** Total correction from the compass bearing of the chosen body (the limb does not matter) and the deviation for the compass heading. */
     fun computeCt() {
@@ -169,11 +213,12 @@ fun AstroTab() {
             val me = Own.position()
             Text(if (me != null) "Assumed position: " + pos(me.first, me.second) else "No position: tracker GNSS without a fix and no locator in Spotting",
                 fontSize = 12.sp, color = if (me != null) Alp.Muted else Alp.Amber)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState())) {
                 OutlinedButton(onClick = { body = (body + 1) % 9 }) { Text(bodyNames[body]) }
                 OutlinedButton(onClick = { body = 8; star = (star + Celnav.STARS.size - 1) % Celnav.STARS.size }) { Text("<") }
                 OutlinedButton(onClick = { body = 8; star = (star + 1) % Celnav.STARS.size }) { Text(">") }
                 OutlinedButton(onClick = { showSky = !showSky }) { Text(if (showSky) "Hide" else "Visible") }
+                OutlinedButton(onClick = { Celnav.STARS.indexOfFirst { it.name == "Polaris" }.let { if (it >= 0) { body = 8; star = it } } }) { Text("Polaris") }
             }
             if (showSky) {
                 if (me == null) Text("Needs a position to know what is above the horizon.", fontSize = 12.sp, color = Alp.Amber)
@@ -225,11 +270,12 @@ fun AstroTab() {
                 OutlinedTextField(eye, { eye = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(4) }, label = { Text("Eye height, m") }, singleLine = true,
                     modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState())) {
                 OutlinedTextField(hms, { hms = it.filter { c -> c.isDigit() }.take(6) }, label = { Text("UTC hhmmss") }, singleLine = true, modifier = Modifier.width(150.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedButton(onClick = { now() }) { Text("NOW") }
                 Button(onClick = { compute() }) { Text("Compute") }
+                OutlinedButton(onClick = { latitude() }) { Text("Latitude") }
             }
             Text(out, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
             if (fixText.isNotEmpty()) Text(fixText, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Alp.Green, modifier = Modifier.padding(top = 4.dp))

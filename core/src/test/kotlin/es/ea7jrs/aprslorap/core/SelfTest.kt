@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2553,6 +2553,32 @@ private fun testFormulas() {
 }
 
 // Celestial navigation: same reference values as the plotter core (a 2026 nautical almanac, 0.1', and PyEphem)
+private fun testLatitude() {
+    // same cases as testLatitude of the plotter
+    near(Celnav.latitudeFromAltitude(90 - (36.5 + 18.3), -18.3, 0.0, 36.0)!!, 36.5, 1e-9, "lat: meridian, N")
+    near(Celnav.latitudeFromAltitude(90 - (12.0 - 5.0), -5.0, 0.0, -10.0)!!, -12.0, 1e-9, "lat: meridian, S")
+    val aa = Celnav.bodyAltAz(30.0, 10.0, 41.2, -20.0)
+    near(Celnav.latitudeFromAltitude(aa.alt, 10.0, 10.0, 40.0)!!, 41.2, 1e-9, "lat: off the meridian")
+    check(Celnav.latitudeFromAltitude(80.0, -60.0, 90.0, 0.0) == null, "lat: impossible altitude")
+    val pol = Celnav.findStar("Polaris")!!
+    val jd = 2461360.75
+    val p = Celnav.starShaDec(pol, jd)
+    val gha = (Celnav.ariesGha(jd) + p.sha) % 360.0
+    val pa = Celnav.bodyAltAz(gha, p.dec, 36.53, -6.28)
+    near(Celnav.latitudeFromAltitude(pa.alt, p.dec, gha - 6.28, 35.0)!!, 36.53, 1e-9, "lat: Polaris")
+    check(abs(pa.alt - 36.53) < 1.0, "lat: Polaris within a degree")
+    val sunGha = { j: Double -> Celnav.sunGhaDec(j).gha }
+    val jdNoon = 2461360.0
+    val tp = Celnav.meridianPassageJd(jdNoon, -6.28, sunGha)
+    // the Sun's local hour angle is 0 at the passage, and it is near 12:25 UTC (about 12 h - 15 min + 25 min)
+    near(Math.IEEEremainder(sunGha(tp) - 6.28, 360.0), 0.0, 1e-4, "lat: Sun meridian passage, LHA 0")
+    check(abs((tp - (jdNoon - 0.5)) * 1440.0 - (12 * 60 - 15.3 + 25.1)) < 1.0, "lat: Sun meridian passage time")
+    val vegaGha = { j: Double -> val v = Celnav.starShaDec(Celnav.findStar("Vega")!!, j); (Celnav.ariesGha(j) + v.sha) % 360.0 }
+    val tv = Celnav.meridianPassageJd(jdNoon, -6.28, vegaGha)
+    near(Math.IEEEremainder(vegaGha(tv) - 6.28, 360.0), 0.0, 1e-4, "lat: Vega meridian passage")
+    check(abs(tv - jdNoon) <= 0.51, "lat: nearest passage")
+}
+
 private fun testCelnav() {
     fun dm(d: Int, m: Double) = d + m / 60.0
     fun jd(y: Int, mo: Int, d: Int, h: Int): Double {

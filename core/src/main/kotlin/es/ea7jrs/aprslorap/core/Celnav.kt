@@ -366,6 +366,41 @@ object Celnav {
         return AltAz(alt, n360(deg(atan2(-sin(ha) * cos(de), sin(de) * cos(la) - cos(de) * sin(la) * cos(ha)))))
     }
 
+    /**
+     * Latitude from a single observed altitude: sin Ho = sin(lat) sin(dec) + cos(lat) cos(dec) cos(LHA), solved for the
+     * latitude (of the two roots, the one nearer the assumed latitude). LHA 0 = meridian altitude; with Polaris, latitude
+     * by Polaris; away from the meridian it depends on the assumed longitude. null when no latitude gives that altitude.
+     * Same as `latitudeFromAltitude` of the plotter's celnav.
+     */
+    fun latitudeFromAltitude(hoDeg: Double, decDeg: Double, lhaDeg: Double, latEstDeg: Double): Double? {
+        val a = sin(rad(decDeg)); val b = cos(rad(decDeg)) * cos(rad(lhaDeg))
+        val r = sqrt(a * a + b * b); val s = sin(rad(hoDeg))
+        if (r < 1e-12 || abs(s) > r) return null
+        val th = atan2(b, a); val u = asin(s / r)
+        var best: Double? = null
+        for (v in doubleArrayOf(u - th, Math.PI - u - th)) {
+            var d = deg(v)
+            while (d > 180) d -= 360
+            while (d < -180) d += 360
+            if (d < -90 || d > 90) continue
+            if (best == null || abs(d - latEstDeg) < abs(best - latEstDeg)) best = d
+        }
+        return best
+    }
+
+    /** Upper meridian passage at lonDeg (east +): the Julian day nearest jd0 at which the local hour angle is 0. gha(jd) in degrees; iterated, so it also works for the Moon and planets. */
+    fun meridianPassageJd(jd0: Double, lonDeg: Double, gha: (Double) -> Double): Double {
+        var jd = jd0
+        repeat(8) {
+            val lha = Math.IEEEremainder(gha(jd) + lonDeg, 360.0)
+            val rate = maxOf(((gha(jd + 0.01) - gha(jd) + 720.0) % 360.0) / 0.01, 300.0)
+            val step = lha / rate
+            jd -= step
+            if (abs(step) < 1e-7) return jd
+        }
+        return jd
+    }
+
     fun dipArcmin(eyeHeightM: Double): Double = if (eyeHeightM > 0) 1.76 * sqrt(eyeHeightM) else 0.0
 
     /** Mean refraction (Bennett) for the apparent altitude. */
