@@ -69,6 +69,7 @@ data class StationView(
     val comment: String, val path: String, val packets: Int, val rssi: Int?, val snr: Double?, val courseDeg: Int?, val speedKmh: Double?,
     val altitudeM: Double?, val device: String?, val status: String?,
     val wx: AprsWx? = null, val wxMs: Long? = null, val owner: String? = null, val micE: String? = null,
+    val wxPressD3h: Double? = null,     // change of the pressure over 3 h, once the station has been heard for an hour
 ) {
     val symbol: AprsSymbols.Symbol? get() = AprsSymbols.of(table, code)
     val kind: String get() = AprsSymbols.describe(table, code)
@@ -76,6 +77,19 @@ data class StationView(
     val isInfra: Boolean get() = code == '#' || code == '&' || code == 'r'
     val moving: Boolean get() = (speedKmh ?: 0.0) > 2.0
     val emergency: Boolean get() = (table == '\\' && code == '!') || micE == Aprs.MICE_EMERGENCY
+}
+
+/** Pressure readings of the weather stations heard only by the tracker (the app decodes the others itself: Station.wxPressD3h). */
+private object HeardTrends {
+    private val byCall = HashMap<String, es.ea7jrs.aprslorap.core.WxCalc.PressureTrend>()
+
+    @Synchronized fun d3h(call: String, atMs: Long, hpa: Double?): Double? {
+        if (hpa == null) return null
+        if (byCall.size > 64 && !byCall.containsKey(call)) byCall.clear()
+        val t = byCall.getOrPut(call) { es.ea7jrs.aprslorap.core.WxCalc.PressureTrend() }
+        t.add(atMs / 1000, hpa)
+        return t.delta3h(System.currentTimeMillis() / 1000)
+    }
 }
 
 fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: Long): List<StationView> {
@@ -90,7 +104,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             h?.rssi, h?.snr,
             s.courseDeg ?: if (wxStation) null else h?.course, s.speedKmh ?: if (wxStation) null else h?.speedKmh?.toDouble(),
             s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, h?.status,
-            wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE,
+            wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE, wxPressD3h = s.wxPressD3h,
         ))
     }
     val known = stations.map { it.call }.toSet()
@@ -103,7 +117,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             h.call, h.symbol.getOrNull(0), h.symbol.getOrNull(1), h.lat, h.lon, at, h.posAgeS?.let { heardAtMs - it * 1000 },
             w?.rest ?: h.comment ?: "", h.path ?: "", h.packets, h.rssi, h.snr,
             if (w != null) null else h.course, if (w != null) null else h.speedKmh?.toDouble(), h.altitudeM?.toDouble(), h.device, h.status,
-            wx = w?.wx, wxMs = if (w != null) at else null,
+            wx = w?.wx, wxMs = if (w != null) at else null, wxPressD3h = HeardTrends.d3h(h.call, at, w?.wx?.pressureHpa),
         ).let { if (sym == null) it.copy(table = null, code = null) else it })
     }
     return out
@@ -181,7 +195,7 @@ fun StationListScreen(nav: Navigator) {
                         AprsSymbolIcon(s.symbol, 24.dp, if (s.emergency) Color(0xFF4A2326) else Alp.SymbolBg)
                         Column(Modifier.weight(1f)) {
                             Text(s.call, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = if (s.emergency) Alp.RedSoft else Alp.Text, maxLines = 1)
-                            if (s.wx != null) Text(s.wx.summary(), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Cyan, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (s.wx != null) Text(s.wx.summary(Fmt.units), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Cyan, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             else Text(s.kind + (s.micE?.takeIf { it != "Off duty" }?.let { " · $it" } ?: "") + (s.rssi?.let { " · " + SMeter.fromDbm(it.toDouble(), trackerFreqHz()).label } ?: ""),
                                 fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -260,7 +274,7 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                         }
                     }
                 }
-                if (s.wx != null) WeatherPanel(s.wx, s.wxMs)
+                if (s.wx != null) WeatherPanel(s.wx, s.wxMs, s.wxPressD3h)
                 Panel(Modifier.fillMaxWidth(), padding = 10.dp) {
                     if (s.rssi != null) {
                         SectionLabel("SIGNAL AT THE TRACKER")
@@ -268,7 +282,7 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                             extra = listOfNotNull("${s.rssi} dBm", s.snr?.let { String.format(Locale.US, "SNR %.1f", it) }).joinToString(" · "),
                             modifier = Modifier.padding(bottom = 6.dp))
                     }
-                    InfoRow("SPEED", s.speedKmh?.let { String.format(Locale.US, "%.0f km/h", it) } ?: "—")
+                    InfoRow("SPEED", Fmt.speed(s.speedKmh))
                     InfoRow("COURSE", s.courseDeg?.let { Fmt.deg(it.toDouble()) } ?: "—")
                     InfoRow("ALTITUDE", s.altitudeM?.let { String.format(Locale.US, "%.0f m", it) } ?: "—")
                     InfoRow("LAT", s.lat?.let { Fmt.latLon(it, true) } ?: "—")
@@ -309,7 +323,14 @@ fun tempColor(c: Double?): Color = when {
 
 /** Weather report of a station: wind with its direction, temperature, humidity, pressure, rain, light and snow. */
 @Composable
-fun WeatherPanel(wx: AprsWx, atMs: Long?) {
+fun WeatherPanel(wx: AprsWx, atMs: Long?, pressD3h: Double? = null) {
+    val calc = es.ea7jrs.aprslorap.core.WxCalc
+    val t = wx.tempC
+    val hum = wx.humidityPct?.toDouble()
+    val dew = if (t != null && hum != null) calc.dewPointC(t, hum) else null
+    // feels-like only when it differs from the air temperature (wind chill below it, heat index above it)
+    val feels = t?.let { calc.feelsLikeC(it, hum, wx.windKmh) }?.takeIf { kotlin.math.abs(it - t) >= 0.5 }
+        ?.let { it to (if (it < t) "wind chill" else "heat index") }
     Panel(Modifier.fillMaxWidth(), border = Alp.Cyan.copy(alpha = 0.45f)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionLabel("WEATHER")
@@ -317,28 +338,28 @@ fun WeatherPanel(wx: AprsWx, atMs: Long?) {
             Text(Fmt.ago(atMs), fontSize = 13.sp, color = Alp.Muted)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-            Text(wx.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 40.sp, color = tempColor(wx.tempC))
+            Text(Fmt.temp(wx.tempC, unit = false), fontFamily = TechMono, fontSize = 40.sp, color = tempColor(wx.tempC))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     // the arrow points where the wind blows to (it comes from windDirDeg)
                     val dir = wx.windDirDeg
                     if (dir != null && (wx.windKmh ?: 1.0) >= 1.0) BearingArrow((dir + 180) % 360.0, Alp.Cyan, 22.dp)
-                    Text(wx.wind() ?: "no wind data", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Alp.Cyan)
+                    Text(wx.wind(Fmt.units) ?: "no wind data", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Alp.Cyan)
                 }
-                wx.gustKmh?.let { Text(String.format(Locale.US, "gusts %.0f km/h", it) + (wx.windDirDeg?.let { d -> " · from " + Fmt.deg(d.toDouble()) } ?: ""), fontSize = 14.sp, color = Alp.Muted) }
+                wx.gustKmh?.let { Text("gusts " + Fmt.speed(it) + (wx.windDirDeg?.let { d -> " · from " + Fmt.deg(d.toDouble()) } ?: ""), fontSize = 14.sp, color = Alp.Muted) }
             }
         }
-        wx.humidityPct?.let { InfoRow("HUMIDITY", "$it %") }
-        // the plotter formulas (the same in every APRS LoRa+ device): Beaufort, dew point, feels-like
-        wx.windKmh?.let { InfoRow("FORCE", es.ea7jrs.aprslorap.core.WxCalc.beaufort(it / 1.852).let { f -> "$f · ${es.ea7jrs.aprslorap.core.WxCalc.beaufortName(f)}" }) }
-        val t = wx.tempC
-        val dew = if (t != null) wx.humidityPct?.let { es.ea7jrs.aprslorap.core.WxCalc.dewPointC(t, it.toDouble()) } else null
-        dew?.let { InfoRow("DEW POINT", String.format(Locale.US, "%.1f°", it)) }
-        if (t != null) {
-            val fl = es.ea7jrs.aprslorap.core.WxCalc.feelsLikeC(t, wx.humidityPct?.toDouble(), wx.windKmh)
-            if (kotlin.math.abs(fl - t) >= 0.5) InfoRow("FEELS LIKE", String.format(Locale.US, "%.0f°", fl), tempColor(fl))
+        wx.windKmh?.takeIf { it >= 1.0 }?.let {
+            val f = calc.beaufort(calc.kmhToKn(it))
+            InfoRow("BEAUFORT", "Force $f · ${calc.beaufortName(f)} · ${Fmt.speed(it)}", if (f >= 8) Alp.Red else if (f >= 6) Alp.Amber else Alp.Text)
         }
-        wx.pressureHpa?.let { InfoRow("PRESSURE", String.format(Locale.US, "%.1f hPa", it)) }
+        feels?.let { InfoRow("FEELS LIKE", Fmt.temp(it.first) + " (" + it.second + ")", tempColor(it.first)) }
+        wx.humidityPct?.let { InfoRow("HUMIDITY", "$it %") }
+        dew?.let { d -> InfoRow("DEW POINT", Fmt.temp(d) + (calc.cloudBaseM(wx.tempC, d)?.let { String.format(Locale.US, " · cloud base ~%.0f m", it) } ?: "")) }
+        wx.pressureHpa?.let {
+            InfoRow("PRESSURE", String.format(Locale.US, "%.1f hPa", it) + (pressD3h?.let { d -> String.format(Locale.US, " · %s (%+.1f in 3 h)", calc.trendName(d), d) } ?: ""),
+                if ((pressD3h ?: 0.0) <= -3.5) Alp.Amber else Alp.Text)
+        }
         wx.rain1hMm?.let { InfoRow("RAIN 1 H", String.format(Locale.US, "%.1f mm", it)) }
         wx.rain24hMm?.let { InfoRow("RAIN 24 H", String.format(Locale.US, "%.1f mm", it)) }
         wx.rainMidnightMm?.let { InfoRow("RAIN TODAY", String.format(Locale.US, "%.1f mm", it)) }

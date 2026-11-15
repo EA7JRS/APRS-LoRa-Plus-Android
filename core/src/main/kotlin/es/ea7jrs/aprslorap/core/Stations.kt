@@ -17,6 +17,8 @@ data class Station(
     val courseDeg: Int? = null, val speedKmh: Double? = null, val altitudeM: Double? = null,
     /** Last weather report and when it came. */
     val wx: AprsWx? = null, val wxMs: Long? = null,
+    /** Change of the station's pressure over 3 h (hPa), once it has been heard for at least an hour. */
+    val wxPressD3h: Double? = null,
     /** Object or item: the station that sends it. */
     val owner: String? = null,
     /** Mic-E status ("En route", "Emergency"...). */
@@ -26,6 +28,7 @@ data class Station(
 /** Table of heard stations: one entry per callsign, updated with each frame. */
 class StationTable(private val maxStations: Int = 500) {
     private val map = LinkedHashMap<String, Station>()
+    private val trends = HashMap<String, WxCalc.PressureTrend>()
 
     /**
      * Updates the table with a frame. Third-party frames (from APRS-IS through an iGate) count for the station inside;
@@ -40,6 +43,7 @@ class StationTable(private val maxStations: Int = 500) {
         val old = map[call]
         val path = f.path.joinToString(",") { it.toString() }
         val wx = pos?.wx ?: report?.wx
+        if (trends.size > 64 && !trends.containsKey(call)) trends.clear()          // bounded: start again rather than grow
         val st = Station(
             call = call,
             lat = pos?.lat ?: old?.lat, lon = pos?.lon ?: old?.lon,
@@ -53,6 +57,7 @@ class StationTable(private val maxStations: Int = 500) {
             speedKmh = if (pos != null) pos.speedKmh else old?.speedKmh,
             altitudeM = pos?.altitudeM ?: old?.altitudeM,
             wx = wx ?: old?.wx, wxMs = if (wx != null) nowMs else old?.wxMs,
+            wxPressD3h = wx?.pressureHpa?.let { hpa -> trends.getOrPut(call) { WxCalc.PressureTrend() }.also { it.add(nowMs / 1000, hpa) }.delta3h(nowMs / 1000) } ?: old?.wxPressD3h,
             owner = if (pos?.objectName != null) f.source.text() else old?.owner,
             micE = pos?.micE ?: old?.micE.takeIf { pos == null },
         )

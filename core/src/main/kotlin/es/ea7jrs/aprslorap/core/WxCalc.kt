@@ -5,6 +5,7 @@
  */
 package es.ea7jrs.aprslorap.core
 
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
@@ -70,4 +71,59 @@ object WxCalc {
     private val BF_NAMES = arrayOf("Calm", "Light air", "Light breeze", "Gentle breeze", "Moderate breeze", "Fresh breeze",
         "Strong breeze", "Near gale", "Gale", "Strong gale", "Storm", "Violent storm", "Hurricane force")
     fun beaufortName(force: Int): String = BF_NAMES[force.coerceIn(0, 12)]
+
+    fun kmhToKn(kmh: Double): Double = kmh / 1.852
+
+    /** Height of the convective cloud base over the station, metres (125 m per degree of spread). */
+    fun cloudBaseM(tC: Double?, dewC: Double?): Double? = if (tC == null || dewC == null || dewC > tC) null else (tC - dewC) * 125.0
+
+    fun trendName(d3h: Double): String = when {
+        abs(d3h) < 1.0 -> "steady"
+        abs(d3h) < 3.5 -> if (d3h > 0) "rising" else "falling"
+        else -> if (d3h > 0) "rising fast" else "falling fast"
+    }
+
+    /** Pressure readings of one station; answers the change over 3 h (extrapolated when there is at least 1 h). */
+    class PressureTrend {
+        private val t = LongArray(N)
+        private val p = DoubleArray(N)
+        private var n = 0
+        private var head = 0
+
+        fun add(seconds: Long, hpa: Double) {
+            if (hpa <= 0) return
+            if (n > 0) {
+                val last = (head + n - 1) % N
+                if (seconds - t[last] < 300) { p[last] = hpa; return }      // one every 5 min at most: the last one is updated
+            }
+            if (n == N) { head = (head + 1) % N; n-- }
+            val i = (head + n) % N
+            t[i] = seconds; p[i] = hpa; n++
+        }
+
+        fun delta3h(nowSeconds: Long): Double? {
+            if (n < 2) return null
+            val last = (head + n - 1) % N
+            if (nowSeconds - t[last] > 1800) return null
+            var ref = -1
+            for (k in 0 until n - 1) {
+                val i = (head + k) % N
+                if (t[last] - t[i] > 12000) continue
+                ref = i
+                break
+            }
+            if (ref < 0) return null
+            val span = t[last] - t[ref]
+            if (span < 3600) return null
+            return (p[last] - p[ref]) * 10800.0 / span
+        }
+
+        private companion object { const val N = 40 }
+    }
+
+    /** Units of the interface: 0 metric (km, km/h, °C), 1 nautical (nm, kn, °C), 2 imperial (mi, mph, °F). */
+    fun distFactor(system: Int): Pair<Double, String> = when (system) { 1 -> 1 / 1.852 to "nm"; 2 -> 1 / 1.609344 to "mi"; else -> 1.0 to "km" }
+    fun speedFactor(system: Int): Pair<Double, String> = when (system) { 1 -> 1 / 1.852 to "kn"; 2 -> 1 / 1.609344 to "mph"; else -> 1.0 to "km/h" }
+    fun tempShown(c: Double, system: Int): Double = if (system == 2) c * 9.0 / 5.0 + 32.0 else c
+    fun tempLabel(system: Int): String = if (system == 2) "°F" else "°C"
 }

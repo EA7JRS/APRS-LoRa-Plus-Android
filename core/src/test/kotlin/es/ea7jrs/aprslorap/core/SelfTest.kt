@@ -2085,9 +2085,35 @@ private fun testBeacons() {
     eq(IqWav.plan(62500, null, 434_000_000L), 0.0 to 434_000_000L, "IqWav: unknown centre")
 }
 
+/** Lo que trae la rama wx-plotter y no estaba en main: base de nubes, tendencia de la presion, unidades. */
+private fun testWxExtras() {
+    near(WxCalc.cloudBaseM(20.0, 12.0)!!, 1000.0, 0.5, "cloud base")
+    eq(WxCalc.cloudBaseM(10.0, 12.0), null, "no cloud base when dew > temperature")
+    val tr = WxCalc.PressureTrend()
+    eq(tr.delta3h(0), null, "no readings")
+    for (i in 0..36) tr.add(i * 300L, 1015.0 - i * 0.05)
+    near(tr.delta3h(36 * 300L)!!, -1.8, 0.05, "3 h falling 1.8 hPa")
+    eq(WxCalc.trendName(-1.8), "falling", "trend name"); eq(WxCalc.trendName(0.4), "steady", "steady"); eq(WxCalc.trendName(4.0), "rising fast", "fast")
+    eq(tr.delta3h(36 * 300L + 4000), null, "the last reading is old")
+    val t2 = WxCalc.PressureTrend(); t2.add(0, 1010.0); t2.add(1800, 1011.0)
+    eq(t2.delta3h(1800), null, "less than an hour")
+    t2.add(3600, 1012.0); near(t2.delta3h(3600)!!, 6.0, 0.01, "2 hPa in 1 h = 6 in 3 h")
+    eq(WxCalc.speedFactor(2).second, "mph", "imperial speed"); near(WxCalc.tempShown(100.0, 2), 212.0, 1e-9, "Fahrenheit")
+    near(WxCalc.distFactor(1).first * 1.852, 1.0, 1e-12, "nautical mile")
+    val wxu = AprsWx(windDirDeg = 225, windKmh = 18.52, tempC = 20.0)
+    eq(wxu.wind(), "SW 19 km/h", "wind, metric"); eq(wxu.wind(1), "SW 10 kn", "wind, nautical"); eq(wxu.mapLabel(2), "68° 12 mph", "map label, imperial")
+    check(wxu.summary(2).startsWith("68.0 °F"), "summary, imperial: ${wxu.summary(2)}")
+    val tbl = StationTable()
+    fun wxFrame(hpa: Int) = Ax25Frame(Ax25Address("APRS", 0), Ax25Address("EA7WX", 13), emptyList(), "!3723.00N/00559.00W_090/005g010t068h50b%05d".format(hpa * 10).toByteArray())
+    var st: Station? = null
+    for (i in 0..12) st = tbl.onFrame(wxFrame(1015 - i / 6), i * 600_000L)
+    check(st?.wxPressD3h != null && st!!.wxPressD3h!! < -0.5, "pressure trend in the station: ${st?.wxPressD3h}")
+    eq(AlertKind.AIS_COLLISION.title, "COLLISION RISK", "collision title as in the plotter and the Display")
+}
+
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
