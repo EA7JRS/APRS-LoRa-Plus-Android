@@ -76,8 +76,13 @@ internal class RtlTcpLink(
     /** Frequency correction now, without reconnecting (rtl_tcp command 5). */
     fun setPpm(ppm: Int) { q.offer(Sdr.RtlTcp.cmd(Sdr.RtlTcp.SET_FREQ_CORRECTION, ppm)) }
 
-    /** The complex 48 kS/s channel for [Navaids.PpmMeter] (null stops it). */
-    fun baseband(tap: ((FloatArray, FloatArray, Int) -> Unit)?) { rx.basebandTap = tap }
+    private val taps = java.util.concurrent.ConcurrentHashMap<String, (FloatArray, FloatArray, Int) -> Unit>()
+
+    /** The complex 48 kS/s channel to [tap] under [key] ("vor" for [Navaids.PpmMeter], "406" for the beacon receiver); null removes it. */
+    fun baseband(key: String, tap: ((FloatArray, FloatArray, Int) -> Unit)?) {
+        if (tap == null) taps.remove(key) else taps[key] = tap
+        rx.basebandTap = if (taps.isEmpty()) null else { re, im, n -> for (t in taps.values) t(re, im, n) }
+    }
 
     override fun record(on: Boolean) {
         synchronized(this) {

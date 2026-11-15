@@ -20,6 +20,8 @@ enum class AlertKind(val title: String, val distress: Boolean) {
     NAVTEX("NAVTEX SAR / DISTRESS", true),
     /** A DSC distress alert, relay or acknowledgement (channel 70 or MF / HF): [EmergencyAlert.mmsi] is the ship in distress. */
     DSC("DSC DISTRESS", true),
+    /** A 406 MHz Cospas-Sarsat beacon heard by the app's RTL-SDR (not a self-test): [EmergencyAlert.key] is "406:" + its 15-hex id. */
+    BEACON406("406 MHz DISTRESS BEACON", true),
 }
 
 /**

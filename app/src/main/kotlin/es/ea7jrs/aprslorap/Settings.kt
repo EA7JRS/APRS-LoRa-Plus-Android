@@ -675,6 +675,10 @@ class Settings(ctx: Context) {
         get() = p.getFloat("navtex_khz", 518f).toDouble()
         set(v) { p.edit().putFloat("navtex_khz", v.toFloat()).apply() }
     /** NAVTEX subject D (search and rescue, distress) opens the alert window with the alarm. */
+    var beacon406Alarm: Boolean
+        get() = p.getBoolean("b406_alarm", true)
+        set(v) { p.edit().putBoolean("b406_alarm", v).apply() }
+
     var dscAlarm: Boolean
         get() = p.getBoolean("dsc_alarm", true)
         set(v) { p.edit().putBoolean("dsc_alarm", v).apply() }

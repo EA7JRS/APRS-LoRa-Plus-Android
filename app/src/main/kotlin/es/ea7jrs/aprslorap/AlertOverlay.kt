@@ -219,6 +219,7 @@ private fun kindLine(a: EmergencyAlert): String = when (a.kind) {
     AlertKind.OFFICIAL -> a.official?.let { it.src.title + " · " + it.levelName.lowercase().replaceFirstChar { c -> c.uppercase() } } ?: "Official alert"
     AlertKind.NAVTEX -> "NAVTEX · search and rescue"
     AlertKind.DSC -> "DSC · " + a.text.substringBefore(" · ")
+    AlertKind.BEACON406 -> "406 MHz · " + a.text.substringBefore(" · ")
 }
 
 /** Level colours of the official alerts (yellow, orange, red; information in grey), the same as the tracker and the Display. */
@@ -378,6 +379,32 @@ private fun alertView(nav: Navigator, a: EmergencyAlert, ctx: android.content.Co
                     c?.takeIf { it.format != es.ea7jrs.aprslorap.core.Dsc.FMT_DISTRESS }?.let { "Sent by" to it.selfId + " (" + es.ea7jrs.aprslorap.core.Dsc.mmsiKind(it.selfId) + ")" },
                     c?.subsequent?.let { "Then" to es.ea7jrs.aprslorap.core.Dsc.tc1Name(it) },
                     "MMSI" to a.who.removePrefix("MMSI "),
+                ),
+                actions = acts,
+            )
+        }
+        AlertKind.BEACON406 -> {
+            val m = AlertCenter.beacons406[a.key]
+            val lat = m?.lat; val lon = m?.lon
+            val d = Own.to(lat, lon)
+            val acts = ArrayList<Triple<String, String, () -> Unit>>()
+            acts.add(action("406", "beacons") { nav.tool(Tool.SDR) })
+            if (lat != null && lon != null) {
+                acts.add(action("GO TO", "Google Maps") { goToPos(ctx, lat, lon, a.who) })
+                acts.add(action("ROTOR", d?.let { "aim " + Fmt.deg(it.second) } ?: "aim") { aimRotorAt(lat, lon, a.who) })
+            }
+            AlertView(
+                a.who, m?.protocolName ?: "406 MHz beacon", "ais", null,
+                d?.let { Fmt.km(it.first) }, d?.second, d?.let { Fmt.deg(it.second) } ?: "",
+                lat = lat, lon = lon, line2 = a.text,
+                heard = java.text.SimpleDateFormat("HH:mm", Locale.US).format(java.util.Date(a.atMs)),
+                rows = listOfNotNull(
+                    m?.let { "Beacon" to it.beaconType.ifEmpty { "?" } + " · country " + it.country },
+                    m?.id?.takeIf { it.isNotBlank() }?.let { "Identity" to it },
+                    if (lat != null && lon != null) "Position" to Fmt.latLon(lat, true) + "  " + Fmt.latLon(lon, false) + (m?.positionSource?.let { " ($it GNSS)" } ?: "") else "Position" to "not in the message",
+                    d?.let { "Distance / bearing" to Fmt.km(it.first) + " · " + Fmt.deg(it.second) },
+                    m?.let { "Hex ID" to it.hexId },
+                    m?.let { "Carrier" to String.format(Locale.US, "%.3f MHz · %.0f dB", (es.ea7jrs.aprslorap.core.Beacon406.TUNE_HZ + it.offsetHz) / 1e6, it.snrDb) },
                 ),
                 actions = acts,
             )

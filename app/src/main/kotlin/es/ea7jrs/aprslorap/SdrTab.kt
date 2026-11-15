@@ -289,6 +289,7 @@ fun SdrTab() {
             OutlinedButton(onClick = { SdrControl.record(false) }, enabled = st.connected && kind != Sdr.Kind.SPYSERVER) { Text("Stop") }
         }
         VorSection(kind == Sdr.Kind.RTLTCP && st.connected)
+        Beacon406Section(kind == Sdr.Kind.RTLTCP && st.connected)
     }
 }
 

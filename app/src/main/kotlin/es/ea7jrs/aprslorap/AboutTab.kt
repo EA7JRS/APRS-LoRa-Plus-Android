@@ -43,6 +43,7 @@ private val CREDITS = listOf(
     Triple("rtlsdr-wsprd (WSPR)", "K1JT, K9AN, Guenael Jouchet VA2GKA; GPL-3.0", "https://github.com/Guenael/rtlsdr-wsprd"),
     Triple("WSJT-X (FST4W decoder ported to C, UDP and PSK Reporter formats)", "Joe Taylor K1JT, Steven Franke K9AN and the WSJT-X team, GPL-3.0", "https://wsjt.sourceforge.io/"),
     Triple("OurAirports (VOR list for the rotor and SDR calibration)", "David Megginson and contributors, public domain", "https://ourairports.com/data/"),
+    Triple("ITU-R M.633 and Cospas-Sarsat C/S T.001 (406 MHz beacon message, decoded in the app)", "ITU, Cospas-Sarsat", "https://www.cospas-sarsat.int/"),
     Triple("SDRangel DSC decoder (symbols, phasing and time-diversity selection, rewritten in Kotlin)", "Jon Beniston M7RCE, GPL-3.0", "https://github.com/f4exb/sdrangel"),
     Triple("fldigi (PSK, RTTY, CW and NAVTEX modems ported to Kotlin; NAVTEX station list)", "W1HKJ, F4ECW, AB1KW and contributors, GPL-3.0", "https://www.w1hkj.org/"),
     Triple("Artemis database (from sigidwiki.com)", "AresValley", "https://github.com/AresValley/Artemis"),

@@ -61,9 +61,9 @@ fun VorSection(rtl: Boolean) {
         val v = measuring ?: return@LaunchedEffect
         val link = SdrControl.rtl() ?: run { result = "The app's RTL-SDR receiver is not connected."; measuring = null; return@LaunchedEffect }
         synchronized(meter) { meter.reset() }
-        link.baseband { re, im, n -> synchronized(meter) { meter.feed(re, im, n) } }
+        link.baseband("vor") { re, im, n -> synchronized(meter) { meter.feed(re, im, n) } }
         delay(10_000)
-        link.baseband(null)
+        link.baseband("vor", null)
         val r = synchronized(meter) { meter.result() }
         if (r == null || r.snrDb < 10) {
             result = String.format(Locale.US, "%s: no clear carrier (%s). Check the antenna, the gain and that the VOR is in range.", v.ident, r?.let { "%.0f dB".format(Locale.US, it.snrDb) } ?: "no data")
@@ -78,7 +78,7 @@ fun VorSection(rtl: Boolean) {
         }
         measuring = null
     }
-    DisposableEffect(Unit) { onDispose { SdrControl.rtl()?.baseband(null) } }
+    DisposableEffect(Unit) { onDispose { SdrControl.rtl()?.baseband("vor", null) } }
 
     Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Section("VOR: aim the rotor, calibrate the SDR")

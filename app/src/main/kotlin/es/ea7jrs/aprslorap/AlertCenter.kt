@@ -97,6 +97,12 @@ object AlertCenter {
     /** A DSC distress alert, relay or acknowledgement. */
     fun onDsc(c: es.ea7jrs.aprslorap.core.Dsc.Call) { dscCalls[DscHub.alertOf(c).key] = c; offer(DscHub.alertOf(c)) }
 
+    /** A 406 MHz distress beacon (not a self-test or a test protocol). */
+    fun onBeacon406(m: es.ea7jrs.aprslorap.core.Beacon406.Message) { val a = Beacon406Hub.alertOf(m); beacons406[a.key] = m; offer(a) }
+
+    /** The beacon message behind each 406 MHz alert. */
+    val beacons406 = java.util.concurrent.ConcurrentHashMap<String, es.ea7jrs.aprslorap.core.Beacon406.Message>()
+
     /** The DSC call behind each DSC alert (position, nature, time). */
     val dscCalls = java.util.concurrent.ConcurrentHashMap<String, es.ea7jrs.aprslorap.core.Dsc.Call>()
 
@@ -146,6 +152,7 @@ object AlertCenter {
             AlertKind.OFFICIAL -> { lat = a.official?.lat; lon = a.official?.lon }
             AlertKind.NAVTEX -> es.ea7jrs.aprslorap.core.Navtex.positions(a.text).firstOrNull()?.let { lat = it.first; lon = it.second }
             AlertKind.DSC -> dscCalls[a.key]?.let { lat = it.lat; lon = it.lon }
+            AlertKind.BEACON406 -> beacons406[a.key]?.let { lat = it.lat; lon = it.lon }
             else -> {
                 val s = AppState.stations.value.firstOrNull { it.call.equals(a.who, true) }
                 val h = AppState.heard.value.firstOrNull { it.call.equals(a.who, true) }
@@ -161,12 +168,12 @@ object AlertCenter {
             AlertKind.OFFICIAL -> a.official?.let { o -> listOf(o.event, o.area, o.text, o.instruction).filter { it.isNotBlank() }.joinToString(". ") } ?: a.text
             else -> listOf(a.text, where ?: "").filter { it.isNotBlank() }.joinToString(". ")
         }
-        val replyTo = if (a.kind == AlertKind.NAVTEX || a.kind == AlertKind.DSC) null else if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
+        val replyTo = if (a.kind == AlertKind.NAVTEX || a.kind == AlertKind.DSC || a.kind == AlertKind.BEACON406) null else if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
         // avatar: the station's APRS symbol; AIS: the APRS yacht (distress) or ship symbol, as the tracker shows them
         val icon = when (a.kind) {
             AlertKind.AIS_DISTRESS -> n.symbolIcon(a.who, '/', 'Y')
             AlertKind.AIS_COLLISION -> n.symbolIcon(a.who, '/', 's')
-            AlertKind.EAI, AlertKind.MAN_DOWN, AlertKind.OFFICIAL, AlertKind.NAVTEX, AlertKind.DSC -> null
+            AlertKind.EAI, AlertKind.MAN_DOWN, AlertKind.OFFICIAL, AlertKind.NAVTEX, AlertKind.DSC, AlertKind.BEACON406 -> null
             else -> n.symbolIcon(a.who)
         }
         n.alert(CAR_PREFIX + a.key, a.official?.title ?: a.kind.title, a.who, text.ifBlank { a.kind.title }, replyTo, lat, lon, icon)

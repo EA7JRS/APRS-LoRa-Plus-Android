@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex(); testNavaids(); testDsc()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2782,4 +2782,44 @@ private fun testDsc() {
     check(v3.size == 1 && v3[0].symbols.contentEquals(alert) && v3[0].errors > 0, "dsc VHF time diversity: ${v3.map { it.summary() + " e" + it.errors }}")
     val h1 = air(alert, false, 0.5, 4)
     check(h1.size == 1 && h1[0].symbols.contentEquals(alert), "dsc HF noisy: ${h1.map { it.summary() }}")
+}
+
+private fun testBeacon406() {
+    // BCH-1 generator: the product of the three minimal polynomials of M.633 gives x^21+x^18+x^17+x^15+x^14+x^12+x^11+x^8+x^7+x^6+x^5+x+1
+    eq(Beacon406.BCH1, 0b1001101101100111100011L, "406 BCH-1 generator")
+    // long standard-location EPIRB (MMSI) of Spain off Tarifa
+    val b = Beacon406.standardMmsi(224, 123456, 36.1167, -5.35)
+    val m = Beacon406.parse(b)
+    check(m.valid && m.long && m.bch1Ok && m.bch2Ok == true && !m.userProtocol && m.country == 224 && m.beaconType == "EPIRB" && m.id.contains("123456") && m.distress,
+        "406 standard location: ${m.summary()}")
+    near(m.lat ?: 0.0, 36.1167, 0.0012, "406 lat"); near(m.lon ?: 0.0, -5.35, 0.0012, "406 lon")
+    check(m.hexId.length == 15 && m.hex.length == 30 && m.positionSource == "internal" && m.homing121 == true, "406 hex id ${m.hexId} / ${m.hex}")
+    // the 15-hex id does not depend on the position
+    check(Beacon406.parse(Beacon406.standardMmsi(224, 123456, -12.5, 140.25)).hexId == m.hexId, "406 hex id without position")
+    val bad = b.copyOf().also { it[60] = 1 - it[60] }
+    check(!Beacon406.parse(bad).valid, "406 BCH-1 catches an error")
+    val bad2 = b.copyOf().also { it[120] = 1 - it[120] }
+    check(Beacon406.parse(bad2).bch2Ok == false, "406 BCH-2 catches an error")
+    val st = Beacon406.parse(Beacon406.standardMmsi(224, 123456, null, null, selfTest = true))
+    check(st.valid && st.selfTest && !st.distress && st.lat == null, "406 self-test without position: ${st.summary()}")
+    // maritime user protocol, short (no position) and long (user-location)
+    val us = Beacon406.parse(Beacon406.userMaritime(224, "123456", null, null, long = false))
+    check(us.valid && !us.long && us.userProtocol && us.id == "123456" && us.hex.length == 22 && us.lat == null, "406 user short: ${us.summary()}")
+    val ul = Beacon406.parse(Beacon406.userMaritime(224, "123456", 28.1, -15.4, long = true))
+    check(ul.valid && ul.long && ul.lat != null && abs(ul.lat!! - 28.1) < 0.07 && abs(ul.lon!! + 15.4) < 0.07, "406 user location: ${ul.summary()}")
+    // through the receiver: 48 kS/s, the carrier 4 kHz off the tuned frequency, noise
+    fun air(bits: IntArray, offset: Double, sigma: Double, seed: Long): List<Beacon406.Message> {
+        val (re, im) = Beacon406.modulate(bits, 48_000, offset, 1.0, lead = 1.0)
+        val r = java.util.Random(seed)
+        for (i in re.indices) { re[i] = (re[i] + sigma * r.nextGaussian()).toFloat(); im[i] = (im[i] + sigma * r.nextGaussian()).toFloat() }
+        val got = ArrayList<Beacon406.Message>()
+        val rx = Beacon406.Receiver(); rx.onMessage = { got.add(it) }
+        var i = 0
+        while (i < re.size) { val n = minOf(2048, re.size - i); rx.feed(re.copyOfRange(i, i + n), im.copyOfRange(i, i + n), n); i += n }
+        return got
+    }
+    val r1 = air(b, 4_000.0, 0.3, 1)
+    check(r1.size == 1 && r1[0].valid && r1[0].bits.contentEquals(b) && abs(r1[0].offsetHz - 4000) < 30, "406 receiver: ${r1.map { it.summary() + " " + it.offsetHz }}")
+    val r2 = air(Beacon406.userMaritime(224, "123456", null, null, long = false), -9_000.0, 1.0, 2)
+    check(r2.size == 1 && r2[0].valid && !r2[0].long, "406 receiver short, noisy: ${r2.map { it.summary() }}")
 }
