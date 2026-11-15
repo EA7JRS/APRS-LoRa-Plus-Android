@@ -2543,4 +2543,12 @@ private fun testCelnav() {
     check(fix != null, "celnav fix")
     near(fix!!.first, tLat, 0.3 / 60, "celnav fix lat"); near(fix.second, tLon, 0.4 / 60, "celnav fix lon")
     check(Celnav.fixFromSights(eLat, eLon, listOf(sights[0], sights[0])) == null, "celnav parallel lines")
+    // running fix: a Vega line taken 6 nm to the west is advanced to the present position and crossed with Spica
+    val pLon = tLon - 6 / (60.0 * Math.cos(Math.toRadians(tLat)))
+    val vega = Celnav.starShaDec(Celnav.findStar("Vega")!!, t); val vGha = (Celnav.ariesGha(t) + vega.sha) % 360.0
+    val old = Celnav.reduceSight(tLat, pLon, vGha, vega.dec, Celnav.bodyAltAz(vGha, vega.dec, tLat, pLon).alt)
+    val adv = Celnav.referTo(Celnav.advanceSight(old, tLat, pLon, tLat, tLon), eLat, eLon)
+    val run = Celnav.fixFromSights(eLat, eLon, listOf(adv, sights[2]))
+    check(run != null, "celnav running fix")
+    near(run!!.first, tLat, 0.4 / 60, "celnav running fix lat"); near(run.second, tLon, 0.5 / 60, "celnav running fix lon")
 }

@@ -199,6 +199,19 @@ object Celnav {
     }
     private fun AltAz.zn() = az
 
+    /** Advances a line of position by the run between two positions (where it was taken and now): same azimuth. */
+    fun advanceSight(s: Sight, fromLat: Double, fromLon: Double, toLat: Double, toLon: Double): Sight {
+        val mid = rad((fromLat + toLat) / 2.0)
+        val lat = s.lat + (toLat - fromLat)
+        return s.copy(lat = lat, lon = s.lon + (toLon - fromLon) * cos(mid) / cos(rad((s.lat + lat) / 2.0)))
+    }
+
+    /** The sight referred to another assumed position: its intercept is the projection of its point on its azimuth. */
+    fun referTo(s: Sight, estLat: Double, estLon: Double): Sight {
+        val dn = (s.lat - estLat) * 60.0; val de = (s.lon - estLon) * 60.0 * cos(rad(estLat))
+        return s.copy(interceptNm = dn * cos(rad(s.zn)) + de * sin(rad(s.zn)))
+    }
+
     /** Least-squares fix from two or more sights around the assumed position; null when they are nearly parallel. */
     fun fixFromSights(estLat: Double, estLon: Double, sights: List<Sight>): Pair<Double, Double>? {
         if (sights.size < 2) return null
