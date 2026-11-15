@@ -130,6 +130,11 @@ that cross best. Corrections (index error, dip, refraction, semi-diameter, paral
 advanced for the run and the fix. Latitude by meridian altitude and by Polaris with the time of meridian passage. Compass
 check: total correction from a body, deviation and a deviation card.
 
+*Current and course to steer*: from the course you want to make good, the speed through the water, the leeway (+ to
+starboard) and the current it gives the true course to steer, the correction, the speed made good and the compass course
+(WMM variation and deviation card). *Mark departure* and, after steering a steady course and speed for a while, *From DR*:
+the current from the difference between the DR and the tracker's GNSS position.
+
 ## 11. Alerts
 
 - **Emergency window** over any screen: APRS emergency beacons and messages, Mic-E "Emergency", AIS distress and collision

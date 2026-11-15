@@ -37,12 +37,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import es.ea7jrs.aprslorap.core.Celnav
+import es.ea7jrs.aprslorap.core.Current
 import es.ea7jrs.aprslorap.core.Deviation
 import es.ea7jrs.aprslorap.core.Wmm
 import java.util.Locale
 import kotlin.math.abs
 
 /** Sights kept while the app runs (they survive leaving the screen). */
+/** Departure marked for the current from dead reckoning (kept while the app lives). */
+object CurrentMark {
+    var lat = 0.0; var lon = 0.0; var timeMs = 0L
+}
+
 object AstroSights {
     data class Lop(val sight: Celnav.Sight, val body: String, val timeMs: Long, val atLat: Double, val atLon: Double)
     val list = mutableStateOf(listOf<Lop>())
@@ -173,6 +179,55 @@ fun AstroTab() {
             else sb.append("\nThat body does not rise above the horizon at meridian passage.")
         }
         out = sb.toString()
+    }
+
+    var curCog by rememberSaveable { mutableStateOf("") }
+    var curStw by rememberSaveable { mutableStateOf("") }
+    var curLw by rememberSaveable { mutableStateOf("0") }
+    var curSet by rememberSaveable { mutableStateOf("") }
+    var curDrift by rememberSaveable { mutableStateOf("") }
+    var curRv by rememberSaveable { mutableStateOf("") }
+    var curOut by rememberSaveable { mutableStateOf("Course to steer: the course you want to make good, the speed through the water, the leeway (+ to starboard) and the current.") }
+
+    /** True course to steer with current and leeway, the compass course (variation and deviation card) and the speed made good. */
+    fun steer() {
+        val cog = curCog.replace(',', '.').toDoubleOrNull()
+        val stw = curStw.replace(',', '.').toDoubleOrNull()
+        if (cog == null || cog < 0 || cog >= 360) { curOut = "Type the course you want to make good (0 to 359°)."; return }
+        if (stw == null || stw <= 0) { curOut = "Type the speed through the water (knots)."; return }
+        val c = Current.Vec(curSet.replace(',', '.').toDoubleOrNull() ?: 0.0, curDrift.replace(',', '.').toDoubleOrNull() ?: 0.0)
+        val r = Current.courseToSteer(cog, stw, curLw.replace(',', '.').toDoubleOrNull() ?: 0.0, c)
+        if (r == null) { curOut = "With that current the course cannot be made: it crosses faster than the boat or stops it altogether."; return }
+        val sb = StringBuilder(String.format(Locale.US, "True course to steer: %05.1f° (corrects %+.0f°) · speed made good %.1f kn",
+            r.first, Math.IEEEremainder(r.first - cog, 360.0), r.second))
+        Own.position()?.let { me ->
+            val dm = Wmm.declination(me.first, me.second, System.currentTimeMillis())
+            var ra = ((r.first - dm) % 360 + 360) % 360
+            var dev = 0.0
+            if (card.terms > 0) repeat(4) { dev = card.at(ra); ra = ((r.first - dm - dev) % 360 + 360) % 360 }
+            sb.append(String.format(Locale.US, "\nCompass course: %05.1f° (variation %.1f° %s%s)", ra, abs(dm), sign(dm),
+                if (card.terms > 0) String.format(Locale.US, ", deviation %+.1f°", dev) else ", no deviation card"))
+        }
+        curOut = sb.toString()
+    }
+
+    /** Current from the departure marked and the position now (the tracker's GNSS). */
+    fun fromDr() {
+        val me = Own.position()
+        if (CurrentMark.timeMs == 0L) { curOut = "Press Mark departure at a known point first, then steer a steady course and speed."; return }
+        if (me == null) { curOut = "A position is needed now: the tracker's GNSS."; return }
+        val rv = curRv.replace(',', '.').toDoubleOrNull()
+        val stw = curStw.replace(',', '.').toDoubleOrNull()
+        if (rv == null || rv < 0 || rv >= 360) { curOut = "Type the true course steered since the departure."; return }
+        if (stw == null || stw < 0) { curOut = "Type the speed through the water (knots)."; return }
+        val h = (System.currentTimeMillis() - CurrentMark.timeMs) / 3_600_000.0
+        if (h < 0.1) { curOut = "Less than 6 minutes since the departure: wait longer for the current to show."; return }
+        val r = Current.fromDr(CurrentMark.lat, CurrentMark.lon, rv, stw, curLw.replace(',', '.').toDoubleOrNull() ?: 0.0, h, me.first, me.second)!!
+        curSet = String.format(Locale.US, "%.0f", r.current.setDeg)
+        curDrift = String.format(Locale.US, "%.1f", r.current.driftKn)
+        val mins = Math.round(h * 60)
+        curOut = String.format(Locale.US, "DR after %d h %02d min: %s.\nThe fix is %.1f nm %03.0f° from the DR: current setting %03.0f°, %.1f kn (copied above for the course to steer).",
+            mins / 60, mins % 60, pos(r.drLat, r.drLon), r.current.driftKn * h, r.current.setDeg, r.current.setDeg, r.current.driftKn)
     }
 
     fun sign(v: Double) = if (v >= 0) "E" else "W"
@@ -330,6 +385,39 @@ fun AstroTab() {
                     OutlinedButton(onClick = { card.remove(i); settings.devCard = card.encode(); cardRev++ }) { Text("Remove") }
                 }
             }
+            HorizontalDivider(Modifier.padding(top = 8.dp))
+        }
+        item {
+            Text("Current and course to steer", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+            val dec = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            fun digits(v: String, n: Int, neg: Boolean = false) = v.filter { c -> c.isDigit() || c == '.' || c == ',' || (neg && c == '-') }.take(n)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(curCog, { curCog = digits(it, 5) }, label = { Text("Course made good, °") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = dec)
+                OutlinedTextField(curStw, { curStw = digits(it, 4) }, label = { Text("Speed in water, kn") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = dec)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(curLw, { curLw = digits(it, 5, true) }, label = { Text("Leeway, ° (+ stbd)") }, singleLine = true, modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text))
+                OutlinedTextField(curSet, { curSet = digits(it, 5) }, label = { Text("Current set, °") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = dec)
+                OutlinedTextField(curDrift, { curDrift = digits(it, 4) }, label = { Text("Drift, kn") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = dec)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState())) {
+                Button(onClick = { steer() }) { Text("Course to steer") }
+                OutlinedButton(onClick = {
+                    val me = Own.position()
+                    if (me == null) curOut = "A position is needed to mark the departure: the tracker's GNSS."
+                    else {
+                        CurrentMark.lat = me.first; CurrentMark.lon = me.second; CurrentMark.timeMs = System.currentTimeMillis()
+                        curOut = "Departure marked at " + pos(me.first, me.second) + " (" + utc(CurrentMark.timeMs) + " UTC). Steer a steady course and speed and press From DR after a while (an hour or more is best)."
+                    }
+                }) { Text("Mark departure") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(curRv, { curRv = digits(it, 5) }, label = { Text("True course steered, °") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = dec)
+                OutlinedButton(onClick = { fromDr() }) { Text("From DR") }
+            }
+            Text(curOut, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
             HorizontalDivider(Modifier.padding(top = 8.dp))
         }
         item {

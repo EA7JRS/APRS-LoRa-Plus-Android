@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2577,6 +2577,40 @@ private fun testLatitude() {
     val tv = Celnav.meridianPassageJd(jdNoon, -6.28, vegaGha)
     near(Math.IEEEremainder(vegaGha(tv) - 6.28, 360.0), 0.0, 1e-4, "lat: Vega meridian passage")
     check(abs(tv - jdNoon) <= 0.51, "lat: nearest passage")
+}
+
+private fun testCurrent() {
+    // same cases as testCurrent of the plotter
+    var d = Current.rhumbDestination(36.0, -6.0, 45.0, 100.0)
+    near(Current.rhumbBearing(36.0, -6.0, d.first, d.second), 45.0, 1e-6, "current: rhumb bearing back")
+    near(Current.rhumbDistanceNm(36.0, -6.0, d.first, d.second), 100.0, 1e-6, "current: rhumb distance back")
+    d = Current.rhumbDestination(36.0, -6.0, 90.0, 60.0)
+    near(d.first, 36.0, 1e-9, "current: due east keeps the latitude")
+    near(Current.rhumbDistanceNm(36.0, -6.0, d.first, d.second), 60.0, 1e-6, "current: due east distance")
+    var c = Current.Vec(180.0, 2.0)
+    val a = Math.toDegrees(kotlin.math.asin(1.0 / 3))
+    var r = Current.courseToSteer(90.0, 6.0, 0.0, c)!!
+    near(r.first, 90 - a, 1e-9, "current: course to steer"); near(r.second, kotlin.math.sqrt(32.0), 1e-9, "current: SOG")
+    var g = Current.groundTrack(r.first, 6.0, 0.0, c)
+    near(g.first, 90.0, 1e-9, "current: ground track"); near(g.second, kotlin.math.sqrt(32.0), 1e-9, "current: ground speed")
+    r = Current.courseToSteer(90.0, 6.0, 5.0, c)!!
+    near(r.first, 90 - a - 5, 1e-9, "current: with leeway")
+    near(Current.groundTrack(r.first, 6.0, 5.0, c).first, 90.0, 1e-9, "current: ground track with leeway")
+    check(Current.courseToSteer(90.0, 6.0, 0.0, Current.Vec(180.0, 7.0)) == null, "current: crosses faster")
+    check(Current.courseToSteer(90.0, 6.0, 0.0, Current.Vec(270.0, 8.0)) == null, "current: stops the boat")
+    r = Current.courseToSteer(90.0, 6.0, 0.0, Current.Vec(270.0, 2.0))!!
+    near(r.first, 90.0, 1e-9, "current: head current"); near(r.second, 4.0, 1e-9, "current: head current SOG")
+    c = Current.Vec(135.0, 1.5)
+    g = Current.groundTrack(10.0, 5.0, 0.0, c)
+    val m = Current.fromVectors(10.0, 5.0, 0.0, g.first, g.second)
+    near(m.setDeg, 135.0, 1e-9, "current: measured set"); near(m.driftKn, 1.5, 1e-9, "current: measured drift")
+    near(Current.fromVectors(10.0, 5.0, 0.0, 10.0, 5.0).driftKn, 0.0, 1e-9, "current: none")
+    val e = Current.rhumbDestination(36.0, -6.0, 90.0, 12.0)
+    val fix = Current.rhumbDestination(e.first, e.second, 200.0, 2.0)
+    val dr = Current.fromDr(36.0, -6.0, 90.0, 6.0, 0.0, 2.0, fix.first, fix.second)!!
+    near(Current.rhumbDistanceNm(dr.drLat, dr.drLon, e.first, e.second), 0.0, 1e-9, "current: DR position")
+    near(dr.current.setDeg, 200.0, 1e-6, "current: DR set"); near(dr.current.driftKn, 1.0, 1e-6, "current: DR drift")
+    check(Current.fromDr(36.0, -6.0, 90.0, 6.0, 0.0, 0.0, fix.first, fix.second) == null, "current: no time")
 }
 
 private fun testCelnav() {

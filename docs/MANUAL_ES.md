@@ -132,6 +132,11 @@ y las tres estrellas que mejor se cruzan. Correcciones (error de índice, depres
 diferencia de alturas y azimut, hasta cuatro rectas trasladadas por lo navegado y la situación. Latitud por la meridiana y
 por la Polar con la hora del paso por el meridiano. Corrección total de la aguja con un astro, desvío y tablilla de desvíos.
 
+*Current and course to steer*: con el rumbo efectivo deseado, la velocidad en el agua, el abatimiento (+ a estribor) y la
+corriente da el rumbo verdadero a gobernar, la corrección, la velocidad efectiva y el rumbo de aguja (declinación del WMM y
+tablilla). *Mark departure* y, pasado un rato gobernando a rumbo y velocidad constantes, *From DR*: la corriente por la
+diferencia entre la estima y la situación del GNSS del tracker.
+
 ## 11. Alertas
 
 - **Ventana de emergencia** sobre cualquier pantalla: balizas y mensajes APRS de emergencia, Mic-E «Emergency», peligro AIS y

@@ -44,7 +44,7 @@ The interface works like a radio: a main screen with band A (the tracker) and ba
 - **SigID** (optional Artemis database), **RepeaterBook Connect**, internet weather (OpenWeatherMap, IQAir) to the tracker.
 
 ## Navigation
-- **Celestial navigation** (Sextant): Sun, Moon, Venus, Mars, Jupiter, Saturn and 157 stars to almanac precision; bodies visible now and the best star triple; altitude corrections, intercept and azimuth, up to four lines advanced for the run and the fix; latitude by meridian altitude and by Polaris; compass check and a deviation card.
+- **Celestial navigation** (Sextant): Sun, Moon, Venus, Mars, Jupiter, Saturn and 157 stars to almanac precision; bodies visible now and the best star triple; altitude corrections, intercept and azimuth, up to four lines advanced for the run and the fix; latitude by meridian altitude and by Polaris; current from dead reckoning and the course to steer with current and leeway; compass check and a deviation card.
 - **My vessel** (AIS nautical profile of the tracker or the MAPRS transponder): name, MMSI, maritime call sign, type and size; the call sign is checked with MarineTraffic (your API key, or by hand on its public page opened inside the app: you sign in yourself, the app never reads the page) or the ITU MARS.
 
 ## Callsign
