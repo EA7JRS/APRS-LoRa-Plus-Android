@@ -48,17 +48,9 @@ object Astro {
     }
 
     fun sunPosition(timeMs: Long, lat: Double, lon: Double): AltAz {
-        val jd = julianDay(timeMs)
-        val t = (jd + 69.0 / 86400.0 - 2451545.0) / 36525.0
-        val l0 = 280.46646 + 36000.76983 * t + 0.0003032 * t * t
-        val m = rad(357.52911 + 35999.05029 * t - 0.0001537 * t * t)
-        val c = (1.914602 - 0.004817 * t - 0.000014 * t * t) * sin(m) + (0.019993 - 0.000101 * t) * sin(2 * m) + 0.000289 * sin(3 * m)
-        val om = rad(125.04 - 1934.136 * t)
-        val lam = rad(l0 + c - 0.00569 - 0.00478 * sin(om))
-        val eps = rad(23.439291 - 0.0130042 * t + 0.00256 * cos(om))
-        val ra = atan2(cos(eps) * sin(lam), cos(lam))
-        val dec = asin(sin(eps) * sin(lam))
-        return altAz(lat, rad(gmst(jd) + lon) - ra, dec)
+        // apparent place to almanac precision (Celnav: truncated VSOP87, nutation, aberration), as in the plotter core
+        val g = Celnav.sunGhaDec(julianDay(timeMs))
+        return altAz(lat, rad(g.gha + lon), rad(g.dec))
     }
 
     private fun dayOfYear(y: Int, m: Int, d: Int): Int {

@@ -2085,7 +2085,7 @@ private fun testBeacons() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2503,4 +2503,44 @@ private fun testFormulas() {
         p.pos.declinationDeg == 0.9, "rotor pos with trk / bf / dec")
     val i = RotorProto.parse("{\"e\":\"info\",\"api\":1,\"sky\":true,\"caps\":{\"sky\":true}}")
     check(i is RotorProto.Event.InfoEv && i.info.sky, "rotor info sky")
+}
+
+// Celestial navigation: same reference values as the plotter core (a 2026 nautical almanac, 0.1', and PyEphem)
+private fun testCelnav() {
+    fun dm(d: Int, m: Double) = d + m / 60.0
+    fun jd(y: Int, mo: Int, d: Int, h: Int): Double {
+        val c = java.util.GregorianCalendar(java.util.TimeZone.getTimeZone("UTC")); c.clear(); c.set(y, mo - 1, d, h, 0, 0)
+        return Celnav.julianDay(c.timeInMillis)
+    }
+    val tol = 0.1 / 60
+    var s = Celnav.sunGhaDec(jd(2026, 1, 1, 0))
+    near(s.gha, dm(179, 10.0), tol, "celnav sun GHA 1 Jan 0h"); near(s.dec, -dm(23, 1.0), tol, "celnav sun dec 1 Jan 0h")
+    s = Celnav.sunGhaDec(jd(2026, 6, 16, 9))
+    near(s.gha, dm(314, 49.6), tol, "celnav sun GHA 16 Jun 9h"); near(s.dec, dm(23, 21.2), tol, "celnav sun dec 16 Jun 9h")
+    near(Celnav.ariesGha(jd(2026, 6, 16, 0)), dm(264, 16.8), tol, "celnav Aries 0h")
+    near(Celnav.ariesGha(jd(2026, 6, 16, 23)), dm(250, 13.5), tol, "celnav Aries 23h")
+    near(Celnav.sunSemiDiameterArcmin(jd(2026, 6, 16, 12)), 15.75, 0.02, "celnav semidiameter")
+    val alm = listOf(Triple("Acamar", dm(315, 11.2), -dm(40, 11.7)), Triple("Acrux", dm(172, 58.6), -dm(63, 15.1)),
+        Triple("Capella", dm(280, 20.6), dm(46, 1.4)), Triple("Deneb", dm(49, 24.6), dm(45, 22.3)),
+        Triple("Regulus", dm(207, 33.3), dm(11, 50.3)), Triple("Rigel", dm(281, 3.1), -dm(8, 10.3)))
+    for ((n, sha, dec) in alm) {
+        val p = Celnav.starShaDec(Celnav.findStar(n)!!, jd(2026, 6, 16, 12))
+        near(p.sha, sha, 0.11 / 60, "celnav $n SHA"); near(p.dec, dec, 0.11 / 60, "celnav $n dec")
+    }
+    val si = Celnav.starShaDec(Celnav.findStar("sirius")!!, jd(2030, 7, 4, 12))
+    near(si.sha, 258.3789, 0.0005, "celnav Sirius 2030 SHA"); near(si.dec, -16.7609, 0.0005, "celnav Sirius 2030 dec")
+    check(Celnav.STARS.size == 58 && Celnav.findStar("nada") == null, "celnav catalogue")
+    near(Celnav.dipArcmin(11.08), 5.9, 0.05, "celnav dip"); near(Celnav.refractionArcmin(15.0 + 1 / 60.0), 3.6, 0.06, "celnav refraction")
+    near(Celnav.observedAltitude(35 + 20.0 / 60, 1.5, 3.0, Celnav.Limb.LOWER, 15.9, 0.15), 35 + 30.1 / 60, 0.1 / 60, "celnav Ho lower limb")
+    // three stars from 36 30 N 006 20 W with the assumed position 8' south and 6' west: the fix comes back
+    val t = jd(2026, 6, 16, 21); val tLat = 36.5; val tLon = -6.3333; val eLat = tLat - 8 / 60.0; val eLon = tLon - 6 / 60.0
+    val sights = listOf("Arcturus", "Vega", "Spica").map { n ->
+        val p = Celnav.starShaDec(Celnav.findStar(n)!!, t)
+        val gha = (Celnav.ariesGha(t) + p.sha) % 360.0
+        Celnav.reduceSight(eLat, eLon, gha, p.dec, Celnav.bodyAltAz(gha, p.dec, tLat, tLon).alt)
+    }
+    val fix = Celnav.fixFromSights(eLat, eLon, sights)
+    check(fix != null, "celnav fix")
+    near(fix!!.first, tLat, 0.3 / 60, "celnav fix lat"); near(fix.second, tLon, 0.4 / 60, "celnav fix lon")
+    check(Celnav.fixFromSights(eLat, eLon, listOf(sights[0], sights[0])) == null, "celnav parallel lines")
 }
