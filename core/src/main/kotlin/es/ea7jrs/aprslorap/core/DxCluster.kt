@@ -176,12 +176,8 @@ object DxCluster {
     fun spotCommand(khz: Double, call: String, comment: String): String =
         String.format(Locale.US, "DX %.1f %s %s", khz, call.uppercase(Locale.US), comment.take(30)).trimEnd()
 
-    fun formatKhz(khz: Double): String {
-        val t = String.format(Locale.US, "%.1f", khz)
-        val i = t.substringBefore('.')
-        val d = t.substringAfter('.')
-        return (if (i.length > 3) i.dropLast(3) + " " + i.takeLast(3) else i) + "." + d
-    }
+    /** "14074.0", as the clusters write it: no thousands separator (a space is a whole cell wide in the monospaced font). */
+    fun formatKhz(khz: Double): String = String.format(Locale.US, "%.1f", khz)
 }
 
 /**

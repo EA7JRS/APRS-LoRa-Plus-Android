@@ -2344,7 +2344,7 @@ private fun testDxCluster() {
     check(DxCluster.isLoginPrompt("Please enter your call: "), "login prompt")
     check(DxCluster.isLoginPrompt("login: "), "login prompt 2")
     eq(DxCluster.spotCommand(14025.0, "ja1abc", "CQ 599"), "DX 14025.0 JA1ABC CQ 599", "spot command")
-    eq(DxCluster.formatKhz(144300.0), "144 300.0", "freq text")
+    eq(DxCluster.formatKhz(144300.0), "144300.0", "freq text")
 
     val cty = Cty.parse("""Spain:                    14:  37:  EU:   40.32:     3.43:    -1.0:  EA:
     AM,AN,AO,EA,EB,EC,ED,EE,EF,EG,EH;
