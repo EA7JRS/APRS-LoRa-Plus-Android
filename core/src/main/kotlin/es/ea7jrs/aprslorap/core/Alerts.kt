@@ -11,7 +11,7 @@ enum class AlertKind(val title: String, val distress: Boolean) {
     APRS_MESSAGE("EMERGENCY MESSAGE", true),
     MOB("MAN OVERBOARD", true),
     AIS_DISTRESS("AIS DISTRESS", true),
-    AIS_COLLISION("COLLISION WARNING", false),
+    AIS_COLLISION("COLLISION RISK", false),
     EAI("EAI ACTIVE", true),
     MAN_DOWN("MAN DOWN", false),
     /** Weather, tsunami, earthquake, space weather or NOAA Weather Radio: the [EmergencyAlert.official] alert. */

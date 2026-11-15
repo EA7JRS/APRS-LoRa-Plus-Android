@@ -71,6 +71,7 @@ import es.ea7jrs.aprslorap.core.Station
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Fmt.units = Settings(this).units
         Spotter.init(this)
         AlertCenter.init(this)
         LogStore.init(this)

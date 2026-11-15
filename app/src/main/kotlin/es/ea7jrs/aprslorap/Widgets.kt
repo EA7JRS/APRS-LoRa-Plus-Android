@@ -338,10 +338,28 @@ object Own {
 }
 
 object Fmt {
-    fun km(km: Double?): String = when {
-        km == null -> "—"
-        km < 100 -> String.format(Locale.US, "%.1f km", km)
-        else -> String.format(Locale.US, "%,d km", Math.round(km))
+    /** Unit system chosen in the side menu (Settings.units): 0 metric, 1 nautical, 2 imperial. */
+    @Volatile var units: Int = 0
+
+    /** A distance given in km, in the chosen units. */
+    fun km(km: Double?): String {
+        if (km == null) return "—"
+        val (k, label) = es.ea7jrs.aprslorap.core.WxCalc.distFactor(units)
+        val v = km * k
+        return if (v < 100) String.format(Locale.US, "%.1f %s", v, label) else String.format(Locale.US, "%,d %s", Math.round(v), label)
+    }
+
+    /** A speed given in km/h, in the chosen units. */
+    fun speed(kmh: Double?): String {
+        if (kmh == null) return "—"
+        val (k, label) = es.ea7jrs.aprslorap.core.WxCalc.speedFactor(units)
+        return String.format(Locale.US, "%.0f %s", kmh * k, label)
+    }
+
+    /** A temperature given in °C, in the chosen units. */
+    fun temp(c: Double?, decimals: Int = 1, unit: Boolean = true): String {
+        if (c == null) return "—"
+        return String.format(Locale.US, "%.${decimals}f", es.ea7jrs.aprslorap.core.WxCalc.tempShown(c, units)) + if (unit) " " + es.ea7jrs.aprslorap.core.WxCalc.tempLabel(units) else "°"
     }
 
     fun deg(d: Double?): String = if (d == null) "—" else String.format(Locale.US, "%03d°", Math.round(d) % 360)

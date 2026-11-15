@@ -93,16 +93,19 @@ private fun WxRow(s: StationView, d: Pair<Double, Double>?, onClick: () -> Unit)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val dir = w.windDirDeg
                 if (dir != null && (w.windKmh ?: 1.0) >= 1.0) BearingArrow((dir + 180) % 360.0, Alp.Cyan, 15.dp)
-                Text(listOfNotNull(w.wind(), w.gustKmh?.let { String.format(Locale.US, "gust %.0f", it) }).joinToString(" · ").ifEmpty { "—" },
+                Text(listOfNotNull(w.wind(Fmt.units), w.gustKmh?.let { "gust " + Fmt.speed(it) }).joinToString(" · ").ifEmpty { "—" },
                     fontFamily = BarlowCondensed, fontSize = 15.sp, color = Alp.Cyan, maxLines = 1)
             }
             Text(listOfNotNull(
-                w.humidityPct?.let { "$it %" }, w.pressureHpa?.let { String.format(Locale.US, "%.0f hPa", it) },
+                w.windKmh?.takeIf { it >= 1.0 }?.let { "F" + es.ea7jrs.aprslorap.core.WxCalc.beaufort(es.ea7jrs.aprslorap.core.WxCalc.kmhToKn(it)) },
+                w.humidityPct?.let { "$it %" },
+                w.pressureHpa?.let { String.format(Locale.US, "%.0f hPa", it) + (s.wxPressD3h?.let { d -> " " + es.ea7jrs.aprslorap.core.WxCalc.trendName(d) } ?: "") },
+                w.tempC?.let { t -> w.humidityPct?.let { h -> es.ea7jrs.aprslorap.core.WxCalc.dewPointC(t, h.toDouble()) } }?.let { "dew " + Fmt.temp(it, 0, unit = false) },
                 (w.rain1hMm ?: w.rainMidnightMm)?.takeIf { it > 0 }?.let { String.format(Locale.US, "rain %.1f mm", it) + if ((w.rain1hMm ?: 0.0) > 0) "/h" else " today" },
             ).joinToString(" · "), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(w.tempC?.let { String.format(Locale.US, "%.1f°", it) } ?: "—", fontFamily = TechMono, fontSize = 24.sp, color = tempColor(w.tempC))
+            Text(Fmt.temp(w.tempC, unit = false), fontFamily = TechMono, fontSize = 24.sp, color = tempColor(w.tempC))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (d == null) "—" else Fmt.km(d.first) + " " + Geo.cardinal16(d.second), fontFamily = BarlowCondensed, fontSize = 13.sp, color = Alp.Muted,
                     textAlign = TextAlign.End)

@@ -559,6 +559,11 @@ class Settings(ctx: Context) {
         get() = p.getInt("oa_min", 15)
         set(v) { p.edit().putInt("oa_min", v.coerceIn(10, 120)).apply() }
 
+    /** Units of distances, speeds and temperatures: 0 metric, 1 nautical (nm, kn), 2 imperial (mi, mph, °F). */
+    var units: Int
+        get() = p.getInt("units", 0).coerceIn(0, 2)
+        set(v) { p.edit().putInt("units", v.coerceIn(0, 2)).apply(); Fmt.units = v.coerceIn(0, 2) }
+
     /** Emergency alerts: the phone's "buzzer" (alarm tone on the alarm stream, vibration, torch strobe). */
     var alertSound: Boolean
         get() = p.getBoolean("alert_sound", true)
