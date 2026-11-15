@@ -2,38 +2,65 @@
 
 # APRS LoRa+ for Android
 
-Android companion for the [APRS LoRa+](https://github.com/EA7JRS/APRS-LoRa-Plus) tracker (ESP32 firmware). It talks to the tracker over **Bluetooth LE (KISS)**.
+Android companion for the [APRS LoRa+](https://github.com/EA7JRS/APRS-LoRa-Plus) tracker (ESP32 firmware), and the place where the whole APRS LoRa+ ecosystem is controlled: tracker, [rotor box](https://github.com/EA7JRS/APRS-LoRa-Plus-Rotor), [plotter](https://github.com/EA7JRS/APRS-LoRa-Plus-Plotter) and the radio tools of the phone itself.
 
-Status: **5.4.6**, same version number as the tracker. The pure Kotlin core is tested (about 1500 checks); the Android app builds in the CI but has not been tried on a phone yet.
+Status: **5.4.6**, the same version number as the tracker. The pure Kotlin core is tested on the PC (about 1600 checks); the Android app builds in the CI (debug APK and Google Play bundle) and is in Google Play internal testing. Most features have not been tried yet on a phone with real hardware.
 
-## What it does (version 1 plan)
-- Connects to the tracker over BLE (KISS service `00000001-ba2a-46c9-ae49-01b0961f68bb`) and keeps the link in a foreground service.
-- Station list with **Go to**: opens the route to the station's last position in Google Maps.
-- APRS messaging: write, answer, acknowledgements with retries, duplicate removal.
-- Messages arrive as notifications with reply / mark-as-read actions, so Android Auto reads them aloud and lets you answer by voice.
-- Mobile iGate (radio -> APRS-IS only).
-- **Tracker control** (firmware with the BLE control service, `docs/BLE_CONTROL.md`): radio mode (APRS LoRa / FSK, Morse, WSPR, FT8, FT4, FST4W, LR-FHSS, DAPNET; the tracker restarts), beacon profile, LoRa profile, beacon now, digipeater, CW messages.
-- **Sensors and GNSS** of the tracker: battery, temperature, humidity, pressure, QNH, barometric altitude, magnetic heading, IMU; position, speed, satellites, HDOP.
-- **DAPNET**: pages received by the tracker (DAPNET mode) as notifications; pages sent from the phone through the DAPNET API (account needed).
-- **NMEA**: TCP server for other apps (OpenCPN, Navionics...) with the tracker's sentences, including APRS stations as AIS targets (boards with NMEA output; otherwise RMC/GGA built by the phone), and the tracker's GNSS as the phone location (mock location).
-- **Telegraph key on the phone** (tracker in MORSE mode): keyboard-type USB/Bluetooth adapters (VBand, Vail: Left Ctrl / `[` = dit, Right Ctrl / `]` = dah), MIDI (Vail: note 0 timed key, 1 dit, 2 dah) and USB serial (FTDI, CP210x, CH34x, PL2303, CDC; key on DSR/CTS/CD/RI). Straight key or iambic A/B keyer on the phone, sidetone on the phone, real-time keying replayed by the tracker with a fixed delay, or text mode.
-- **Firmware**: installed and published versions; update over Bluetooth (boards with a second firmware slot: the phone downloads the published image, checks size and SHA-256, the tracker checks it again and activates it), update with the tracker's own WiFi, and the web installer (USB OTG cable, Chrome) for every board.
-- **VOR** (SDR tab): the VOR beacons within reach (OurAirports, public domain) with distance, bearing, elevation and radio range; TUNE in AM, ROTOR, and with the app's RTL-SDR, MEASURE the carrier for 10 s to get the receiver error in ppm and APPLY the correction.
-- **NAVTEX** (Modes): SITOR-B decoder ported from fldigi (518 / 490 / 4209.5 kHz, radio in USB or the app receiver), messages kept on the phone with the station that sent them, the stations within reach with their next broadcast, positions in the text to GO TO / ROTOR, and the alarm window for search and rescue (subject D).
-- **DSC** (Modes > DSC VHF / DSC HF): ITU-R M.493 decoder for channel 70 (1200 baud, 1300 / 2100 Hz on FM) and the MF / HF DSC channels (100 baud, 170 Hz), after SDRangel's decoder (time diversity with soft decisions, ECC): distress alerts, relays, acknowledgements, all-ships, individual, group and area calls, with position, nature and time; TUNE puts the SDR or the CAT radio on the channel; the DSC DISTRESS window (also in Android Auto) and each call out of the NMEA server as `$CDDSC` for the plotter.
-- **406 MHz beacons** (SDR > 406 MHz distress beacons): Cospas-Sarsat first-generation EPIRB / ELT / PLB with the app's RTL-SDR on 406.031 MHz (30 kHz covers every channel): carrier detection per spectrum bin, biphase-L phase demodulation, both BCH codes, standard / national / user-location protocols, 15-hex ID, position with GO TO / ROTOR, and the 406 MHz DISTRESS BEACON window (not for self-tests).
-- **Celestial navigation** (Sextant tool): Sun, Moon, Venus, Mars, Jupiter, Saturn and 157 stars computed on the phone to almanac precision, a list of the bodies visible now with the three stars that best cross, altitude corrections (index error, dip, refraction, semi-diameter, parallax), intercept and azimuth from the assumed position, up to four lines advanced for the run, and the fix; latitude by meridian altitude and by Polaris, with the time of meridian passage; compass check (total correction from the compass bearing of a body, deviation, and a deviation card with the A–E coefficients).
-- **Rotor** (APRS LoRa+ Rotor box, over BLE or WiFi): dial with position, target and limits, go to, move while held, STOP / park, follow the tracker (satellite, APRS station, CW beacon), calibration, the whole configuration and wind protection. **Radio (CAT)** of the box: frequency, step, modes, A/B, split, CTCSS, PTT while held, satellite Doppler, and the S-meter with the same bar as band B of the radio screen and as the box's own screen and WebUI (9 S segments and 6 over S9 in IARU colours, "S9+20" reading).
-- **Callsign validation**: the callsign must have a DMR ID / CCS7 in RadioID.net; until then the app only listens.
+The interface works like a radio: a main screen with band A (the tracker) and band B (the CAT radio or the SDR), soft keys [F] with three pages (APRS / RADIO / SYSTEM), and a side menu with every tool.
+
+## The tracker
+- **Link** over Bluetooth LE: KISS service for APRS, and the control service (JSON lines, PIN pairing) for everything else; foreground service, link state in the notification. Extra trackers can be added as receive-only stations (BLE or KISS over WiFi).
+- **Control** (`docs/BLE_CONTROL.md`, coverage in `docs/APP_COVERAGE.md`): radio mode (APRS LoRa / FSK, Morse, WSPR, FT8, FT4, FST4W, LR-FHSS, DAPNET, SAT, AIS, FM and M17 on the T-TWR Plus), beacon and LoRa profiles, beacon now, digipeater, CW messages and CW listening, every menu option and a mirror of the tracker's screen (Remote), and the whole configuration file (Config, also saved to and loaded from a file).
+- **Sensors and GNSS**: battery, PMU, temperature, humidity, pressure, gas / IAQ, IMU, magnetometer, QNH, altitude; position, speed, satellites with the sky plot, DOP and error; A-GPS to the u-blox receiver; phone sensors (tilt for the rotor mount, compass with WMM declination, barometer).
+- **Firmware**: installed and published versions, official or modified build, update over Bluetooth (boards with two slots; the phone downloads, checks size and SHA-256, the tracker checks again), and the web installer.
+- **Telegraph key on the phone** (tracker in MORSE mode): keyboard-type adapters (VBand, Vail), MIDI and USB serial; straight or iambic A/B, sidetone, real-time keying or text.
+
+## APRS
+- **Stations** list and detail with compass (north-up / heading-up), **GO TO** in Google Maps, rotor pointing; APRS symbols; Mic-E (status, altitude), objects and items, third-party frames.
+- **Weather stations** (WX): APRS weather in your units, pressure trend, dew point, wind chill, Beaufort, cloud base.
+- **Messages**: write, answer, retries and acknowledgements, sent / acked / failed / rejected; notifications with reply and mark-as-read, so **Android Auto** reads them aloud and answers by voice.
+- **Map** (osmdroid): OpenStreetMap, IGN (MTN, PNOA, Base), dark, Esri with your own ArcGIS key, OpenSeaMap; layers with their own transparency: AEMET radar and lightning, Meteosat clouds, OpenWeather maps (your key), official alerts, earthquakes, day / night line, METAR / TAF / SIGMET, aurora, D-RAP, tropical cyclones, Maidenhead grid, CQ / ITU zones, great circle, IBP beacons, worked locators, who hears me (WSPR, PSK Reporter), balloons (SondeHub), fires and floods (EONET), NDBC buoys, aircraft.
+- **Mobile iGate** (radio → APRS-IS), **DAPNET** pages received by the tracker and sent through the DAPNET API, **NMEA** server (TCP 10110) with APRS stations as AIS targets for OpenCPN or the plotter, and the tracker's GNSS as the phone location.
+
+## Alerts and safety
+- **Emergency window** over any screen: APRS emergency beacon or message, AIS distress and collision risk, own EAI and man overboard; the phone as buzzer (alarm tone, vibration, torch); also in Android Auto.
+- **Official alerts**: AEMET (with the alert polygons), MeteoAlarm, NWS, tsunami.gov, USGS / EMSC earthquakes, SWPC space weather; NOAA Weather Radio **SAME** from the tracker or the app's RTL-SDR. Sent on to the tracker.
+- **NAVTEX** (Modes): SITOR-B decoder ported from fldigi, stations within reach with their next broadcast, positions in the text, alarm for search and rescue.
+- **DSC** (Modes > DSC VHF / HF): ITU-R M.493 decoder for channel 70 and the MF / HF channels, DSC DISTRESS window, `$CDDSC` to the plotter.
+- **406 MHz beacons** (SDR): Cospas-Sarsat first-generation EPIRB / ELT / PLB with the app's RTL-SDR: 15-hex ID, protocol, position, DISTRESS BEACON window.
+
+## Radio tools on the phone
+- **SDR control**: SDR++ and gqrx (rigctl), SDRconnect (WebSocket API, also its audio), SpyServer; Doppler tracking of the tracker's satellite, recording of passes.
+- **RTL-SDR receiver in the app** (USB OTG dongle or any `rtl_tcp`): NFM / WFM / AM / USB / LSB / CW, fine tuning without retuning, recording. On top of it: **digital voice** (dsd-fme: DMR, D-STAR, YSF, P25, NXDN, dPMR, M17), **APRS FSK 9600** (G3RUH), **AIS** (both channels), **ADS-B** (1090 MHz, or a dump1090 / readsb on the network), **VOR** list (OurAirports) to aim the rotor and measure the dongle's ppm.
+- **Modes**: CW, RTTY, BPSK31–250, NAVTEX, DSC, and **FT8 / FT4 / WSPR / FST4W** with the receiver or the microphone; **spots** to PSK Reporter, WSPRnet, the WSJT-X UDP protocol (GridTracker, JTAlert, N1MM, RBN Aggregator) and a CW Skimmer telnet port.
+- **Beacons heard**: the **LR-FHSS** beacon of the tracker (RTL-SDR or an I/Q recording from SDRconnect / SDR++; decoded from a real recording), plus WSPR, FST4W, FT8, FT4, CW, APRS FSK and M17 stations, on the map and as **spots to the DX cluster**.
+- **CAT** of a radio plugged into the phone (Yaesu FT-817 / 818 / 857 / 897 / 891 / 991A / 710 / FTDX, Icom CI-V, Kenwood / Elecraft) with Doppler; or of the rotor box.
+- **DX cluster** (telnet; EA4URE by default): filters as WebClusterURE, country flags and entities from cty.dat (a copy inside the app, updated from country-files.com), TUNE, short / long path to the rotor, spot, log. **RBN map** with skimmer paths and VHF / UHF alerts; **IBP** map of the 18 NCDXF / IARU beacons with the ones on air now.
+- **Log**: ADIF logbook, import from qFT8, upload to QRZ.com, eQSL and LoTW (signed in the app), WRL through the WSJT-X UDP protocol, confirmations.
+- **Satellites** (SAT): passes, Doppler, transmitters, the tracker's rotor; satellite file by CelesTrak groups and favourites.
+- **Rotor box** (BLE or WiFi): dial, go to, move, park, follow the tracker / an APRS station / a CW beacon / the Sun or the Moon, wind protection with internet weather, calibration, configuration.
+- **SigID** (optional Artemis database), **RepeaterBook Connect**, internet weather (OpenWeatherMap, IQAir) to the tracker.
+
+## Navigation
+- **Celestial navigation** (Sextant): Sun, Moon, Venus, Mars, Jupiter, Saturn and 157 stars to almanac precision; bodies visible now and the best star triple; altitude corrections, intercept and azimuth, up to four lines advanced for the run and the fix; latitude by meridian altitude and by Polaris; compass check and a deviation card.
+- **My vessel** (AIS nautical profile of the tracker or the MAPRS transponder): name, MMSI, maritime call sign, type and size; the call sign is checked with MarineTraffic (your API key, or by hand on its public page opened inside the app: you sign in yourself, the app never reads the page) or the ITU MARS.
+
+## Callsign
+The callsign must have a DMR ID / CCS7 in RadioID.net. Until it is validated the app only listens: no APRS frames, iGate, DAPNET, spots, uploads or commands that transmit.
 
 ## Layout
-- `core/`: pure Kotlin (no Android): KISS, AX.25, TNC2, APRS parsing, message engine, iGate rules, geo. `gradle :core:selfTest` runs its checks.
-- `app/`: Android app (Compose UI, BLE client, foreground service, notifications).
+- `core/`: pure Kotlin (no Android): KISS, AX.25, APRS, message engine, control protocol, DSP and modems, decoders, formulas (WMM, astronomy, celestial navigation), map data readers. `gradle :core:selfTest` runs its checks.
+- `app/`: Android app (Compose UI, BLE, foreground service, notifications, Android Auto messaging).
+- `native/`: dsd-fme, ft8_lib, wsprd and the FST4W decoder built as separate programs with the NDK (the CI builds them).
+- `docs/`: control protocol (`BLE_CONTROL.md`, copy of the firmware's), coverage table (`APP_COVERAGE.md`), Google Play steps (`GOOGLE_PLAY.md`).
 
 ## Build
-`gradle :core:selfTest` and `gradle :app:assembleDebug` (Android SDK 35, JDK 17). The GitHub workflow does both and uploads the debug APK.
+`gradle :core:selfTest` and `gradle :app:assembleDebug` (Android SDK 36, JDK 17). The GitHub workflow does both, builds the native decoders and uploads the debug APK and the signed Google Play bundle.
+
+The core alone runs anywhere with a JDK and `kotlinc`:
+`kotlinc core/src/main/kotlin core/src/test/kotlin -include-runtime -d core-test.jar && java -cp core-test.jar es.ea7jrs.aprslorap.core.SelfTestKt`
 
 ## Not done yet
-APRS telemetry; saving messages, stations and pages between runs; distance and bearing from your own position; position beacons from the phone; Android Auto station list; TCP KISS link; AIS built by the phone for boards without NMEA output.
+APRS telemetry (`T#`) and status (`>`); saving messages and stations between runs; position beacons from the phone; Android Auto station list; KISS over TCP as the main link; AIS built by the phone for boards without NMEA output; automatic measurement of the IBP beacon dashes; live I/Q from SDRconnect.
 
 License: GPL-3.0-or-later.
