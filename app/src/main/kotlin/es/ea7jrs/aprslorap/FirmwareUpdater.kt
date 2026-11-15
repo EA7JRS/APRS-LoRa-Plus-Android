@@ -33,7 +33,8 @@ object FirmwareUpdater {
 
     private fun status(msg: String) { AppState.fwMessage.value = msg }
 
-    private fun httpGet(url: String, maxBytes: Int, progress: ((Int) -> Unit)? = null): ByteArray {
+    /** [cancellable]: false for the version check, which a cancel left over from an update (or the service stopping) must not stop. */
+    private fun httpGet(url: String, maxBytes: Int, progress: ((Int) -> Unit)? = null, cancellable: Boolean = true): ByteArray {
         var target = URL(url)
         repeat(5) {                                                  // GitHub may redirect
             val c = target.openConnection() as HttpURLConnection
@@ -49,7 +50,7 @@ object FirmwareUpdater {
             c.inputStream.use { inp ->
                 val buf = ByteArray(16384)
                 while (true) {
-                    if (cancelled) throw IllegalStateException("cancelled")
+                    if (cancellable && cancelled) throw IllegalStateException("cancelled")
                     val n = inp.read(buf)
                     if (n < 0) break
                     out.write(buf, 0, n)
@@ -69,7 +70,7 @@ object FirmwareUpdater {
         status("Looking for the latest version...")
         Thread({
             try {
-                val r = FirmwareSite.parse(String(httpGet(FirmwareSite.manifestUrl(board), 8192), Charsets.UTF_8))
+                val r = FirmwareSite.parse(String(httpGet(FirmwareSite.manifestUrl(board), 8192, cancellable = false), Charsets.UTF_8))
                     ?: throw IllegalStateException("unexpected answer from the release site")
                 AppState.fwLatest.value = r
                 status("Latest version: ${r.version} (${r.size / 1024} KB)")
