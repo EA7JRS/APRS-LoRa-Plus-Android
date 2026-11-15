@@ -118,7 +118,7 @@ object HamLayers {
 
     private fun tag(xml: String, name: String): String? {
         val m = Regex("<(?:\\w+:)?$name\\b[^>]*>([\\s\\S]*?)</(?:\\w+:)?$name>", RegexOption.IGNORE_CASE).find(xml) ?: return null
-        return m.groupValues[1].replace(Regex("^\\s*<!\\[CDATA\\[|]]>\\s*$"), "")
+        return m.groupValues[1].replace(Regex("^\\s*<!\\[CDATA\\[|\\]\\]>\\s*$"), "")
     }
 
     fun kmlPlacemarks(kml: String): List<Placemark> = Regex("<Placemark(?:\\s[^>]*)?>([\\s\\S]*?)</Placemark>", RegexOption.IGNORE_CASE).findAll(kml).map { m ->

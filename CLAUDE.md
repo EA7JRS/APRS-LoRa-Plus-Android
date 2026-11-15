@@ -219,6 +219,10 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   hasta la primera descarga; fuentes `country-files.com/bigcty/cty.dat` (la de OpenHamClock), `/cty/cty.dat` y Win-Test; redirecciones
   seguidas a mano (solo https); reintento a los 10 min (antes 1 h); tecla «cty.dat UPDATE» en la lista de nodos; estado con la versión
   (`Cty.version`, «=VER…»), el origen y el motivo de cada fallo. No se pudo comprobar la descarga desde la sesión (los dominios están bloqueados).
+  **Causa real (2026-11-15, captura de Manuel: «Syntax error in regexp pattern near index»)**: Android usa ICU para las expresiones
+  regulares y rechaza `]` y `}` sin escapar fuera de una clase (Java los acepta, por eso las pruebas del PC pasaban); el lector de
+  cty.dat (`Cty.parse`) fallaba con cualquier archivo, también con la copia de la app. Escapados en `DxCluster.kt` (`RE_*`) y en
+  `HamLayers.kt` (CDATA). **Regla: en el núcleo, escapar siempre `]` y `}` literales en las expresiones regulares.**
 - **Banda B en cian** (Manuel, 2026-11-15, opción 1 de la vista previa): barra lateral, insignia «B» y título en `Alp.BandB` (#28B5E1 oscuro,
   #0779AB claro) y fondo con un tinte (`Alp.BandBBg`: #142230 / #E6F2F9); la banda A sigue en verde.
 

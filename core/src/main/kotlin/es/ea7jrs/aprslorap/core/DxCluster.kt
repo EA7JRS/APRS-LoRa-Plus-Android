@@ -198,6 +198,12 @@ object Cty {
         "https://download.win-test.com/files/country/CTY_WT_MOD.DAT", "https://download.win-test.com/files/country/CTY.DAT")
 
     private val VERSION = Regex("=VER(\\d{8})")
+    // Android's regular expressions (ICU) reject a "]" or "}" that is not escaped, though Java takes them: escape every one
+    private val RE_LATLON = Regex("<(-?[\\d.]+)/(-?[\\d.]+)>")
+    private val RE_CQ = Regex("\\((\\d+)\\)")
+    private val RE_ITU = Regex("\\[(\\d+)\\]")
+    private val RE_CONT = Regex("\\{([A-Z]{2})\\}")
+    private val RE_OVERRIDES = Regex("\\(.*?\\)|\\[.*?\\]|<.*?>|\\{.*?\\}|~.*?~")
     /** Date of the file as AD1C writes it in the exact callsign "=VER20250115" (in VE): "2025-01-15"; null if not there. */
     fun version(text: String): String? = VERSION.find(text)?.groupValues?.get(1)?.let { "${it.substring(0, 4)}-${it.substring(4, 6)}-${it.substring(6)}" }
     /** Files looked for inside a zip (country-files.com gives cty-NNNN.zip), in this order. */
@@ -267,14 +273,14 @@ object Cty {
                 var t = tok.trim()
                 if (t.isEmpty()) continue
                 var e = ent
-                Regex("<(-?[\\d.]+)/(-?[\\d.]+)>").find(t)?.let { m ->
+                RE_LATLON.find(t)?.let { m ->
                     val la = m.groupValues[1].toDoubleOrNull(); val lo = m.groupValues[2].toDoubleOrNull()
                     if (la != null && lo != null) e = e.copy(lat = la, lon = -lo)
                 }
-                Regex("\\((\\d+)\\)").find(t)?.let { m -> e = e.copy(cqz = m.groupValues[1].toInt()) }
-                Regex("\\[(\\d+)]").find(t)?.let { m -> e = e.copy(ituz = m.groupValues[1].toInt()) }
-                Regex("\\{([A-Z]{2})}").find(t)?.let { m -> e = e.copy(continent = m.groupValues[1]) }
-                t = t.replace(Regex("\\(.*?\\)|\\[.*?]|<.*?>|\\{.*?}|~.*?~"), "")
+                RE_CQ.find(t)?.let { m -> e = e.copy(cqz = m.groupValues[1].toInt()) }
+                RE_ITU.find(t)?.let { m -> e = e.copy(ituz = m.groupValues[1].toInt()) }
+                RE_CONT.find(t)?.let { m -> e = e.copy(continent = m.groupValues[1]) }
+                t = t.replace(RE_OVERRIDES, "")
                 if (t.startsWith("=")) exact[t.substring(1)] = e else prefixes[t] = e
             }
             prefixes.putIfAbsent(ent.prefix, ent)
