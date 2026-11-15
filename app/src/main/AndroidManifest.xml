@@ -56,6 +56,19 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+        <!-- Android Auto screens (Car App Library): IoT keys for the tracker and the rotor, and weather -->
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+        <service
+            android:name=".CarService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.IOT" />
+                <category android:name="androidx.car.app.category.WEATHER" />
+            </intent-filter>
+        </service>
 
         <activity
             android:name=".MainActivity"

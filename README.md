@@ -25,7 +25,8 @@ The interface works like a radio: a main screen with band A (the tracker) and ba
 - **Mobile iGate** (radio → APRS-IS), **DAPNET** pages received by the tracker and sent through the DAPNET API, **NMEA** server (TCP 10110) with APRS stations as AIS targets for OpenCPN or the plotter, and the tracker's GNSS as the phone location.
 
 ## Alerts and safety
-- **Emergency window** over any screen: APRS emergency beacon or message, AIS distress and collision risk, own EAI and man overboard; the phone as buzzer (alarm tone, vibration, torch); also in Android Auto.
+- **Emergency window** over any screen: APRS emergency beacon or message, AIS distress and collision risk, own EAI and man overboard; the phone as buzzer (alarm tone, vibration, torch); also in Android Auto. An emergency beacon of a -9 (car) station is a **ROAD EMERGENCY** with the V-27 beacon icon.
+- **Android Auto**: messages read aloud with who, where and their state (confirmed, retry n/3, not confirmed), answered by voice; alerts with distance and direction; favourite stations heard; IoT keys (SOS V-27 with confirmation, beacon, I'M OK, quick message, rotor follow, park) and a weather screen (alert, nearby APRS weather stations, nearest METAR).
 - **Official alerts**: AEMET (with the alert polygons), MeteoAlarm, NWS, tsunami.gov, USGS / EMSC earthquakes, SWPC space weather; NOAA Weather Radio **SAME** from the tracker or the app's RTL-SDR. Sent on to the tracker.
 - **NAVTEX** (Modes): SITOR-B decoder ported from fldigi, stations within reach with their next broadcast, positions in the text, alarm for search and rescue.
 - **DSC** (Modes > DSC VHF / HF): ITU-R M.493 decoder for channel 70 and the MF / HF channels, DSC DISTRESS window, `$CDDSC` to the plotter.

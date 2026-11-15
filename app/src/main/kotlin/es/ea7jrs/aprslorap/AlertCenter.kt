@@ -174,6 +174,7 @@ object AlertCenter {
         val icon = when (a.kind) {
             AlertKind.AIS_DISTRESS -> n.symbolIcon(a.who, '/', 'Y')
             AlertKind.AIS_COLLISION -> n.symbolIcon(a.who, '/', 's')
+            AlertKind.ROAD -> androidx.core.graphics.drawable.IconCompat.createWithBitmap(V27.bitmap())   // V-27 as the avatar (panel 18)
             AlertKind.EAI, AlertKind.MAN_DOWN, AlertKind.OFFICIAL, AlertKind.NAVTEX, AlertKind.DSC, AlertKind.BEACON406 -> null
             else -> n.symbolIcon(a.who)
         }
@@ -274,6 +275,7 @@ object AlertCenter {
             .setContentIntent(open)
             .setFullScreenIntent(open, true)
             .setAutoCancel(true)
+        if (a.kind == AlertKind.ROAD) b.setLargeIcon(V27.bitmap())          // the V-27 beacon next to the title
         try { nmc.notify(ID_ALERT, b.build()) } catch (_: Exception) {}
     }
 

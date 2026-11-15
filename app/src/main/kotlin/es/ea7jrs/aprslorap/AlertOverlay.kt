@@ -109,7 +109,8 @@ private fun AlertWindow(nav: Navigator, a: EmergencyAlert, i: Int, n: Int, onPre
         .border(2.dp, accent.copy(alpha = 0.4f + 0.6f * pulse), RoundedCornerShape(18.dp))) {
         Row(Modifier.fillMaxWidth().background(accent).padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Canvas(Modifier.size(26.dp)) {
+            // road emergency (-9 station): the V-27 beacon next to the title; the station keeps its APRS symbol below
+            if (a.kind == AlertKind.ROAD) V27Tile(40.dp) else Canvas(Modifier.size(26.dp)) {
                 val s = size.width
                 val p = Path().apply { moveTo(s / 2, s * 0.1f); lineTo(s * 0.95f, s * 0.88f); lineTo(s * 0.05f, s * 0.88f); close() }
                 drawPath(p, Color(0xFF131A22), style = Stroke(width = s * 0.09f))
