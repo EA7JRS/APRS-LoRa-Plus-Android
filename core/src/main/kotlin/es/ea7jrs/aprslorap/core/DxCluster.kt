@@ -189,9 +189,17 @@ object DxCluster {
  * of the entity to work out the beam heading. Longitudes in the file are positive to the west; [Entity.lon] is east-positive.
  */
 object Cty {
-    const val URL = "https://www.country-files.com/cty/cty.dat"
-    /** Where to download it, in order: AD1C's site and the Win-Test mirror (same data; CTY_WT_MOD.DAT has more exact callsigns). */
-    val URLS = listOf(URL, "https://download.win-test.com/files/country/CTY_WT_MOD.DAT", "https://download.win-test.com/files/country/CTY.DAT")
+    const val URL = "https://www.country-files.com/bigcty/cty.dat"
+    /**
+     * Where to download it, in order: AD1C's site (big cty.dat, the one OpenHamClock reads, and the plain one) and the
+     * Win-Test mirror (same data; CTY_WT_MOD.DAT has more exact callsigns).
+     */
+    val URLS = listOf(URL, "https://www.country-files.com/cty/cty.dat",
+        "https://download.win-test.com/files/country/CTY_WT_MOD.DAT", "https://download.win-test.com/files/country/CTY.DAT")
+
+    private val VERSION = Regex("=VER(\\d{8})")
+    /** Date of the file as AD1C writes it in the exact callsign "=VER20250115" (in VE): "2025-01-15"; null if not there. */
+    fun version(text: String): String? = VERSION.find(text)?.groupValues?.get(1)?.let { "${it.substring(0, 4)}-${it.substring(4, 6)}-${it.substring(6)}" }
     /** Files looked for inside a zip (country-files.com gives cty-NNNN.zip), in this order. */
     private val ZIP_NAMES = listOf("CTY.DAT", "CTY_WT_MOD.DAT", "CTY_WT.DAT", "WL_CTY.DAT")
 

@@ -188,8 +188,9 @@ fun DxClusterScreen(nav: Navigator) {
                 Toggle("CAT", catOn) { catOn = !catOn }
                 Toggle("AUTO", auto) { auto = !auto; DxLink.auto = auto }
             }
-            Text(st.status + if (st.ctyStatus.isNotEmpty()) "  ·  " + st.ctyStatus else "", fontSize = 13.sp, color = Alp.Muted, modifier = Modifier.padding(top = 6.dp),
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(st.status, fontSize = 13.sp, color = Alp.Muted, modifier = Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (st.ctyStatus.isNotEmpty()) Text(st.ctyStatus, fontSize = 12.sp, color = if (st.ctyStatus.contains("failed") || st.ctyStatus.contains("not downloaded")) Alp.Amber else Alp.Muted,
+                maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
 
         Row(Modifier.fillMaxWidth().height(58.dp).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -238,6 +239,7 @@ fun DxClusterScreen(nav: Navigator) {
                         nodesOpen = false
                     }
                     RadioKey("cty.dat FILE", Modifier.weight(1f).height(46.dp), labelSize = 14) { ctyPicker.launch(arrayOf("*/*")) }
+                    RadioKey("cty.dat UPDATE", Modifier.weight(1f).height(46.dp), labelSize = 14, color = Alp.Cyan) { DxLink.updateCty(ctx) }
                 }
             }
         },

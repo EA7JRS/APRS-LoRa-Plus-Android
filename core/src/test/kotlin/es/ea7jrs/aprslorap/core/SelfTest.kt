@@ -1446,6 +1446,8 @@ private fun testCtyFiles() {
     eq(t.entities, 3, "Win-Test file: entities with comments"); eq(t.lookup("3A2MW")?.name, "Monaco", "Win-Test file: Monaco")
     near(t.lookup("3B7SP")!!.lat, -16.58, 1e-9, "Win-Test file: St. Brandon override"); check(t.lookup("3B7SP")!!.lon > 59.0, "Win-Test file: east longitude")
     eq(Cty.parse(wt.replace("\n", "\r\n")).entities, 3, "Win-Test file with CRLF")
+    eq(Cty.version("    CF,CG,VE,=VE2EM/M,=VER20250115,\n"), "2025-01-15", "cty.dat: version")
+    eq(Cty.version(wt), null, "cty.dat: no version")
     // zip of country-files.com: cty.dat inside (any folder, any case)
     val bos = java.io.ByteArrayOutputStream()
     java.util.zip.ZipOutputStream(bos).use { z ->

@@ -231,53 +231,93 @@ object DxLink {
     // ------------------------------------------------------------------ cty.dat
 
     @Volatile private var ctyTriedMs = 0L
+    @Volatile private var ctyBase = ""                          // what is loaded, for the status line
+    @Volatile var ctyBusy = false; private set
 
     /**
-     * Reads the saved cty.dat and downloads a new one when it is more than a week old (or missing). Called when the app
-     * opens and when the DX cluster or the RBN map open; a failed download is tried again an hour later at the earliest.
-     * Nothing here runs on the UI thread.
+     * Reads the saved cty.dat (or, before the first download, the copy inside the app, so flags and beam headings work from
+     * the first start and without internet) and downloads a new one when the saved one is more than a week old or missing.
+     * Called when the app opens and when the DX cluster or the RBN map open; a failed download is tried again 10 minutes
+     * later at the earliest, or at once with [updateCty]. Nothing here runs on the UI thread.
      */
-    fun loadCty(ctx: Context) {
-        val f = File(ctx.applicationContext.filesDir, "cty.dat")
+    fun loadCty(ctx: Context, force: Boolean = false) {
+        val app = ctx.applicationContext
+        val f = File(app.filesDir, "cty.dat")
         Thread({
             synchronized(this) {
-                if (cty == null && f.exists()) parseCty(f)
+                if (cty == null) { if (f.exists()) parseCty(f) else parseBundled(app) }
                 val now = System.currentTimeMillis()
                 val old = !f.exists() || now - f.lastModified() > CTY_MAX_AGE_MS
-                if (old && now - ctyTriedMs > 3_600_000L) { ctyTriedMs = now; download(f) }
+                if (force || (old && now - ctyTriedMs > 600_000L)) { ctyTriedMs = now; download(f) }
             }
         }, "cty-load").apply { isDaemon = true; start() }
     }
+    /** UPDATE key: downloads cty.dat now, whatever its age. */
+    fun updateCty(ctx: Context) = loadCty(ctx, force = true)
     private const val CTY_MAX_AGE_MS = 7L * 24 * 3600 * 1000
 
+    private fun use(text: String, base: String) {
+        val t = Cty.parse(text)
+        if (t.entities < 300) throw Exception("not a cty.dat")
+        cty = t
+        ctyBase = "cty.dat " + (Cty.version(text) ?: "") + " " + base + ", ${t.entities} entities"
+        set { it.copy(ctyStatus = ctyBase.replace("  ", " ")) }
+    }
+
     private fun parseCty(f: File) {
-        try {
-            val t = Cty.parse(f.readText(Charsets.ISO_8859_1))
-            cty = t
-            set { it.copy(ctyStatus = "cty.dat: ${t.entities} entities") }
-        } catch (e: Exception) { set { it.copy(ctyStatus = "cty.dat unreadable") } }
+        try { use(f.readText(Charsets.ISO_8859_1), "(downloaded " + java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(f.lastModified())) + ")") }
+        catch (e: Exception) { set { it.copy(ctyStatus = "cty.dat unreadable") } }
+    }
+
+    private fun parseBundled(app: Context) {
+        try { use(app.assets.open("cty/cty.dat").use { String(it.readBytes(), Charsets.ISO_8859_1) }, "(built in)") }
+        catch (_: Exception) {}
+    }
+
+    /** GET that follows redirects itself (HttpURLConnection does not follow one from one host to another on every Android). */
+    private fun fetch(url0: String): ByteArray {
+        var url = url0
+        repeat(5) {
+            val c = URL(url).openConnection() as HttpURLConnection
+            c.instanceFollowRedirects = false
+            c.connectTimeout = 15_000; c.readTimeout = 30_000
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) APRSLoRaPlus/${BuildConfig.VERSION_NAME}")
+            c.setRequestProperty("Accept", "text/plain,application/octet-stream,application/zip,*/*")
+            try {
+                val code = c.responseCode
+                if (code in 300..399) {
+                    val loc = c.getHeaderField("Location") ?: throw Exception("HTTP $code without a new address")
+                    val next = URL(URL(url), loc)
+                    if (next.protocol != "https") throw Exception("redirected to ${next.protocol}")
+                    url = next.toString(); return@repeat
+                }
+                if (code != 200) throw Exception("HTTP $code")
+                return c.inputStream.use { it.readBytes() }
+            } finally { c.disconnect() }
+        }
+        throw Exception("too many redirects")
     }
 
     private fun download(f: File) {
-        var why = ""
-        for (url in Cty.URLS) {
-            try {
-                val c = URL(url).openConnection() as HttpURLConnection
-                c.connectTimeout = 15_000; c.readTimeout = 30_000
-                c.setRequestProperty("User-Agent", "APRSLoRaPlus/${BuildConfig.VERSION_NAME} (Android)")
-                if (c.responseCode != 200) throw Exception("HTTP ${c.responseCode}")
-                val text = Cty.textOf(c.inputStream.use { it.readBytes() }) ?: throw Exception("no cty.dat inside")
-                if (Cty.parse(text).entities < 300) throw Exception("not a cty.dat")
-                val tmp = File(f.parentFile, "cty.dat.tmp")
-                tmp.writeBytes(text.toByteArray(Charsets.ISO_8859_1))
-                tmp.renameTo(f)
-                parseCty(f)
-                return
-            } catch (e: Exception) {
-                why = (java.net.URI(url).host ?: url) + ": " + (e.message ?: "error")
+        ctyBusy = true
+        set { it.copy(ctyStatus = (if (cty != null) "$ctyBase · " else "") + "downloading cty.dat...") }
+        val why = ArrayList<String>()
+        try {
+            for (url in Cty.URLS) {
+                try {
+                    val text = Cty.textOf(fetch(url)) ?: throw Exception("no cty.dat inside")
+                    if (Cty.parse(text).entities < 300) throw Exception("not a cty.dat")
+                    val tmp = File(f.parentFile, "cty.dat.tmp")
+                    tmp.writeBytes(text.toByteArray(Charsets.ISO_8859_1))
+                    if (!tmp.renameTo(f)) { f.delete(); if (!tmp.renameTo(f)) throw Exception("cannot save it") }
+                    parseCty(f)
+                    return
+                } catch (e: Exception) {
+                    why.add((java.net.URI(url).host ?: url) + ": " + (e.message ?: e.javaClass.simpleName))
+                }
             }
-        }
-        set { it.copy(ctyStatus = if (cty != null) it.ctyStatus + " (update failed)" else "cty.dat not downloaded ($why): choose the file") }
+            set { it.copy(ctyStatus = (if (cty != null) "$ctyBase · update failed (" else "cty.dat not downloaded (") + why.distinct().joinToString("; ") + ")") }
+        } finally { ctyBusy = false }
     }
 
     /** Import of a country file chosen by the user (no internet, or a newer one): cty.dat, CTY_WT.DAT, CTY_WT_MOD.DAT or the zip of country-files.com. */

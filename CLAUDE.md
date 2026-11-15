@@ -214,6 +214,11 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   bandera, lo dibuja la fuente de emojis del móvil, sin imágenes en la app; 343 de las 346 entidades del cty.dat de WSJT-X, sin bandera
   1A, 1S y BS7; EA8 con la de Canarias, EA9 con la de Ceuta y Melilla, G / GM / GW con Inglaterra / Escocia / Gales). En la lista delante
   del indicativo y en la ficha delante de la entidad; en el mapa RBN, delante de la estación y del skimmer (lista y ficha). Necesita cty.dat cargado. 1288 comprobaciones.
+  **cty.dat, 2026-11-15** (Manuel: «no salen las banderas, no descarga ni actualiza el cty.dat»): copia dentro de la app
+  (`assets/cty/cty.dat`, la de WSJT-X 3.3.0-beta5, VER20250115; aviso de permiso de AD1C en `assets/licenses/cty.dat_copyright.txt`) que se usa
+  hasta la primera descarga; fuentes `country-files.com/bigcty/cty.dat` (la de OpenHamClock), `/cty/cty.dat` y Win-Test; redirecciones
+  seguidas a mano (solo https); reintento a los 10 min (antes 1 h); tecla «cty.dat UPDATE» en la lista de nodos; estado con la versión
+  (`Cty.version`, «=VER…»), el origen y el motivo de cada fallo. No se pudo comprobar la descarga desde la sesión (los dominios están bloqueados).
 
 - **Receptor LR-FHSS y balizas oídas** (2026-11-13; Manuel: «podemos incluir un decodificador de este tipo de baliza?», «Situar las
   estaciones recibidas sobre mapa, y enviarlas como Spot al cluster»; lo de «LR-FHSS descartado» de más arriba era recibirlo con el
