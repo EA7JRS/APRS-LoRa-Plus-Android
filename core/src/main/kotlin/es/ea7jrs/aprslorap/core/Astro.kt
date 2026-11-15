@@ -17,7 +17,7 @@ import kotlin.math.tan
 
 /**
  * Sun and moon, ported from `lib/plotter_core/src/astro.cpp` of the plotter so every APRS LoRa+ device gives the same numbers:
- * sun position from Meeus (ch. 25, ~0.01°), sunrise / sunset from the NOAA series (~1 min), moon from Meeus (ch. 47, main
+ * sun position from Meeus (ch. 25, ~0.01°), sunrise / sunset iterated with the precise sun (< 0.01 min), moon from Meeus (ch. 47, main
  * terms, topocentric with the parallax that reaches 1°, ~0.03°), moon rise / set, phase and lit fraction, mean refraction.
  * Altitudes are geometric (no refraction); add [refractionDeg] for what an antenna sees. Times are Unix ms (UTC).
  */
@@ -59,18 +59,61 @@ object Astro {
         return cum[m - 1] + d + if (leap && m > 2) 1 else 0
     }
 
-    /** Sun crossing [altDeg] (−0.833 sunrise / sunset, −6 civil, −12 nautical, −18 astronomical twilight); NOAA series. */
-    fun sunTimes(y: Int, m: Int, d: Int, lat: Double, lon: Double, altDeg: Double = -0.833): RiseSet {
+    /** Julian day at 00:00 UTC of that civil date (Meeus, ch. 7). */
+    private fun jd0(y0: Int, m0: Int, d: Int): Double {
+        var y = y0; var m = m0
+        if (m <= 2) { y -= 1; m += 12 }
+        val a = y / 100; val b = 2 - a + a / 4
+        return floor(365.25 * (y + 4716)) + floor(30.6001 * (m + 1)) + d + b - 1524.5
+    }
+
+    private fun n180(a: Double): Double { val r = nrm(a); return if (r > 180) r - 360 else r }
+
+    /** Minute (after 00:00 UTC) when the sun's local hour angle is [lhaDeg], from [startMin], with the precise sun (Celnav). */
+    private fun sunAtLha(jd0: Double, lon: Double, startMin: Double, lhaDeg: Double): Double {
+        var t = startMin
+        for (i in 0 until 6) {
+            val g = Celnav.sunGhaDec(jd0 + t / 1440.0)
+            val dt = n180(lhaDeg - (g.gha + lon)) / 0.25           // 0.25° of hour angle per minute
+            t += dt
+            if (abs(dt) < 1e-4) break
+        }
+        return t
+    }
+
+    /** Solar noon (minutes after 00:00 UTC): local hour angle zero, with the precise sun. */
+    fun solarNoonMin(y: Int, m: Int, d: Int, lon: Double): Double {
         val leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
         val g = 2 * Math.PI / (if (leap) 366.0 else 365.0) * (dayOfYear(y, m, d) - 1)
         val eq = 229.18 * (0.000075 + 0.001868 * cos(g) - 0.032077 * sin(g) - 0.014615 * cos(2 * g) - 0.040849 * sin(2 * g))
-        val dec = 0.006918 - 0.399912 * cos(g) + 0.070257 * sin(g) - 0.006758 * cos(2 * g) + 0.000907 * sin(2 * g) -
-            0.002697 * cos(3 * g) + 0.00148 * sin(3 * g)
+        return sunAtLha(jd0(y, m, d), lon, 720 - 4 * lon - eq, 0.0)
+    }
+
+    /**
+     * Sun crossing [altDeg] (−0.833 sunrise / sunset, −6 civil, −12 nautical, −18 astronomical twilight). As the plotter core:
+     * the hour angle is recomputed with the declination of the event itself, not of noon (that was 2–3 min off in Spain and
+     * 11 min at 66°; now under 0.01 min).
+     */
+    fun sunTimes(y: Int, m: Int, d: Int, lat: Double, lon: Double, altDeg: Double = -0.833): RiseSet {
+        val j0 = jd0(y, m, d)
+        val noon = solarNoonMin(y, m, d, lon)
         val la = rad(lat)
-        val c = (sin(rad(altDeg)) - sin(la) * sin(dec)) / (cos(la) * cos(dec))
-        if (c < -1 || c > 1) return RiseSet(null, null)
-        val ha = deg(acos(c)); val noon = 720 - 4 * lon - eq
-        return RiseSet(noon - 4 * ha, noon + 4 * ha)
+        fun event(sign: Int): Double? {
+            var dec = Celnav.sunGhaDec(j0 + noon / 1440.0).dec
+            var t = noon
+            for (i in 0 until 6) {
+                val c = (sin(rad(altDeg)) - sin(la) * sin(rad(dec))) / (cos(la) * cos(rad(dec)))
+                if (c < -1 || c > 1) return null
+                val prev = t
+                t = sunAtLha(j0, lon, t, sign * deg(acos(c)))
+                dec = Celnav.sunGhaDec(j0 + t / 1440.0).dec
+                if (abs(t - prev) < 1e-4) break
+            }
+            return t
+        }
+        val rise = event(-1) ?: return RiseSet(null, null)
+        val set = event(1) ?: return RiseSet(null, null)
+        return RiseSet(rise, set)
     }
 
     // Meeus, table 47.A (D, M, M', F, longitude 1e-6°, distance m) and 47.B (latitude 1e-6°), main terms

@@ -2511,6 +2511,21 @@ private fun testFormulas() {
     val st = Astro.sunTimes(2026, 11, 12, 36.53, -6.29)
     check(st.riseMin != null && st.setMin != null && st.riseMin!! in 400.0..440.0 && st.setMin!! in 1020.0..1060.0, "sunrise / sunset")
     check(Astro.sunTimes(2026, 6, 21, 80.0, 0.0).riseMin == null, "polar day")
+    run {   // iterated rise / set (plotter core): at that minute the precise sun is at the asked altitude, any latitude
+        var bad = 0; var n = 0
+        for (la in doubleArrayOf(0.0, 36.53, 43.5, 52.0, 60.0, 66.0)) for (h in doubleArrayOf(-0.833, -6.0, -12.0)) for (mo in 1..12) {
+            val r = Astro.sunTimes(2026, mo, 15, la, -6.28, h)
+            if (r.riseMin == null || r.setMin == null) continue
+            val day = java.time.LocalDate.of(2026, mo, 15).toEpochDay() * 86_400_000L
+            val a1 = Astro.sunPosition(day + (r.riseMin!! * 60_000).toLong(), la, -6.28).altDeg
+            val a2 = Astro.sunPosition(day + (r.setMin!! * 60_000).toLong(), la, -6.28).altDeg
+            n++
+            if (abs(a1 - h) > 0.003 || abs(a2 - h) > 0.003) bad++
+        }
+        check(n > 180 && bad == 0, "sunrise / sunset iterated")
+        val noonDay = java.time.LocalDate.of(2026, 6, 15).toEpochDay() * 86_400_000L
+        near(Astro.sunPosition(noonDay + (Astro.solarNoonMin(2026, 6, 15, -6.28) * 60_000).toLong(), 52.0, -6.28).azDeg, 180.0, 0.02, "solar noon due south")
+    }
     check(Astro.moonPhase8(0.2) == 0 && Astro.moonPhase8(7.4) == 2 && Astro.moonPhase8(14.8) == 4 && Astro.moonPhase8(22.1) == 6, "moon phase")
     eq(Astro.moonPhaseName(4), "Full moon", "moon phase name")
     near(Astro.refractionDeg(0.0), 0.48, 0.03, "refraction at the horizon")
