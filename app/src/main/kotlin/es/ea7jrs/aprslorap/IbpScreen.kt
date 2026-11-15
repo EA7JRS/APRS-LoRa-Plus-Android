@@ -113,7 +113,6 @@ fun IbpScreen(nav: Navigator) {
         MapLayers.configure(ctx)
         MapView(ctx).apply {
             setTileSource(TileSourceFactory.MAPNIK)
-            overlayManager.tilesOverlay.setColorFilter(MapLayers.NIGHT)
             setMultiTouchControls(true)
             zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
             minZoomLevel = 1.0
@@ -123,6 +122,9 @@ fun IbpScreen(nav: Navigator) {
             isHorizontalMapRepetitionEnabled = false
         }
     }
+    // the world map follows the theme: plain OpenStreetMap in the light theme, the night colours only in the dark one (EA7JRS)
+    val darkMap = Alp.dark
+    LaunchedEffect(darkMap) { map.overlayManager.tilesOverlay.setColorFilter(if (darkMap) MapLayers.NIGHT else null); map.invalidate() }
     DisposableEffect(Unit) { map.onResume(); onDispose { map.onPause() } }
     val dynamic = remember { ArrayList<Overlay>() }
 
