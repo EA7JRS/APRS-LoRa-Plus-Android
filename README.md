@@ -4,7 +4,7 @@
 
 Android companion for the [APRS LoRa+](https://github.com/EA7JRS/APRS-LoRa-Plus) tracker (ESP32 firmware). It talks to the tracker over **Bluetooth LE (KISS)**.
 
-Status: **first skeleton, 0.1.0**. The pure Kotlin core is tested; the Android app has not been run yet.
+Status: **5.4.5**, same version number as the tracker. The pure Kotlin core is tested (about 1500 checks); the Android app builds in the CI but has not been tried on a phone yet.
 
 ## What it does (version 1 plan)
 - Connects to the tracker over BLE (KISS service `00000001-ba2a-46c9-ae49-01b0961f68bb`) and keeps the link in a foreground service.
@@ -18,6 +18,7 @@ Status: **first skeleton, 0.1.0**. The pure Kotlin core is tested; the Android a
 - **NMEA**: TCP server for other apps (OpenCPN, Navionics...) with the tracker's sentences, including APRS stations as AIS targets (boards with NMEA output; otherwise RMC/GGA built by the phone), and the tracker's GNSS as the phone location (mock location).
 - **Telegraph key on the phone** (tracker in MORSE mode): keyboard-type USB/Bluetooth adapters (VBand, Vail: Left Ctrl / `[` = dit, Right Ctrl / `]` = dah), MIDI (Vail: note 0 timed key, 1 dit, 2 dah) and USB serial (FTDI, CP210x, CH34x, PL2303, CDC; key on DSR/CTS/CD/RI). Straight key or iambic A/B keyer on the phone, sidetone on the phone, real-time keying replayed by the tracker with a fixed delay, or text mode.
 - **Firmware**: installed and published versions; update over Bluetooth (boards with a second firmware slot: the phone downloads the published image, checks size and SHA-256, the tracker checks it again and activates it), update with the tracker's own WiFi, and the web installer (USB OTG cable, Chrome) for every board.
+- **Celestial navigation** (Sextant tool): Sun, Moon, Venus, Mars, Jupiter, Saturn and 157 stars computed on the phone to almanac precision, a list of the bodies visible now with the three stars that best cross, altitude corrections (index error, dip, refraction, semi-diameter, parallax), intercept and azimuth from the assumed position, up to four lines advanced for the run, and the fix.
 - **Callsign validation**: the callsign must have a DMR ID / CCS7 in RadioID.net; until then the app only listens.
 
 ## Layout
@@ -28,6 +29,6 @@ Status: **first skeleton, 0.1.0**. The pure Kotlin core is tested; the Android a
 `gradle :core:selfTest` and `gradle :app:assembleDebug` (Android SDK 35, JDK 17). The GitHub workflow does both and uploads the debug APK.
 
 ## Not done yet
-Mic-E positions, objects/items, weather and telemetry; saving messages, stations and pages between runs; distance and bearing from your own position; position beacons from the phone; Android Auto station list; TCP KISS link; AIS built by the phone for boards without NMEA output.
+APRS telemetry; saving messages, stations and pages between runs; distance and bearing from your own position; position beacons from the phone; Android Auto station list; TCP KISS link; AIS built by the phone for boards without NMEA output.
 
 License: GPL-3.0-or-later.

@@ -62,6 +62,8 @@ It is made for licensed radio amateurs.
   DAPNET, CW, AIS, configuration and firmware updates.
 • Rotor box, DX cluster with tuning, SDR receivers, digital modes (CW, RTTY, PSK, FT8, FT4, WSPR, FST4W), logbook with
   QRZ, LoTW and eQSL.
+• Celestial navigation with a sextant: Sun, Moon, planets and 157 stars computed on the phone, the stars to take now,
+  lines of position and the fix.
 
 A licensed amateur radio callsign is needed to transmit: the app checks it in RadioID.net and only listens until then.
 Open source (GPL-3.0). No ads, no tracking.
@@ -79,6 +81,8 @@ Está pensada para radioaficionados con licencia.
   DAPNET, CW, AIS, configuración y actualización del firmware.
 • Caja del rotor, cluster DX con sintonía, receptores SDR, modos digitales (CW, RTTY, PSK, FT8, FT4, WSPR, FST4W) y libro de
   guardia con QRZ, LoTW y eQSL.
+• Navegación astronómica con sextante: Sol, Luna, planetas y 157 estrellas calculados en el móvil, las estrellas que conviene
+  tomar ahora, rectas de altura y situación.
 
 Para transmitir hace falta un indicativo de radioaficionado: la app lo comprueba en RadioID.net y hasta entonces solo escucha.
 Código abierto (GPL-3.0). Sin anuncios ni seguimiento.
