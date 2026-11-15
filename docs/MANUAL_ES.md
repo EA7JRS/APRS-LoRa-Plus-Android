@@ -134,7 +134,9 @@ por la Polar con la hora del paso por el meridiano. Corrección total de la aguj
 
 *Current and course to steer*: con el rumbo efectivo deseado, la velocidad en el agua, el abatimiento (+ a estribor) y la
 corriente da el rumbo verdadero a gobernar, la corrección, la velocidad efectiva y el rumbo de aguja (declinación del WMM y
-tablilla). *Mark departure* y, pasado un rato gobernando a rumbo y velocidad constantes, *From DR*: la corriente por la
+tablilla). *Fix from two bearings*: situación por dos demoras (simultáneas o trasladadas) a dos puntos de posición escrita (o el mismo dos veces), con NOW en cada demora, rumbo y velocidad efectivos y Ct.
+
+*Mark departure* y, pasado un rato gobernando a rumbo y velocidad constantes, *From DR*: la corriente por la
 diferencia entre la estima y la situación del GNSS del tracker.
 
 ## 11. Alertas

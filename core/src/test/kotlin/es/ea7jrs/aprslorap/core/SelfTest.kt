@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2577,6 +2577,36 @@ private fun testLatitude() {
     val tv = Celnav.meridianPassageJd(jdNoon, -6.28, vegaGha)
     near(Math.IEEEremainder(vegaGha(tv) - 6.28, 360.0), 0.0, 1e-4, "lat: Vega meridian passage")
     check(abs(tv - jdNoon) <= 0.51, "lat: nearest passage")
+}
+
+private fun testBearingFix() {
+    // same cases as testBearingFix of the plotter
+    val f1 = 36.50 to -6.30; val f2 = 36.45 to -6.10
+    val boat = 36.40 to -6.20
+    fun brg(a: Pair<Double, Double>, b: Pair<Double, Double>) = Current.rhumbBearing(a.first, a.second, b.first, b.second)
+    fun nm(aLat: Double, aLon: Double, b: Pair<Double, Double>) = Current.rhumbDistanceNm(aLat, aLon, b.first, b.second)
+    var f = Current.fixFromBearings(f1.first, f1.second, brg(boat, f1), f2.first, f2.second, brg(boat, f2), 0.0, 0.0)!!
+    check(nm(f.lat, f.lon, boat) < 0.02, "bearings: simultaneous fix")
+    near(f.dist2Nm, nm(boat.first, boat.second, f2), 0.02, "bearings: distance to mark 2")
+    val p1 = 36.40 to -6.40
+    val p2 = Current.rhumbDestination(p1.first, p1.second, 90.0, 3.0)
+    f = Current.fixFromBearings(f1.first, f1.second, brg(p1, f1), f1.first, f1.second, brg(p2, f1), 90.0, 3.0)!!
+    check(nm(f.lat, f.lon, p2) < 0.02, "bearings: running fix on one light")
+    check(nm(f.firstLat, f.firstLon, p1) < 0.02, "bearings: position at the first bearing")
+    check(f.cutDeg > 10, "bearings: cut")
+    f = Current.fixFromBearings(f1.first, f1.second, brg(p1, f1), f2.first, f2.second, brg(p2, f2), 90.0, 3.0)!!
+    check(nm(f.lat, f.lon, p2) < 0.02, "bearings: running fix on two lights")
+    check(Current.fixFromBearings(f1.first, f1.second, 0.0, f2.first, f2.second, 5.0, 0.0, 0.0) == null, "bearings: nearly parallel")
+    near(Current.parseCoord("36.53", true)!!, 36.53, 1e-9, "coord: decimal")
+    near(Current.parseCoord("-6,28", false)!!, -6.28, 1e-9, "coord: comma")
+    near(Current.parseCoord("36 31.8N", true)!!, 36.53, 1e-9, "coord: deg min N")
+    near(Current.parseCoord("36°31,8'N", true)!!, 36.53, 1e-9, "coord: degree sign")
+    near(Current.parseCoord("006 16.8 W", false)!!, -6.28, 1e-9, "coord: W")
+    near(Current.parseCoord("6 16 48 O", false)!!, -6.28, 1e-9, "coord: O and seconds")
+    check(Current.parseCoord("36 31.8E", true) == null, "coord: E on a latitude")
+    check(Current.parseCoord("95", true) == null, "coord: out of range")
+    check(Current.parseCoord("36 61", true) == null, "coord: minutes over 60")
+    check(Current.fixFromBearings(f1.first, f1.second, (brg(boat, f1) + 180) % 360, f2.first, f2.second, brg(boat, f2), 0.0, 0.0) == null, "bearings: wrong side")
 }
 
 private fun testCurrent() {

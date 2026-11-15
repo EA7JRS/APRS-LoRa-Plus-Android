@@ -74,6 +74,58 @@ object Current {
         return g.setDeg to g.driftKn
     }
 
+    /** Fix from two bearings (same as `fixFromBearings` of the plotter's `bearingfix`). */
+    data class BearingFix(val lat: Double, val lon: Double, val firstLat: Double, val firstLon: Double, val cutDeg: Double, val dist1Nm: Double, val dist2Nm: Double)
+
+    /**
+     * Fix from two true bearings (boat to mark): simultaneous (run 0) or a running fix, the first line advanced by the run
+     * (course made good and miles). Local plane centred on mark 2 (coastal distances). null if the cut is under 10 degrees
+     * (cutDeg of the result is then not available) or the lines meet behind the marks.
+     */
+    fun fixFromBearings(m1Lat: Double, m1Lon: Double, b1: Double, m2Lat: Double, m2Lon: Double, b2: Double, runCourseDeg: Double, runNm: Double): BearingFix? {
+        val k = cos(rad(m2Lat))
+        val x1 = (m1Lon - m2Lon) * 60.0 * k; val y1 = (m1Lat - m2Lat) * 60.0
+        val rx = runNm * sin(rad(runCourseDeg)); val ry = runNm * cos(rad(runCourseDeg))
+        val u1x = sin(rad(b1)); val u1y = cos(rad(b1)); val u2x = sin(rad(b2)); val u2y = cos(rad(b2))
+        val det = -u1x * u2y + u2x * u1y
+        var cut = abs((b2 - b1) % 180.0)
+        if (cut > 90) cut = 180 - cut
+        if (abs(det) < 1e-9 || cut < 10) return null
+        val bx = x1 + rx; val by = y1 + ry
+        val t = (bx * (-u2y) - (-u2x) * by) / det
+        val s = (u1x * by - u1y * bx) / det
+        if (t <= 0 || s <= 0) return null
+        val fx = -s * u2x; val fy = -s * u2y
+        return BearingFix(m2Lat + fy / 60.0, m2Lon + fx / (60.0 * k), m2Lat + (fy - ry) / 60.0, m2Lon + (fx - rx) / (60.0 * k), cut, t, s)
+    }
+
+    /**
+     * A latitude or longitude typed by hand: "36.53", "-6.28", "36 31.8N", "36°31,8'N", "006 17.0 W" (O = west too),
+     * degrees, minutes and seconds. null if it does not read or is out of range.
+     */
+    fun parseCoord(text: String, isLat: Boolean): Double? {
+        var t = text.trim().uppercase().replace(',', '.')
+        if (t.isEmpty()) return null
+        var sign = 1.0
+        val hemi = when { t.last().isLetter() -> t.last(); t.first().isLetter() -> t.first(); else -> null }
+        if (hemi != null) {
+            sign = when (hemi) { 'N', 'E' -> 1.0; 'S', 'W', 'O' -> -1.0; else -> return null }
+            if (isLat && hemi !in "NS" || !isLat && hemi !in "EWO") return null
+            t = if (t.last().isLetter()) t.dropLast(1) else t.drop(1)
+        }
+        val clean = buildString { for (c in t) append(if (c.isDigit() || c == '.' || c == '-') c else ' ') }.trim()
+        val parts = clean.split(' ').filter { it.isNotEmpty() }
+        if (parts.isEmpty() || parts.size > 3) return null
+        val nums = parts.map { it.toDoubleOrNull() ?: return null }
+        if (nums[0] < 0) { if (hemi != null) return null; sign = -1.0 }
+        if (nums.drop(1).any { it < 0 || it >= 60 }) return null
+        val v = sign * (abs(nums[0]) + (nums.getOrElse(1) { 0.0 }) / 60.0 + (nums.getOrElse(2) { 0.0 }) / 3600.0)
+        return if (abs(v) <= (if (isLat) 90.0 else 180.0)) v else null
+    }
+
+    /** Angle of cut of two bearings, 0..90. */
+    fun cutAngle(b1: Double, b2: Double): Double { var c = abs((b2 - b1) % 180.0); if (c > 90) c = 180 - c; return c }
+
     /** True course to steer to make good cogDeg: Pair(heading, SOG); null if the current crosses faster than the boat or stops it. */
     fun courseToSteer(cogDeg: Double, stwKn: Double, leewayDeg: Double, c: Vec): Pair<Double, Double>? {
         if (stwKn <= 0) return null

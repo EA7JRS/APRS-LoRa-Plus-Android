@@ -190,6 +190,50 @@ fun AstroTab() {
     var curRv by rememberSaveable { mutableStateOf("") }
     var curOut by rememberSaveable { mutableStateOf("Course to steer: the course you want to make good, the speed through the water, the leeway (+ to starboard) and the current.") }
 
+    var bm1Lat by rememberSaveable { mutableStateOf("") }
+    var bm1Lon by rememberSaveable { mutableStateOf("") }
+    var bm2Lat by rememberSaveable { mutableStateOf("") }
+    var bm2Lon by rememberSaveable { mutableStateOf("") }
+    var bB1 by rememberSaveable { mutableStateOf("") }
+    var bB2 by rememberSaveable { mutableStateOf("") }
+    var bT1 by rememberSaveable { mutableStateOf(0L) }
+    var bT2 by rememberSaveable { mutableStateOf(0L) }
+    var bCourse by rememberSaveable { mutableStateOf("") }
+    var bSpeed by rememberSaveable { mutableStateOf("") }
+    var bCt by rememberSaveable { mutableStateOf("0") }
+    var bOut by rememberSaveable { mutableStateOf("Two bearings of known points (the same point twice for a running fix). Positions as 36 31.8N / 006 17.0W or decimal degrees.") }
+
+    /** Fix from two bearings, simultaneous or a running fix, as the plotter's Carta > Demoras. */
+    fun bearingFix() {
+        val la1 = Current.parseCoord(bm1Lat, true); val lo1 = Current.parseCoord(bm1Lon, false)
+        if (la1 == null || lo1 == null) { bOut = "Type the position of point 1."; return }
+        val la2 = if (bm2Lat.isBlank()) la1 else Current.parseCoord(bm2Lat, true)
+        val lo2 = if (bm2Lon.isBlank()) lo1 else Current.parseCoord(bm2Lon, false)
+        if (la2 == null || lo2 == null) { bOut = "Point 2 does not read (leave it empty to use point 1 again)."; return }
+        val b1 = bB1.replace(',', '.').toDoubleOrNull(); val b2 = bB2.replace(',', '.').toDoubleOrNull()
+        if (b1 == null || b2 == null || b1 < 0 || b1 >= 360 || b2 < 0 || b2 >= 360) { bOut = "Type both bearings (0 to 359°)."; return }
+        val t2 = if (bT2 != 0L) bT2 else System.currentTimeMillis()
+        var run = 0.0
+        val course = bCourse.replace(',', '.').toDoubleOrNull() ?: 0.0
+        if (bT1 != 0L && t2 > bT1) {
+            val sp = bSpeed.replace(',', '.').toDoubleOrNull()
+            if (bCourse.isBlank() || sp == null) { bOut = "Bearings at different times: type the course and speed made good between them."; return }
+            run = sp * (t2 - bT1) / 3_600_000.0
+        }
+        val ct = bCt.replace(',', '.').toDoubleOrNull() ?: 0.0
+        val f = Current.fixFromBearings(la1, lo1, (b1 + ct + 360) % 360, la2, lo2, (b2 + ct + 360) % 360, course, run)
+        if (f == null) {
+            val cut = Current.cutAngle(b1, b2)
+            bOut = if (cut < 10) String.format(Locale.US, "The lines are nearly parallel (cut %.0f°): pick points further apart or wait for the bearing to change.", cut)
+                   else "The lines meet behind the points: check the bearings and the total correction."
+            return
+        }
+        val sb = StringBuilder("Fix: " + pos(f.lat, f.lon) + String.format(Locale.US, " · %.1f nm from point 2 · cut %.0f°%s", f.dist2Nm, f.cutDeg, if (f.cutDeg < 30) " (poor cut)" else ""))
+        if (run > 0) sb.append(String.format(Locale.US, "\nRun between the bearings: %.1f nm at %03.0f° (first line advanced).", run, course))
+        Own.position()?.let { me -> sb.append(String.format(Locale.US, "\nThe tracker's GNSS is %.2f nm from that fix.", Current.rhumbDistanceNm(f.lat, f.lon, me.first, me.second))) }
+        bOut = sb.toString()
+    }
+
     /** True course to steer with current and leeway, the compass course (variation and deviation card) and the speed made good. */
     fun steer() {
         val cog = curCog.replace(',', '.').toDoubleOrNull()
@@ -418,6 +462,45 @@ fun AstroTab() {
                 OutlinedButton(onClick = { fromDr() }) { Text("From DR") }
             }
             Text(curOut, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+            HorizontalDivider(Modifier.padding(top = 8.dp))
+        }
+        item {
+            Text("Fix from two bearings", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+            val dec = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            val txt = KeyboardOptions(keyboardType = KeyboardType.Text)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(bm1Lat, { bm1Lat = it.take(16) }, label = { Text("Point 1 lat") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = txt)
+                OutlinedTextField(bm1Lon, { bm1Lon = it.take(16) }, label = { Text("Point 1 lon") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = txt)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(bB1, { bB1 = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(5) }, label = { Text("Bearing 1, °") }, singleLine = true,
+                    modifier = Modifier.weight(1f), keyboardOptions = dec)
+                OutlinedButton(onClick = { bT1 = System.currentTimeMillis() }) { Text("NOW") }
+                Text(if (bT1 != 0L) utc(bT1) else "no time", fontSize = 12.sp, color = Alp.Muted)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(bm2Lat, { bm2Lat = it.take(16) }, label = { Text("Point 2 lat (empty = 1)") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = txt)
+                OutlinedTextField(bm2Lon, { bm2Lon = it.take(16) }, label = { Text("Point 2 lon") }, singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = txt)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(bB2, { bB2 = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(5) }, label = { Text("Bearing 2, °") }, singleLine = true,
+                    modifier = Modifier.weight(1f), keyboardOptions = dec)
+                OutlinedButton(onClick = { bT2 = System.currentTimeMillis() }) { Text("NOW") }
+                Text(if (bT2 != 0L) utc(bT2) else "now", fontSize = 12.sp, color = Alp.Muted)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                OutlinedTextField(bCourse, { bCourse = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(5) }, label = { Text("Course made good, °") }, singleLine = true,
+                    modifier = Modifier.weight(1f), keyboardOptions = dec)
+                OutlinedTextField(bSpeed, { bSpeed = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(4) }, label = { Text("Speed, kn") }, singleLine = true,
+                    modifier = Modifier.weight(1f), keyboardOptions = dec)
+                OutlinedTextField(bCt, { bCt = it.filter { c -> c.isDigit() || c == '.' || c == ',' || c == '-' }.take(5) }, label = { Text("Ct, ° (+E)") }, singleLine = true,
+                    modifier = Modifier.weight(1f), keyboardOptions = txt)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                Button(onClick = { bearingFix() }) { Text("Fix") }
+                OutlinedButton(onClick = { bT1 = 0L; bT2 = 0L; bOut = "Times cleared." }) { Text("Clear times") }
+            }
+            Text(bOut, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
             HorizontalDivider(Modifier.padding(top = 8.dp))
         }
         item {
