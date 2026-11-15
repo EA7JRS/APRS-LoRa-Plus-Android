@@ -4,7 +4,7 @@
 
 Android companion for the [APRS LoRa+](https://github.com/EA7JRS/APRS-LoRa-Plus) tracker (ESP32 firmware). It talks to the tracker over **Bluetooth LE (KISS)**.
 
-Status: **5.4.5**, same version number as the tracker. The pure Kotlin core is tested (about 1500 checks); the Android app builds in the CI but has not been tried on a phone yet.
+Status: **5.4.6**, same version number as the tracker. The pure Kotlin core is tested (about 1500 checks); the Android app builds in the CI but has not been tried on a phone yet.
 
 ## What it does (version 1 plan)
 - Connects to the tracker over BLE (KISS service `00000001-ba2a-46c9-ae49-01b0961f68bb`) and keeps the link in a foreground service.
