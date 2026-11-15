@@ -2290,6 +2290,10 @@ private fun testMtCheckApp() {
     eq(MtCheck.validKey("0123456789abcdef0123456789ABCDEF01234567"), true, "40 hex key ok")
     eq(MtCheck.validKey("123"), false, "short key"); eq(MtCheck.validKey("0123456789abcdef0123456789ABCDEF0123456g"), false, "bad char")
     eq(MtCheck.searchUrl("abc", 224123456L), "https://services.marinetraffic.com/api/shipsearch/abc?mmsi=224123456&protocol=jsono", "search url")
+    eq(MtCheck.webUrl(224123456L), "https://www.marinetraffic.com/es/ais/details/ships/mmsi:224123456", "MarineTraffic page by MMSI")
+    eq(MtCheck.webUrl(224123456L, 715183L), "https://www.marinetraffic.com/es/ais/details/ships/shipid:715183", "MarineTraffic page by shipid")
+    eq(MtCheck.shipIdFrom("https://www.marinetraffic.com/es/ais/details/ships/shipid:715183/mmsi:224123456/imo:0/vessel:SEA_BREEZE"), 715183L, "shipid from link")
+    check(MtCheck.shipIdFrom(" 715183 ") == 715183L && MtCheck.shipIdFrom("") == 0L && MtCheck.shipIdFrom("mmsi:224123456") == 0L && MtCheck.shipIdFrom(null) == 0L, "shipid from text")
     val two = "[{\"SHIPNAME\":\"SEA BREEZE\",\"MMSI\":\"224123456\",\"IMO\":\"0\",\"CALLSIGN\":\"EBXY\"},{\"SHIPNAME\":\"X\",\"MMSI\":\"224123456\",\"CALLSIGN\":\"EA1234\"}]"
     eq(MtCheck.parse(200, two, "ebxy"), MtCheck.Result.MATCH to "EBXY", "match first")
     eq(MtCheck.parse(200, two, "EA1234"), MtCheck.Result.MATCH to "EA1234", "match second")

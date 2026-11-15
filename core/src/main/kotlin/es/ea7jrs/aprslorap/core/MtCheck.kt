@@ -20,6 +20,22 @@ object MtCheck {
     fun searchUrl(key: String, mmsi: Long): String =
         "https://services.marinetraffic.com/api/shipsearch/$key?mmsi=$mmsi&protocol=jsono"
 
+    /**
+     * Public page of the vessel on the MarineTraffic website, to check it by hand without a key (Manuel, 2026-11-15): by its
+     * shipid (MarineTraffic's own number) if known, else by the MMSI. Its terms (Kpler, clause 7) forbid reading the website
+     * automatically: the person looks and confirms.
+     */
+    fun webUrl(mmsi: Long, shipId: Long = 0): String =
+        if (shipId > 0) "https://www.marinetraffic.com/es/ais/details/ships/shipid:$shipId"
+        else String.format("https://www.marinetraffic.com/es/ais/details/ships/mmsi:%09d", mmsi)
+
+    /** The shipid from a pasted link ("…ships/shipid:123456/…") or a bare number; 0 = none. */
+    fun shipIdFrom(text: String?): Long {
+        val t = text?.trim() ?: return 0
+        val digits = Regex("shipid:\\s*(\\d{1,10})").find(t)?.groupValues?.get(1) ?: if (t.isNotEmpty() && t.all { it.isDigit() }) t.take(10) else return 0
+        return digits.toLongOrNull()?.takeIf { it in 1..0xFFFFFFFFL } ?: 0
+    }
+
     /** A-Z 0-9, at most 7. */
     private fun clean(s: String?): String =
         (s ?: "").uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }.take(7)
