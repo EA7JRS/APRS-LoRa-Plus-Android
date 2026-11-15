@@ -448,4 +448,42 @@ object Navtex {
         val v = deg + min / 60.0
         return (if (s[p] == neg) -v else v) to p + 1
     }
+
+    // ------------------------------------------------------------------ NRX (NMEA 0183) for the plotter and other programs
+
+    /**
+     * The message as NRX sentences in the form of Furuno's NAVTEX receivers ($CRNRX,GA05,line,lines,518,dd,mm,yyyy,hhmmss,error,text), one
+     * line of text per sentence (long lines split so no sentence passes 82 characters); reserved characters as ^hh (IEC 61162-1).
+     */
+    fun nrx(m: Message, khz: Double): List<String> {
+        val code = if (m.lostHeader) "??00" else m.id
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = m.timeMs }
+        val f = if (khz > 4000) "4209" else khz.toInt().toString()
+        val head = String.format(java.util.Locale.US, "CRNRX,%s,%%d,%%d,%s,%02d,%02d,%04d,%02d%02d%02d,0.0,", code, f, c.get(java.util.Calendar.DAY_OF_MONTH),
+            c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND))
+        val room = 76 - head.length                                       // 82 = "$" + head (its two "%d" up to 3 digits each) + text + "*hh"
+        val pieces = ArrayList<String>()
+        for (line in m.text.split('\n')) {
+            var rest = escapeNmea(line)
+            if (rest.isEmpty()) { pieces.add(""); continue }
+            while (rest.isNotEmpty()) {
+                var n = minOf(room, rest.length)
+                if (n < rest.length) {
+                    val sp = rest.lastIndexOf(' ', n - 1); if (sp > n / 2) n = sp + 1                            // at a space when possible
+                    val caret = rest.lastIndexOf('^', n - 1); if (caret >= n - 2) n = caret                        // never inside ^hh
+                }
+                pieces.add(rest.substring(0, n)); rest = rest.substring(n)
+            }
+        }
+        val total = pieces.size.coerceIn(1, 999)
+        return pieces.take(999).mapIndexed { i, p -> Nmea.sentence(String.format(java.util.Locale.US, head, i + 1, total) + p).trimEnd() }
+    }
+
+    private fun escapeNmea(s: String): String {
+        val o = StringBuilder()
+        for (ch in s) {
+            if (ch in ",*\$!\\^~" || ch.code < 32 || ch.code > 126) o.append(String.format(java.util.Locale.US, "^%02X", ch.code and 0xff)) else o.append(ch)
+        }
+        return o.toString()
+    }
 }

@@ -163,6 +163,8 @@ object AppState {
     val fwMessage = MutableStateFlow("")
 
     @Volatile var controller: Controller? = null
+    /** The NMEA TCP server when it is on (NAVTEX messages go out as NRX for the plotter and other programs). */
+    @Volatile var nmeaOut: NmeaServer? = null
     /** Application context for helpers that run from the Controller (internet weather). */
     @Volatile var appContext: android.content.Context? = null
     @Volatile var notifier: Notifier? = null

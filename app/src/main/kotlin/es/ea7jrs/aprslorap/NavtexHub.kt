@@ -49,6 +49,7 @@ object NavtexHub {
             messages.value = (listOf(e) + rest).take(MAX)
         }
         save()
+        AppState.nmeaOut?.let { srv -> for (l in Navtex.nrx(m, khz)) srv.send(l) }      // to the plotter and other programs
         if (m.urgent && settings.navtexAlarm) AlertCenter.onNavtex(e)
     }
 

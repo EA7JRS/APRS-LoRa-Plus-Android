@@ -91,6 +91,7 @@ class TrackerService : Service() {
         }
         if (settings.nmeaServer) nmeaServer = NmeaServer(settings.nmeaPort) { AppState.nmeaStatus.value = it }.also { it.start() }
         else AppState.nmeaStatus.value = "Off"
+        AppState.nmeaOut = nmeaServer
         if (settings.mockLocation) mock = MockLocation(this) { AppState.mockStatus.value = it }.takeIf { it.start() }
         else AppState.mockStatus.value = "Off"
         AppState.appContext = applicationContext
@@ -122,7 +123,7 @@ class TrackerService : Service() {
         isClient?.stop(); isClient = null
         CwEngine.stop()
         controller?.stop(); controller = null
-        nmeaServer?.stop(); nmeaServer = null
+        nmeaServer?.stop(); nmeaServer = null; AppState.nmeaOut = null
         mock?.stop(); mock = null
         RotctlLink.stopAll()
         ExtraReceivers.stop()

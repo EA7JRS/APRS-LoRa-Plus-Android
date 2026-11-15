@@ -2704,5 +2704,11 @@ private fun testNavtex() {
     check(stations.size == 3 && kotlin.math.abs(stations[0].lon + (5 + 35 / 60.0)) < 1e-9, "navtex stations csv")
     check(Navtex.findStation(stations, 'G', 518.0, 36.5, -6.0)?.name == "Tarifa" && Navtex.findStation(stations, 'G', 518.0, 41.0, 28.0)?.name == "Somewhere", "navtex station nearest")
     val pos = Navtex.positions("A 36-07.5N 005-21.2W B 3607.5N 00521.2W C 42 11,718N 009 59,778E D 2026 10-20 NM 36-70.0N 004-10.0W")
+    val nrxMsg = Navtex.Message('G', 'A', 5, "TARIFA NAVTEX\nWRECK IN 36-07.5N 005-21.2W, KEEP CLEAR\n" + "X".repeat(150), false, false, t0 + 300_000L)
+    val nrx = Navtex.nrx(nrxMsg, 518.0)
+    check(nrx.size >= 6 && nrx.all { it.length <= 82 && it.startsWith("\$CRNRX,GA05,") } && nrx[0].startsWith("\$CRNRX,GA05,1,${nrx.size},518,15,11,2026,120500,0.0,TARIFA NAVTEX*"),
+        "navtex nrx: $nrx")
+    check(nrx.joinToString("") { it.substring(it.indexOf(",0.0,") + 5, it.indexOf('*')) }.contains("005-21.2W^2C KEEP CLEAR"), "navtex nrx escapes the comma")
+    check(nrx.all { val b = it.substring(1, it.indexOf('*')); it.endsWith(String.format("*%02X", Nmea.checksum(b))) }, "navtex nrx checksums")
     check(pos.size == 3 && kotlin.math.abs(pos[1].first - (36 + 7.5 / 60)) < 1e-9 && kotlin.math.abs(pos[1].second + (5 + 21.2 / 60)) < 1e-9, "navtex positions: $pos")
 }
