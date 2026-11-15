@@ -87,8 +87,9 @@ object DscHub {
             c.tc1 == Dsc.TC_DISTRESS_RELAY -> "Distress relay by ${c.selfId} (${Dsc.mmsiKind(c.selfId)})"
             else -> "Distress call from ${c.selfId}"
         }
+        val la = c.lat; val lo = c.lon
         val text = listOfNotNull(what, c.nature?.let { Dsc.natureName(it) },
-            if (c.lat != null && c.lon != null) "position " + Fmt.latLon(c.lat, true) + " " + Fmt.latLon(c.lon, false) + (c.time?.let { " at ${it.take(2)}:${it.drop(2)} UTC" } ?: "") else "position not given",
+            if (la != null && lo != null) "position " + Fmt.latLon(la, true) + " " + Fmt.latLon(lo, false) + (c.time?.let { " at ${it.take(2)}:${it.drop(2)} UTC" } ?: "") else "position not given",
             c.subsequent?.let { "then " + Dsc.tc1Name(it) }).joinToString(" · ")
         return EmergencyAlert("dsc:$ship", AlertKind.DSC, "MMSI $ship", text, false, ship.substringBefore('-').toLongOrNull(), c.timeMs, false)
     }
