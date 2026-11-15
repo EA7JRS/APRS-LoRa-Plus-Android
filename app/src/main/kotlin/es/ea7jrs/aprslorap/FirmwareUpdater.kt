@@ -113,7 +113,7 @@ object FirmwareUpdater {
         try {
             if (c == null || ble == null) throw IllegalStateException("no link with the tracker")
             status("Downloading ${r.version}...")
-            val image = httpGet(r.url, 16 * 1024 * 1024) { AppState.fwProgress.value = it }
+            val image = httpGet(r.url, 16 * 1024 * 1024, progress = { AppState.fwProgress.value = it })
             if (image.size.toLong() != r.size) throw IllegalStateException("downloaded ${image.size} bytes, announced ${r.size}")
             if (FirmwareSite.sha256Hex(image) != r.sha256) throw IllegalStateException("the download does not match its SHA-256")
             synchronized(lock) { started = false; finished = false; failure = null; window = OtaWindow(image.size) }
