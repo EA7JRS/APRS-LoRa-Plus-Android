@@ -133,6 +133,8 @@ object Dsp {
         val audioRate: Int get() = if (mode == "WFM") WIDE_AUDIO_RATE else NARROW_AUDIO_RATE
         /** NFM only: the raw FM discriminator at 48 kHz (±5 kHz deviation = ±1), for digital voice decoders (DMR, D-STAR...). */
         var discriminatorTap: ((FloatArray, Int) -> Unit)? = null
+        /** Complex channel at 48 kS/s centred on the tuned frequency (not in WFM): the VOR carrier finder (ppm calibration). */
+        var basebandTap: ((FloatArray, FloatArray, Int) -> Unit)? = null
 
         private val nco = Nco(INPUT_RATE.toDouble())
         private val firA = CFir(lowPass(41, 80_000.0, INPUT_RATE.toDouble()), 5)
@@ -207,6 +209,7 @@ object Dsp {
                 return m
             }
             val nb = firB.process(aRe, aIm, na, cRe, cIm)                     // 48 kS/s channel
+            basebandTap?.invoke(cRe, cIm, nb)
             var p = 0.0
             for (i in 0 until nb) p += cRe[i] * cRe[i] + cIm[i] * cIm[i]
             levelDb = 10 * log10(p / max(nb, 1) + 1e-12)

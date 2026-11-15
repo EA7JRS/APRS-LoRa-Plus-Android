@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex(); testNavaids()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2711,4 +2711,27 @@ private fun testNavtex() {
     check(nrx.joinToString("") { it.substring(it.indexOf(",0.0,") + 5, it.indexOf('*')) }.contains("005-21.2W^2C KEEP CLEAR"), "navtex nrx escapes the comma")
     check(nrx.all { val b = it.substring(1, it.indexOf('*')); it.endsWith(String.format("*%02X", Nmea.checksum(b))) }, "navtex nrx checksums")
     check(pos.size == 3 && kotlin.math.abs(pos[1].first - (36 + 7.5 / 60)) < 1e-9 && kotlin.math.abs(pos[1].second + (5 + 21.2 / 60)) < 1e-9, "navtex positions: $pos")
+}
+
+private fun testNavaids() {
+    val list = Navaids.parse("# comment\nVJF;Vejer;VOR-DME;117800;36.23400;-5.97600;1270;ES\nSVL;Sevilla;VOR-DME;116700;37.42400;-5.93900;100;ES\nNDB;Bad;NDB;300;36.0;-6.0;;ES\nshort;line")
+    check(list.size == 2 && list[0].hz == 117_800_000L, "navaids parse (VOR band only)")
+    val near = Navaids.nearest(list, 36.53, -6.29, altM = 5.0, antennaM = 10.0)
+    check(near.size == 2 && near[0].vor.ident == "VJF" && near[0].km in 40.0..50.0 && near[0].bearing in 130.0..150.0 && near[0].inRange, "navaids nearest: $near")
+    check(near[0].elevationDeg > 0 && near[1].elevationDeg < near[0].elevationDeg, "navaids elevation")
+    near(Navaids.ppm(-117.8, 117.8e6), 1.0, 1e-9, "ppm: carrier 117.8 Hz low at 117.8 MHz = +1 ppm")
+    // carrier 1234.5 Hz off with AM and noise, 48 kS/s, 3 frames
+    val m = Navaids.PpmMeter()
+    val r = java.util.Random(3)
+    val n = 16_384 * 3
+    val xr = FloatArray(n); val xi = FloatArray(n)
+    for (i in 0 until n) {
+        val t = i / 48_000.0
+        val a = 1.0 + 0.3 * kotlin.math.sin(2 * Math.PI * 30 * t) + 0.3 * kotlin.math.sin(2 * Math.PI * 9960 * t)
+        val ph = 2 * Math.PI * 1234.5 * t
+        xr[i] = (0.2 * a * kotlin.math.cos(ph) + 0.3 * r.nextGaussian()).toFloat(); xi[i] = (0.2 * a * kotlin.math.sin(ph) + 0.3 * r.nextGaussian()).toFloat()
+    }
+    m.feed(xr, xi, n)
+    val res = m.result()
+    check(res != null && kotlin.math.abs(res.offsetHz - 1234.5) < 1.0 && res.snrDb > 20 && res.frames == 3, "ppm meter: $res")
 }

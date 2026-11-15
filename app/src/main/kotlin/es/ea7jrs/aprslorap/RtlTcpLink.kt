@@ -73,6 +73,12 @@ internal class RtlTcpLink(
 
     fun squelch(db: Double) { rx.squelchDb = db }
 
+    /** Frequency correction now, without reconnecting (rtl_tcp command 5). */
+    fun setPpm(ppm: Int) { q.offer(Sdr.RtlTcp.cmd(Sdr.RtlTcp.SET_FREQ_CORRECTION, ppm)) }
+
+    /** The complex 48 kS/s channel for [Navaids.PpmMeter] (null stops it). */
+    fun baseband(tap: ((FloatArray, FloatArray, Int) -> Unit)?) { rx.basebandTap = tap }
+
     override fun record(on: Boolean) {
         synchronized(this) {
             if (on && wav == null) {

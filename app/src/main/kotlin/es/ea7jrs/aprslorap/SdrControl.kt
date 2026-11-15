@@ -104,6 +104,8 @@ object SdrControl {
     }
 
     fun tune(hz: Long) { lastSentHz = hz; link?.tune(hz) }
+    /** The app's own RTL-SDR receiver when it is the link (VOR calibration). */
+    internal fun rtl(): RtlTcpLink? = link as? RtlTcpLink
     fun mode(mode: String, bwHz: Int) { link?.mode(mode, bwHz) }
     fun gain(g: Int) { link?.gain(g) }
     fun record(on: Boolean) { link?.record(on) }
