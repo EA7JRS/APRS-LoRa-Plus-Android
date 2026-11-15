@@ -10,8 +10,8 @@ and drives the **APRS LoRa+ Rotor** box. The app's screens are in English.
 Quick guide: [QUICK_GUIDE_EN.md](QUICK_GUIDE_EN.md). Spanish: [MANUAL_ES.md](MANUAL_ES.md). BLE protocol of the tracker:
 [BLE_CONTROL.md](BLE_CONTROL.md). Which app screen covers each tracker function: [APP_COVERAGE.md](APP_COVERAGE.md).
 
-**Status**: builds in the CI (debug APK and Play AAB as artefacts); the pure Kotlin core passes its checks. **Not yet tried
-on a phone** with a real tracker.
+**Status**: builds in the CI (debug APK and Play AAB as artefacts) and is in Google Play internal testing; the pure Kotlin
+core passes its checks. Most functions **have not been tried yet on a phone** with real hardware.
 
 ## 1. First start
 

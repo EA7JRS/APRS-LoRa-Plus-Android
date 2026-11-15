@@ -10,8 +10,9 @@ maneja la caja **APRS LoRa+ Rotor**. Las pantallas de la app están en inglés; 
 Guía rápida: [GUIA_RAPIDA.md](GUIA_RAPIDA.md). Inglés: [USER_MANUAL_EN.md](USER_MANUAL_EN.md). Protocolo BLE del tracker:
 [BLE_CONTROL.md](BLE_CONTROL.md). Qué pantalla de la app cubre cada función del tracker: [APP_COVERAGE.md](APP_COVERAGE.md).
 
-**Estado**: compila en la CI (APK de depuración y AAB de Google Play como artefactos); el núcleo en Kotlin pasa sus
-comprobaciones. **Sin probar todavía en un móvil** con un tracker real.
+**Estado**: compila en la CI (APK de depuración y AAB de Google Play como artefactos) y está en las pruebas internas de
+Google Play; el núcleo en Kotlin pasa sus comprobaciones. La mayoría de las funciones están **sin probar todavía en un
+móvil** con equipos reales.
 
 ## 1. Primer arranque
 
