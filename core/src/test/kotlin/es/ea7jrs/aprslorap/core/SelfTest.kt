@@ -2512,6 +2512,23 @@ private fun testCelnav() {
         val c = java.util.GregorianCalendar(java.util.TimeZone.getTimeZone("UTC")); c.clear(); c.set(y, mo - 1, d, h, 0, 0)
         return Celnav.julianDay(c.timeInMillis)
     }
+    // Moon against JPL DE421 and planets against PyEphem (same values as the plotter core)
+    run {
+        val j = jd(2026, 11, 15, 12)
+        val m = Celnav.moonGhaDec(j)
+        near(m.gha, 290.5971, 0.005, "celnav moon GHA"); near(m.dec, -21.8661, 0.005, "celnav moon dec"); near(m.dist, 403893.0, 60.0, "celnav moon distance")
+        val ref = listOf(Triple(33.8976, -10.1333, 0.3331), Triple(86.1122, 14.8131, 1.3117), Triple(86.2542, 13.6086, 5.2753), Triple(225.7374, 0.9423, 8.6920))
+        for ((i, p) in Celnav.Planet.values().withIndex()) {
+            val b = Celnav.planetGhaDec(p, j)
+            near(b.gha, ref[i].first, 0.002, "celnav ${p.label} GHA"); near(b.dec, ref[i].second, 0.002, "celnav ${p.label} dec"); near(b.dist, ref[i].third, 0.0005, "celnav ${p.label} distance")
+        }
+        val j2 = jd(2035, 1, 9, 0)
+        val m2 = Celnav.moonGhaDec(j2)
+        near(m2.gha, 186.2497, 0.005, "celnav moon GHA 2035"); near(m2.dec, -18.3677, 0.005, "celnav moon dec 2035")
+        val s2 = Celnav.planetGhaDec(Celnav.Planet.SATURN, j2)
+        near(s2.gha, 343.0114, 0.002, "celnav Saturn GHA 2035"); near(s2.dec, 19.8376, 0.002, "celnav Saturn dec 2035")
+        near(Celnav.moonHpArcmin(384400.0), 57.04, 0.02, "celnav moon HP"); near(Celnav.planetHpArcmin(0.3331), 0.44, 0.01, "celnav Venus HP")
+    }
     val tol = 0.1 / 60
     var s = Celnav.sunGhaDec(jd(2026, 1, 1, 0))
     near(s.gha, dm(179, 10.0), tol, "celnav sun GHA 1 Jan 0h"); near(s.dec, -dm(23, 1.0), tol, "celnav sun dec 1 Jan 0h")

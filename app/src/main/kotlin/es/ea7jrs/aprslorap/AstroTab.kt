@@ -43,13 +43,13 @@ object AstroSights {
 }
 
 /**
- * Celestial navigation with a sextant, as Carta > Astro of the APRS LoRa+ plotter: the Sun (lower or upper limb) or one of the
+ * Celestial navigation with a sextant, as Carta > Astro of the APRS LoRa+ plotter: the Sun or the Moon (lower or upper limb), Venus, Mars, Jupiter, Saturn or one of the
  * 57 navigational stars and Polaris, the altitude corrections, the computed altitude, azimuth and intercept, and the fix from
  * two or more lines (earlier lines are advanced for the run since they were taken). Computed on the phone to almanac precision.
  */
 @Composable
 fun AstroTab() {
-    var body by rememberSaveable { mutableStateOf(0) }            // 0 Sun lower limb, 1 Sun upper limb, 2 star
+    var body by rememberSaveable { mutableStateOf(0) }            // 0 / 1 Sun lower / upper limb, 2 / 3 Moon, 4-7 Venus, Mars, Jupiter, Saturn, 8 star
     var star by rememberSaveable { mutableStateOf(0) }
     var deg by rememberSaveable { mutableStateOf("") }
     var min by rememberSaveable { mutableStateOf("") }
@@ -65,9 +65,16 @@ fun AstroTab() {
     fun dm(v: Double): String { val a = abs(v); val d = a.toInt(); return String.format(Locale.US, "%d° %04.1f'", d, (a - d) * 60) }
     fun pos(lat: Double, lon: Double) = dm(lat) + (if (lat >= 0) " N  " else " S  ") + dm(lon) + (if (lon >= 0) " E" else " W")
     fun utc(ms: Long): String { val s = (ms / 1000) % 86400; return String.format(Locale.US, "%02d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60) }
-    fun ghaDec(jd: Double): Celnav.GhaDec =
-        if (body < 2) Celnav.sunGhaDec(jd)
-        else { val p = Celnav.starShaDec(Celnav.STARS[star], jd); Celnav.GhaDec((Celnav.ariesGha(jd) + p.sha) % 360.0, p.dec) }
+    val planets = Celnav.Planet.values()
+    val bodyNames = listOf("Sun (lower limb)", "Sun (upper limb)", "Moon (lower limb)", "Moon (upper limb)", "Venus", "Mars", "Jupiter", "Saturn", "Star")
+    val shortNames = listOf("Sun", "Sun", "Moon", "Moon", "Venus", "Mars", "Jupiter", "Saturn")
+    /** GHA, declination, semi-diameter and horizontal parallax (arc minutes) of the chosen body */
+    fun ephem(jd: Double): DoubleArray = when {
+        body < 2 -> { val g = Celnav.sunGhaDec(jd); doubleArrayOf(g.gha, g.dec, Celnav.sunSemiDiameterArcmin(jd), 0.15) }
+        body < 4 -> { val m = Celnav.moonGhaDec(jd); doubleArrayOf(m.gha, m.dec, Celnav.moonSdArcmin(m.dist), Celnav.moonHpArcmin(m.dist)) }
+        body < 8 -> { val b = Celnav.planetGhaDec(planets[body - 4], jd); doubleArrayOf(b.gha, b.dec, 0.0, Celnav.planetHpArcmin(b.dist)) }
+        else -> { val p = Celnav.starShaDec(Celnav.STARS[star], jd); doubleArrayOf((Celnav.ariesGha(jd) + p.sha) % 360.0, p.dec, 0.0, 0.0) }
+    }
     fun now() { timeMs = System.currentTimeMillis(); hms = utc(timeMs).replace(":", "") }
 
     fun fix(me: Pair<Double, Double>, list: List<AstroSights.Lop>) {
@@ -92,17 +99,17 @@ fun AstroTab() {
         val hs = num(deg) + num(min) / 60.0
         if (hs <= 0 || hs >= 90) { out = "Sextant altitude between 0 and 90 degrees."; return }
         val jd = Celnav.julianDay(t)
-        val g = ghaDec(jd)
-        val sun = body < 2
+        val g = ephem(jd)
+        var sd = g[2]
+        if (body == 2 || body == 3) sd *= 1.0 + kotlin.math.sin(Math.toRadians(hs)) * kotlin.math.sin(Math.toRadians(g[3] / 60.0))   // the Moon is nearer when high
         val ho = Celnav.observedAltitude(hs, num(index), num(eye),
-            if (!sun) Celnav.Limb.CENTER else if (body == 0) Celnav.Limb.LOWER else Celnav.Limb.UPPER,
-            if (sun) Celnav.sunSemiDiameterArcmin(jd) else 0.0, if (sun) 0.15 else 0.0)
-        val s = Celnav.reduceSight(me.first, me.second, g.gha, g.dec, ho)
+            if (body >= 4) Celnav.Limb.CENTER else if (body % 2 == 0) Celnav.Limb.LOWER else Celnav.Limb.UPPER, sd, g[3])
+        val s = Celnav.reduceSight(me.first, me.second, g[0], g[1], ho)
         if (s.hc < 0 || abs(s.interceptNm) > 120) {
             out = String.format(Locale.US, "It does not fit: at that time the body would be at %.0f° and the sight gives %.0f° (%.0f nm apart). Check the body, the UTC time and the altitude.", s.hc, ho, abs(s.interceptNm))
             return
         }
-        val name = if (sun) "Sun" else Celnav.STARS[star].name
+        val name = if (body < 8) shortNames[body] else Celnav.STARS[star].name
         val list = (AstroSights.list.value + AstroSights.Lop(s, name, t, me.first, me.second)).takeLast(AstroSights.MAX)
         AstroSights.list.value = list
         out = String.format(Locale.US, "%s %s UTC · observed %s · computed %s · azimuth %03.0f°\nIntercept: %.1f nm %s.",
@@ -117,18 +124,18 @@ fun AstroTab() {
             Text(if (me != null) "Assumed position: " + pos(me.first, me.second) else "No position: tracker GNSS without a fix and no locator in Spotting",
                 fontSize = 12.sp, color = if (me != null) Alp.Muted else Alp.Amber)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                OutlinedButton(onClick = { body = (body + 1) % 3 }) { Text(when (body) { 0 -> "Sun (lower limb)"; 1 -> "Sun (upper limb)"; else -> "Star" }) }
-                OutlinedButton(onClick = { body = 2; star = (star + Celnav.STARS.size - 1) % Celnav.STARS.size }) { Text("<") }
-                OutlinedButton(onClick = { body = 2; star = (star + 1) % Celnav.STARS.size }) { Text(">") }
+                OutlinedButton(onClick = { body = (body + 1) % 9 }) { Text(bodyNames[body]) }
+                OutlinedButton(onClick = { body = 8; star = (star + Celnav.STARS.size - 1) % Celnav.STARS.size }) { Text("<") }
+                OutlinedButton(onClick = { body = 8; star = (star + 1) % Celnav.STARS.size }) { Text(">") }
             }
-            if (body == 2) {
-                val st = Celnav.STARS[star]
+            if (body >= 2) {
                 val hint = me?.let {
-                    val jd = Celnav.julianDay(System.currentTimeMillis()); val p = Celnav.starShaDec(st, jd)
-                    val aa = Celnav.bodyAltAz((Celnav.ariesGha(jd) + p.sha) % 360.0, p.dec, it.first, it.second)
+                    val g = ephem(Celnav.julianDay(System.currentTimeMillis()))
+                    val aa = Celnav.bodyAltAz(g[0], g[1], it.first, it.second)
                     if (aa.alt > 0) String.format(Locale.US, " · now: altitude %.0f°, azimuth %03.0f°", aa.alt, aa.az) else " · now below the horizon"
                 } ?: ""
-                Text(String.format(Locale.US, "%s (mag %.1f)%s", st.name, st.mag, hint), fontSize = 13.sp, color = Alp.Muted)
+                val label = if (body < 8) shortNames[body] else String.format(Locale.US, "%s (mag %.1f)", Celnav.STARS[star].name, Celnav.STARS[star].mag)
+                Text(label + hint, fontSize = 13.sp, color = Alp.Muted)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                 OutlinedTextField(deg, { deg = it.filter { c -> c.isDigit() }.take(2) }, label = { Text("Degrees") }, singleLine = true, modifier = Modifier.weight(1f),

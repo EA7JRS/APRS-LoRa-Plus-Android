@@ -17,7 +17,7 @@ import kotlin.math.tan
  * Celestial navigation to nautical-almanac precision (0.1'), ported from lib/plotter_core/src/celnav.cpp of the APRS LoRa+
  * plotter with the same reference values: GHA and declination of the Sun (truncated VSOP87, nutation, aberration), GHA of
  * Aries, SHA and declination of the 57 navigational stars and Polaris (proper motion, precession, nutation, annual
- * aberration; PyEphem / Hipparcos catalogue), sextant altitude corrections, sight reduction and fix. Tables GENERATED from
+ * aberration; PyEphem / Hipparcos catalogue), the Moon and the four navigational planets, sextant altitude corrections, sight reduction and fix. Tables GENERATED from
  * the plotter core: do not edit them by hand.
  */
 object Celnav {
@@ -140,6 +140,95 @@ object Celnav {
         val lam = g[0] + n.dpsi - 20.4898 * AS / g[1]
         val ra = atan2(cos(n.eps) * sin(lam), cos(lam))
         return GhaDec(deg(n2pi(gast(jd) - ra)), deg(asin(sin(n.eps) * sin(lam))))
+    }
+
+    // ---- Moon and planets (same algorithms and reference values as the plotter core) ----
+    data class Body(val gha: Double, val dec: Double, val dist: Double)   // dist: km for the Moon, AU for a planet
+    enum class Planet(val label: String) { VENUS("Venus"), MARS("Mars"), JUPITER("Jupiter"), SATURN("Saturn") }
+
+    private fun eclToEq(lam: Double, bet: Double, eps: Double, jd: Double, dist: Double): Body {
+        val ra = atan2(sin(lam) * cos(eps) - tan(bet) * sin(eps), cos(lam))
+        val dec = asin(sin(bet) * cos(eps) + cos(bet) * sin(eps) * sin(lam))
+        return Body(deg(n2pi(gast(jd) - ra)), deg(dec), dist)
+    }
+
+    private fun vsop(s: Array<DoubleArray>, tau: Double): Double {
+        var tot = 0.0; var tp = 1.0
+        for (k in s) {
+            var sum = 0.0; var i = 0
+            while (i < k.size) { sum += k[i] * cos(k[i + 1] + k[i + 2] * tau); i += 3 }
+            tot += sum * tp; tp *= tau
+        }
+        return tot * 1e-8
+    }
+
+    /** Moon (Meeus ch. 47, full tables; about 0.25' against JPL DE421): geocentric GHA, declination and distance in km. */
+    fun moonGhaDec(jd: Double): Body {
+        val t = tt(jd); val t2 = t * t; val t3 = t2 * t; val t4 = t3 * t
+        val lp = 218.3164477 + 481267.88123421 * t - 0.0015786 * t2 + t3 / 538841.0 - t4 / 65194000.0
+        val d = 297.8501921 + 445267.1114034 * t - 0.0018819 * t2 + t3 / 545868.0 - t4 / 113065000.0
+        val m = 357.5291092 + 35999.0502909 * t - 0.0001536 * t2 + t3 / 24490000.0
+        val mp = 134.9633964 + 477198.8675055 * t + 0.0087414 * t2 + t3 / 69699.0 - t4 / 14712000.0
+        val f = 93.2720950 + 483202.0175233 * t - 0.0036539 * t2 - t3 / 3526000.0 + t4 / 863310000.0
+        val a1 = 119.75 + 131.849 * t; val a2 = 53.09 + 479264.290 * t; val a3 = 313.45 + 481266.484 * t
+        val e = 1 - 0.002516 * t - 0.0000074 * t2
+        var sl = 0.0; var sr = 0.0; var sb = 0.0
+        val lr = CelnavBodies.MOON_LR; var i = 0
+        while (i < lr.size) {
+            val arg = rad(lr[i] * d + lr[i + 1] * m + lr[i + 2] * mp + lr[i + 3] * f)
+            val ef = when (abs(lr[i + 1])) { 0 -> 1.0; 1 -> e; else -> e * e }
+            sl += ef * lr[i + 4] * sin(arg); sr += ef * lr[i + 5] * cos(arg); i += 6
+        }
+        val b = CelnavBodies.MOON_B; i = 0
+        while (i < b.size) {
+            val arg = rad(b[i] * d + b[i + 1] * m + b[i + 2] * mp + b[i + 3] * f)
+            val ef = when (abs(b[i + 1])) { 0 -> 1.0; 1 -> e; else -> e * e }
+            sb += ef * b[i + 4] * sin(arg); i += 5
+        }
+        sl += 3958 * sin(rad(a1)) + 1962 * sin(rad(lp - f)) + 318 * sin(rad(a2))
+        sb += -2235 * sin(rad(lp)) + 382 * sin(rad(a3)) + 175 * sin(rad(a1 - f)) + 175 * sin(rad(a1 + f)) +
+            127 * sin(rad(lp - mp)) - 115 * sin(rad(lp + mp))
+        val n = nutation(t)
+        return eclToEq(rad(lp + sl / 1e6) + n.dpsi, rad(sb / 1e6), n.eps, jd, 385000.56 + sr / 1000.0)
+    }
+
+    fun moonHpArcmin(distKm: Double): Double = deg(asin(6378.14 / distKm)) * 60.0
+    fun moonSdArcmin(distKm: Double): Double = 0.2725 * moonHpArcmin(distKm)
+
+    /** Navigational planets (truncated VSOP87, light time, aberration, nutation; about 0.06' against PyEphem). */
+    fun planetGhaDec(p: Planet, jd: Double): Body {
+        val t = tt(jd); val tau = t / 10.0
+        val l0 = vsop(arrayOf(flat(L0), flat(L1), flat(L2), flat(L3)), tau)
+        val b0 = vsop(CelnavBodies.EARTH_B, tau); val r0 = vsop(CelnavBodies.EARTH_R, tau)
+        val ex = r0 * cos(b0) * cos(l0); val ey = r0 * cos(b0) * sin(l0); val ez = r0 * sin(b0)
+        val (sl, sb, sr) = when (p) {
+            Planet.VENUS -> Triple(CelnavBodies.VENUS_L, CelnavBodies.VENUS_B, CelnavBodies.VENUS_R)
+            Planet.MARS -> Triple(CelnavBodies.MARS_L, CelnavBodies.MARS_B, CelnavBodies.MARS_R)
+            Planet.JUPITER -> Triple(CelnavBodies.JUPITER_L, CelnavBodies.JUPITER_B, CelnavBodies.JUPITER_R)
+            Planet.SATURN -> Triple(CelnavBodies.SATURN_L, CelnavBodies.SATURN_B, CelnavBodies.SATURN_R)
+        }
+        var x = 0.0; var y = 0.0; var z = 0.0; var dist = 0.0; var lt = 0.0
+        repeat(3) {
+            val tp = tau - lt / 365250.0
+            val l = vsop(sl, tp); val b = vsop(sb, tp); val r = vsop(sr, tp)
+            x = r * cos(b) * cos(l) - ex; y = r * cos(b) * sin(l) - ey; z = r * sin(b) - ez
+            dist = sqrt(x * x + y * y + z * z); lt = 0.0057755183 * dist
+        }
+        var lam = atan2(y, x); var bet = atan2(z, sqrt(x * x + y * y))
+        val th = l0 + Math.PI; val e = 0.016708634 - 0.000042037 * t; val per = rad(102.93735 + 1.71946 * t); val k = 20.49552 * AS
+        val dl = (-k * cos(th - lam) + e * k * cos(per - lam)) / cos(bet)
+        val db = -k * sin(bet) * (sin(th - lam) - e * sin(per - lam))
+        lam += dl - 0.09033 * AS; bet += db
+        val n = nutation(t)
+        return eclToEq(lam + n.dpsi, bet, n.eps, jd, dist)
+    }
+
+    fun planetHpArcmin(distAu: Double): Double = 8.794 / 60.0 / distAu
+
+    private fun flat(s: Array<DoubleArray>): DoubleArray {
+        val o = DoubleArray(s.size * 3)
+        for (i in s.indices) { o[i * 3] = s[i][0]; o[i * 3 + 1] = s[i][1]; o[i * 3 + 2] = s[i][2] }
+        return o
     }
 
     fun sunSemiDiameterArcmin(jd: Double): Double = 959.63 / 60.0 / sunGeometric(tt(jd))[1]
