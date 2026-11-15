@@ -181,6 +181,7 @@ fun AstroTab() {
         out = sb.toString()
     }
 
+    fun sign(v: Double) = if (v >= 0) "E" else "W"
     var curCog by rememberSaveable { mutableStateOf("") }
     var curStw by rememberSaveable { mutableStateOf("") }
     var curLw by rememberSaveable { mutableStateOf("0") }
@@ -230,7 +231,6 @@ fun AstroTab() {
             mins / 60, mins % 60, pos(r.drLat, r.drLon), r.current.driftKn * h, r.current.setDeg, r.current.setDeg, r.current.driftKn)
     }
 
-    fun sign(v: Double) = if (v >= 0) "E" else "W"
     /** Total correction from the compass bearing of the chosen body (the limb does not matter) and the deviation for the compass heading. */
     fun computeCt() {
         ctLast = null
