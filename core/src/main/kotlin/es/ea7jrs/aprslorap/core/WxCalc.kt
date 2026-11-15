@@ -72,6 +72,8 @@ object WxCalc {
         "Strong breeze", "Near gale", "Gale", "Strong gale", "Storm", "Violent storm", "Hurricane force")
     fun beaufortName(force: Int): String = BF_NAMES[force.coerceIn(0, 12)]
 
+    fun kmhToKn(kmh: Double): Double = kmh / 1.852
+
     /** Height of the convective cloud base over the station, metres (125 m per degree of spread). */
     fun cloudBaseM(tC: Double?, dewC: Double?): Double? = if (tC == null || dewC == null || dewC > tC) null else (tC - dewC) * 125.0
 
