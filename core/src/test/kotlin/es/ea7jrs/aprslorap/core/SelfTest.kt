@@ -2546,7 +2546,7 @@ private fun testCelnav() {
     }
     val si = Celnav.starShaDec(Celnav.findStar("sirius")!!, jd(2030, 7, 4, 12))
     near(si.sha, 258.3789, 0.0005, "celnav Sirius 2030 SHA"); near(si.dec, -16.7609, 0.0005, "celnav Sirius 2030 dec")
-    check(Celnav.STARS.size == 58 && Celnav.findStar("nada") == null, "celnav catalogue")
+    check(Celnav.STARS.size == 157 && Celnav.NAV_STARS == 58 && Celnav.STARS[57].name == "Polaris" && Celnav.findStar("Caph") != null && Celnav.findStar("nada") == null, "celnav catalogue")
     near(Celnav.dipArcmin(11.08), 5.9, 0.05, "celnav dip"); near(Celnav.refractionArcmin(15.0 + 1 / 60.0), 3.6, 0.06, "celnav refraction")
     near(Celnav.observedAltitude(35 + 20.0 / 60, 1.5, 3.0, Celnav.Limb.LOWER, 15.9, 0.15), 35 + 30.1 / 60, 0.1 / 60, "celnav Ho lower limb")
     // three stars from 36 30 N 006 20 W with the assumed position 8' south and 6' west: the fix comes back

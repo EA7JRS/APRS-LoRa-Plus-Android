@@ -51,6 +51,7 @@ private val CREDITS = listOf(
     Triple("osmdroid (map)", "osmdroid team, Apache-2.0", "https://github.com/osmdroid/osmdroid"),
     Triple("Map data and tiles", "© OpenStreetMap contributors (ODbL); IGN Spain (CC BY 4.0); OpenSeaMap (CC BY-SA); Esri (with your ArcGIS key)", "https://www.openstreetmap.org/copyright"),
     Triple("Country files (cty.dat)", "Jim Reisert AD1C", "https://www.country-files.com/"),
+    Triple("HYG star database v4.1 (Hipparcos), CC BY-SA 4.0", "David Nash, astronexus", "https://github.com/astronexus/HYG-Database"),
     Triple("LR-FHSS receiver (frame format as built by RadioLib's SX126x driver, after Semtech's SWDM001)", "Jan Gromeš, MIT; Semtech, Clear BSD", "https://github.com/jgromes/RadioLib"),
     Triple("ADS-B / Mode S decoder (message formats and worked examples of \"The 1090 MHz Riddle\"; pulse detection after dump1090)", "Junzi Sun (TU Delft); Salvatore Sanfilippo, BSD", "https://mode-s.org/1090mhz/"),
     Triple("OpenHamClock (ideas and feed formats of the HAM, SPACE and EVENTS map layers)", "OpenHamClock contributors, MIT", "https://github.com/accius/openhamclock"),
