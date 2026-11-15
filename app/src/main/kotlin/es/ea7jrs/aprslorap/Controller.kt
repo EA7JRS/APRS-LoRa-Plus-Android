@@ -167,6 +167,15 @@ class Controller(
                 notifier.incoming(msg, table.get(msg.peer))
             }
         }
+        // a favourite station (★) heard: notification, also in Android Auto; the digipeater that repeated it last, or the receiver
+        if (settings.favNotify && p !is AprsPacket.Message) {
+            val favs = settings.favStations
+            if (from.uppercase() in favs) {
+                val st = table.get(from)
+                val digi = inner.path.lastOrNull { it.repeated && !it.call.startsWith("WIDE") && !it.call.startsWith("TCPIP") }?.text()
+                notifier.favouriteHeard(from.uppercase(), st?.lat, st?.lon, digi ?: via)
+            }
+        }
         if (settings.igateEnabled && Licence.isValid(settings)) iGate.toIsLine(frame)?.let { isSend(it) }
         publish()
     }
@@ -692,7 +701,9 @@ class Controller(
     }
 
     private fun publish() {
-        AppState.messages.value = engine.all()
+        val all = engine.all()
+        AppState.messages.value = all
+        notifier.onMessages(all)          // state of what we sent, in the open conversation notifications (Android Auto)
         AppState.stations.value = table.recent()
     }
 

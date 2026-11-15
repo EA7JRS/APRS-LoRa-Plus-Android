@@ -25,8 +25,13 @@ class ReplyReceiver : BroadcastReceiver() {
                     AppState.notifier?.replied(peer, "(not sent) $text", null)
                     return
                 }
+                if (!Licence.isValid(Settings(context))) {
+                    AppState.notifier?.replied(peer, "(not sent: callsign not validated) $text", null)
+                    return
+                }
+                // the engine's copy of the message comes back through Controller.publish with its state (waiting, confirmed...)
                 c.sendMessage(peer, text)
-                AppState.notifier?.replied(peer, text, null)
+                AppState.notifier?.clear(Notifier.FAV_PREFIX + peer)
             }
             Notifier.ACTION_READ -> {
                 AppState.notifier?.clear(peer)

@@ -210,6 +210,7 @@ private fun action(label: String, sub: String, f: () -> Unit): Triple<String, St
 
 private fun kindLine(a: EmergencyAlert): String = when (a.kind) {
     AlertKind.APRS_BEACON -> if (a.text.startsWith("Mic-E", true)) "APRS · Mic-E status EMERGENCY" else "APRS beacon · ${a.text.take(40)}"
+    AlertKind.ROAD -> "APRS · vehicle (-9) · emergency beacon"
     AlertKind.APRS_MESSAGE -> "APRS message · emergency words"
     AlertKind.MOB -> if (a.fromMsg) "APRS message · MOB" else "APRS beacon · MOB"
     AlertKind.AIS_DISTRESS -> "AIS · " + a.text.ifBlank { Ais.distressName(a.mmsi ?: 0).ifBlank { "distress" } }
@@ -235,7 +236,7 @@ private fun alertView(nav: Navigator, a: EmergencyAlert, ctx: android.content.Co
     val now = rememberNow(1000)
     val c = AppState.controller
     return when (a.kind) {
-        AlertKind.APRS_BEACON, AlertKind.APRS_MESSAGE, AlertKind.MOB -> {
+        AlertKind.APRS_BEACON, AlertKind.APRS_MESSAGE, AlertKind.MOB, AlertKind.ROAD -> {
             val sv = stationViews(stations, heard, heardAt).firstOrNull { it.call.equals(a.who, true) }
             val d = Own.to(sv?.lat, sv?.lon)
             val pos = sv?.lat != null && sv.lon != null

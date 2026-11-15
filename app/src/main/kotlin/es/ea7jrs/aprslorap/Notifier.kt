@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
+import es.ea7jrs.aprslorap.core.CarText
 import es.ea7jrs.aprslorap.core.ChatMessage
 import es.ea7jrs.aprslorap.core.Page
 import es.ea7jrs.aprslorap.core.Nav
@@ -31,6 +32,10 @@ class Notifier(private val ctx: Context) {
         const val CH_SERVICE = "service"
         const val CH_MESSAGES = "messages"
         const val CH_DAPNET = "dapnet"
+        const val CH_FAVOURITES = "favourites"
+        const val FAV_PREFIX = "FAV:"
+        /** Lines of a conversation kept in its notification (the car reads the newest, shows the rest). */
+        const val LINES = 8
         const val DAPNET_PEER = "DAPNET"
         const val ID_SERVICE = 1
         const val KEY_REPLY = "reply_text"
@@ -40,7 +45,11 @@ class Notifier(private val ctx: Context) {
         const val GOOGLE_MAPS = "com.google.android.apps.maps"
     }
 
+    // Lines of each open conversation notification, oldest first. Real lines carry the engine's id (their status follows the
+    // engine in onMessages); a reply that could not be sent is a local line with a negative id.
     private val history = HashMap<String, MutableList<ChatMessage>>()
+    private val shownSig = HashMap<String, String>()
+    private var localId = -1L
     private val icons = HashMap<String, androidx.core.graphics.drawable.IconCompat>()
 
     /**
@@ -92,6 +101,7 @@ class Notifier(private val ctx: Context) {
         nm?.createNotificationChannel(NotificationChannel(CH_SERVICE, "Tracker link", NotificationManager.IMPORTANCE_LOW))
         nm?.createNotificationChannel(NotificationChannel(CH_MESSAGES, "APRS messages", NotificationManager.IMPORTANCE_HIGH))
         nm?.createNotificationChannel(NotificationChannel(CH_DAPNET, "DAPNET pages", NotificationManager.IMPORTANCE_HIGH))
+        nm?.createNotificationChannel(NotificationChannel(CH_FAVOURITES, "Favourite stations heard", NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     fun foreground(text: String): Notification =
@@ -111,20 +121,114 @@ class Notifier(private val ctx: Context) {
         if (nmc.areNotificationsEnabled()) nmc.notify(ID_SERVICE, foreground(text))
     }
 
-    // Written from the controller thread (incoming) and the main thread (reply, mark as read): every access is synchronized.
+    // Written from the controller thread (incoming, onMessages) and the main thread (reply, mark as read): every access is synchronized.
     fun incoming(msg: ChatMessage, station: Station?) {
-        synchronized(history) { history.getOrPut(msg.peer) { ArrayList() }.add(msg) }
-        show(msg.peer, station)
+        synchronized(history) {
+            val l = history.getOrPut(msg.peer) { ArrayList() }
+            if (l.none { it.id == msg.id && it.id > 0 }) l.add(msg)
+        }
+        show(msg.peer, station, alert = true)
     }
 
-    /** After answering from the notification, it shows the sent text so the car does not keep the old state. */
+    /**
+     * After answering from the notification. A sent answer is not added here: the engine's own copy arrives in [onMessages] with
+     * its state (waiting, retry n/3, confirmed). One that could not be sent is shown at once, so the car does not keep waiting.
+     */
     fun replied(peer: String, text: String, outgoing: ChatMessage?) {
+        if (outgoing == null && !text.startsWith("(not sent")) return
         synchronized(history) {
             history.getOrPut(peer) { ArrayList() }.add(
-                outgoing ?: ChatMessage(0, peer, text, true, null, es.ea7jrs.aprslorap.core.MessageStatus.PENDING, System.currentTimeMillis()),
+                outgoing ?: ChatMessage(localId--, peer, text, true, null, es.ea7jrs.aprslorap.core.MessageStatus.FAILED, System.currentTimeMillis()),
             )
         }
-        show(peer, AppState.stations.value.firstOrNull { it.call == peer })
+        show(peer, AppState.stations.value.firstOrNull { it.call == peer }, alert = false)
+    }
+
+    /**
+     * Every message of the engine, after each change (Controller.publish): the open conversations take the state of what we sent
+     * (confirmed, retry 2/3, not confirmed, rejected) and the answers sent from the car or the phone. A conversation whose lines
+     * did not change is not touched; a message that ends up not confirmed or rejected alerts again.
+     */
+    fun onMessages(all: List<ChatMessage>) {
+        val changed = ArrayList<Pair<String, Boolean>>()
+        synchronized(history) {
+            for ((peer, lines) in history) {
+                val since = lines.filter { it.id > 0 }.minOfOrNull { it.timeMs } ?: lines.minOfOrNull { it.timeMs } ?: continue
+                val conv = all.filter { it.peer == peer && it.timeMs >= since }
+                val local = lines.filter { it.id < 0 }
+                val next = (conv + local).sortedBy { it.timeMs }.takeLast(LINES)
+                if (CarText.signature(next) == CarText.signature(lines)) continue
+                val failedNow = next.any { n -> n.outgoing && n.id > 0 &&
+                    (n.status == es.ea7jrs.aprslorap.core.MessageStatus.FAILED || n.status == es.ea7jrs.aprslorap.core.MessageStatus.REJECTED) &&
+                    lines.none { it.id == n.id && it.status == n.status } }
+                lines.clear(); lines.addAll(next)
+                changed.add(peer to failedNow)
+            }
+        }
+        for ((peer, alert) in changed) show(peer, AppState.stations.value.firstOrNull { it.call == peer }, alert)
+    }
+
+    /** "12 km north-east" (spoken: [words]) or "12 km NE" from our position (the tracker's GNSS, or the phone), in the user's units. */
+    fun where(lat: Double?, lon: Double?, words: Boolean = true): String? {
+        val d = Own.to(lat, lon) ?: return null
+        val (k, unit) = es.ea7jrs.aprslorap.core.WxCalc.distFactor(Fmt.units)
+        return CarText.where(d.first * k, unit, d.second, words)
+    }
+
+    private val favTold = HashMap<String, Long>()
+
+    /**
+     * A favourite station (★ in its detail) heard: a conversation-style notification, so the car reads "EA7URM-13: heard, 5.1 km
+     * north-east, via ED7ZAB-10". Once every 30 min per station. Reply writes to it; Go to if it sent a position.
+     */
+    @SuppressLint("MissingPermission")
+    fun favouriteHeard(call: String, lat: Double?, lon: Double?, via: String?) {
+        val now = System.currentTimeMillis()
+        synchronized(favTold) {
+            if (!CarText.tellFavourite(now, favTold[call] ?: 0L)) return
+            favTold[call] = now
+        }
+        val nmc = NotificationManagerCompat.from(ctx)
+        if (!nmc.areNotificationsEnabled()) return
+        val peer = FAV_PREFIX + call
+        val text = listOfNotNull("Heard", where(lat, lon), via?.takeIf { it.isNotBlank() }?.let { "via $it" }).joinToString(", ")
+        val me = Person.Builder().setName("Me").build()
+        val from = Person.Builder().setName(call).setKey(peer).also { b -> symbolIcon(call)?.let { b.setIcon(it) } }.build()
+        val style = NotificationCompat.MessagingStyle(me).setConversationTitle("Favourite heard").setGroupConversation(false)
+            .addMessage(text, now, from)
+        val b = NotificationCompat.Builder(ctx, CH_FAVOURITES)
+            .setSmallIcon(android.R.drawable.star_on)
+            .setStyle(style)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(ctx, peer.hashCode() + 3, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+            .addAction(replyAction(call, peer.hashCode()))
+            .addAction(readAction(peer))
+        goToAction(peer, lat, lon)?.let { b.addAction(it) }
+        try { nmc.notify(peer.hashCode(), b.build()) } catch (_: Exception) {}
+    }
+
+    private fun replyAction(to: String, code: Int): NotificationCompat.Action = NotificationCompat.Action.Builder(
+        android.R.drawable.ic_menu_send, "Reply",
+        PendingIntent.getBroadcast(ctx, code,
+            Intent(ctx, ReplyReceiver::class.java).setAction(ACTION_REPLY).putExtra(EXTRA_PEER, to),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE),
+    ).addRemoteInput(RemoteInput.Builder(KEY_REPLY).setLabel("Reply").build())
+        .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+        .setShowsUserInterface(false).setAllowGeneratedReplies(false).build()
+
+    private fun readAction(peer: String): NotificationCompat.Action = NotificationCompat.Action.Builder(
+        android.R.drawable.ic_menu_view, "Mark as read",
+        PendingIntent.getBroadcast(ctx, peer.hashCode() + 1,
+            Intent(ctx, ReplyReceiver::class.java).setAction(ACTION_READ).putExtra(EXTRA_PEER, peer),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE),
+    ).setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build()
+
+    private fun goToAction(peer: String, lat: Double?, lon: Double?): NotificationCompat.Action? {
+        if (lat == null || lon == null) return null
+        val nav = Intent(Intent.ACTION_VIEW, Uri.parse(Nav.googleNavigationUri(lat, lon))).setPackage(GOOGLE_MAPS)
+        return NotificationCompat.Action.Builder(android.R.drawable.ic_menu_directions, "Go to",
+            PendingIntent.getActivity(ctx, peer.hashCode() + 2, nav, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).build()
     }
 
     private val pageHistory = ArrayList<Page>()
@@ -218,60 +322,42 @@ class Notifier(private val ctx: Context) {
 
     fun clear(peer: String) {
         if (peer == DAPNET_PEER) synchronized(pageHistory) { pageHistory.clear() }
-        synchronized(history) { history.remove(peer) }
+        synchronized(history) { history.remove(peer); shownSig.remove(peer) }
         NotificationManagerCompat.from(ctx).cancel(peer.hashCode())
     }
 
     @SuppressLint("MissingPermission")
-    private fun show(peer: String, station: Station?) {
+    private fun show(peer: String, station: Station?, alert: Boolean) {
         val nmc = NotificationManagerCompat.from(ctx)
         if (!nmc.areNotificationsEnabled()) return
+        val msgs = synchronized(history) { history[peer].orEmpty().takeLast(LINES).toList() }
+        if (msgs.isEmpty()) return
+        val sig = CarText.signature(msgs)
+        synchronized(history) { if (!alert && shownSig[peer] == sig) return; shownSig[peer] = sig }
+        val h = AppState.heard.value.firstOrNull { it.call.equals(peer, true) }
+        val lat = station?.lat ?: h?.lat
+        val lon = station?.lon ?: h?.lon
+        // who and where: the car reads the sender's name before the text ("EA7XYZ-9, 12 km north-east")
         val me = Person.Builder().setName("Me").build()
-        val other = Person.Builder().setName(peer).setKey(peer).also { b -> symbolIcon(peer)?.let { b.setIcon(it) } }.build()
+        val other = Person.Builder().setName(listOfNotNull(peer, where(lat, lon)).joinToString(", ")).setKey(peer)
+            .also { b -> symbolIcon(peer)?.let { b.setIcon(it) } }.build()
         val style = NotificationCompat.MessagingStyle(me)
-        val msgs = synchronized(history) { history[peer].orEmpty().toList() }
-        for (m in msgs) style.addMessage(m.text, m.timeMs, if (m.outgoing) me else other)
-
-        val reply = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_send, "Reply",
-            PendingIntent.getBroadcast(
-                ctx, peer.hashCode(),
-                Intent(ctx, ReplyReceiver::class.java).setAction(ACTION_REPLY).putExtra(EXTRA_PEER, peer),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-            ),
-        ).addRemoteInput(RemoteInput.Builder(KEY_REPLY).setLabel("Reply").build())
-            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
-            .setShowsUserInterface(false)
-            .setAllowGeneratedReplies(false)
-            .build()
-
-        val read = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_view, "Mark as read",
-            PendingIntent.getBroadcast(
-                ctx, peer.hashCode() + 1,
-                Intent(ctx, ReplyReceiver::class.java).setAction(ACTION_READ).putExtra(EXTRA_PEER, peer),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            ),
-        ).setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
-            .setShowsUserInterface(false)
-            .build()
-
+        val all = AppState.messages.value.filter { it.peer == peer }
+        for (m in msgs) {
+            val text = if (m.outgoing) listOfNotNull(m.text, CarText.status(m)).joinToString(" · ")
+                else CarText.spoken(m.text, CarText.answers((all + msgs).distinctBy { it.id }.sortedBy { it.timeMs }, m))
+            style.addMessage(text, m.timeMs, if (m.outgoing) me else other)
+        }
         val b = NotificationCompat.Builder(ctx, CH_MESSAGES)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setStyle(style)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setOnlyAlertOnce(!alert)
             .setAutoCancel(true)
-            .addAction(reply)
-            .addAction(read)
-        if (station?.lat != null && station.lon != null) {
-            val nav = Intent(Intent.ACTION_VIEW, Uri.parse(Nav.googleNavigationUri(station.lat!!, station.lon!!))).setPackage(GOOGLE_MAPS)
-            b.addAction(
-                NotificationCompat.Action.Builder(
-                    android.R.drawable.ic_menu_directions, "Go to",
-                    PendingIntent.getActivity(ctx, peer.hashCode() + 2, nav, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
-                ).build(),
-            )
-        }
-        nmc.notify(peer.hashCode(), b.build())
+            .setContentIntent(PendingIntent.getActivity(ctx, peer.hashCode() + 3, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+            .addAction(replyAction(peer, peer.hashCode()))
+            .addAction(readAction(peer))
+        goToAction(peer, lat, lon)?.let { b.addAction(it) }
+        try { nmc.notify(peer.hashCode(), b.build()) } catch (_: Exception) {}
     }
 }

@@ -160,15 +160,16 @@ object AlertCenter {
             }
         }
         val e = eai.value
-        val where = Own.to(lat, lon)?.let { String.format(java.util.Locale.US, "%s, bearing %03.0f°", Fmt.km(it.first), it.second) }
+        // distance and direction first, in words: the car reads "8.3 km south-west, Mic-E Emergency..."
+        val where = n.where(lat, lon)
         val text = when (a.kind) {
             AlertKind.EAI -> listOfNotNull("Own emergency on this tracker", e?.let { eaiSource(it) },
                 (e?.left ?: e?.fmLeft)?.let { "${Alerts.formatLeft(it.toLong())} left" }).joinToString(". ")
             AlertKind.MAN_DOWN -> "No key touched for ${e?.manDownMin ?: 0} min: EAI starts in ${e?.manDownLeft ?: 30} s. Mark as read means I'm OK."
-            AlertKind.OFFICIAL -> a.official?.let { o -> listOf(o.event, o.area, o.text, o.instruction).filter { it.isNotBlank() }.joinToString(". ") } ?: a.text
-            else -> listOf(a.text, where ?: "").filter { it.isNotBlank() }.joinToString(". ")
+            AlertKind.OFFICIAL -> a.official?.let { o -> listOf(o.event, o.area, where ?: "", o.text, o.instruction).filter { it.isNotBlank() }.joinToString(". ") } ?: a.text
+            else -> listOf(where ?: "", a.text).filter { it.isNotBlank() }.joinToString(". ")
         }
-        val replyTo = if (a.kind == AlertKind.NAVTEX || a.kind == AlertKind.DSC || a.kind == AlertKind.BEACON406) null else if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
+        val replyTo = if (a.kind == AlertKind.NAVTEX || a.kind == AlertKind.DSC || a.kind == AlertKind.BEACON406) null else if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB || a.kind == AlertKind.ROAD) a.who.uppercase() else null
         // avatar: the station's APRS symbol; AIS: the APRS yacht (distress) or ship symbol, as the tracker shows them
         val icon = when (a.kind) {
             AlertKind.AIS_DISTRESS -> n.symbolIcon(a.who, '/', 'Y')

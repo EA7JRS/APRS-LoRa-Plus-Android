@@ -390,6 +390,15 @@ class Settings(ctx: Context) {
         set(v) { p.edit().putString("mt_key", v.trim()).apply() }
 
     /** MarineTraffic shipid (or a pasted link to the vessel page), to open the public page and check it by hand. */
+    /** Favourite stations (★ in the station detail): a notification when one is heard, also in Android Auto. */
+    var favStations: Set<String>
+        get() = p.getString("fav_stations", "")!!.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toSet()
+        set(v) { p.edit().putString("fav_stations", v.joinToString(",")).apply() }
+
+    var favNotify: Boolean
+        get() = p.getBoolean("fav_notify", true)
+        set(v) { p.edit().putBoolean("fav_notify", v).apply() }
+
     var marineTrafficShip: String
         get() = p.getString("mt_ship", "")!!.trim()
         set(v) { p.edit().putString("mt_ship", v.trim()).apply() }

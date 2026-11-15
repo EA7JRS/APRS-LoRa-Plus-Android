@@ -22,6 +22,12 @@ enum class AlertKind(val title: String, val distress: Boolean) {
     DSC("DSC DISTRESS", true),
     /** A 406 MHz Cospas-Sarsat beacon heard by the app's RTL-SDR (not a self-test): [EmergencyAlert.key] is "406:" + its 15-hex id. */
     BEACON406("406 MHz DISTRESS BEACON", true),
+    /**
+     * Emergency beacon of a vehicle (Manuel, 2026-11-15): an APRS emergency beacon of a station with SSID -9 (car, the APRS SSID
+     * convention), or one with "V-27" in the comment. Shown with the V-27 road warning beacon icon. The car's SOS key in Android
+     * Auto starts the tracker's EAI, whose beacon is the normal emergency beacon: it is the -9 that makes it a road emergency.
+     */
+    ROAD("ROAD EMERGENCY", true),
 }
 
 /**
@@ -43,6 +49,17 @@ object Alerts {
         return null
     }
 
+    /** SSID of a callsign ("EA7ABC-9" → 9, "EA7ABC" → 0); objects or odd names → -1. */
+    fun ssid(call: String): Int {
+        val i = call.lastIndexOf('-')
+        if (i < 0) return 0
+        return call.substring(i + 1).trim().toIntOrNull()?.takeIf { it in 0..15 } ?: -1
+    }
+
+    /** An emergency beacon becomes a road emergency (V-27) when it comes from a -9 station or says "V-27" / "V27". */
+    fun road(call: String, kind: AlertKind, text: String?): AlertKind =
+        if (kind == AlertKind.APRS_BEACON && (ssid(call) == 9 || (text != null && (word(text, "V-27") || word(text, "V27"))))) AlertKind.ROAD else kind
+
     private fun word(text: String, w: String): Boolean {
         var i = text.indexOf(w, ignoreCase = true)
         while (i >= 0) {
@@ -61,7 +78,7 @@ object Alerts {
             "ais_sos" -> AlertKind.AIS_DISTRESS
             "ais_cpa" -> AlertKind.AIS_COLLISION
             "mob" -> AlertKind.MOB
-            else -> if (l.fromMsg) AlertKind.APRS_MESSAGE else AlertKind.APRS_BEACON
+            else -> if (l.fromMsg) AlertKind.APRS_MESSAGE else road(l.emgCall, AlertKind.APRS_BEACON, l.emgText)
         }
         val ais = kind == AlertKind.AIS_DISTRESS || kind == AlertKind.AIS_COLLISION
         val mmsi = if (ais) l.emgCall.trim().toLongOrNull() else null
@@ -79,7 +96,7 @@ object Alerts {
 
     /** An APRS message or beacon comment heard by the app itself (also with firmware that does not send alerts). */
     fun fromAprs(call: String, text: String, fromMsg: Boolean, nowMs: Long): EmergencyAlert? {
-        val kind = textKind(text, fromMsg) ?: return null
+        val kind = road(call, textKind(text, fromMsg) ?: return null, text)
         return EmergencyAlert("aprs:" + call.uppercase(), kind, call, text, fromMsg, null, nowMs, false)
     }
 

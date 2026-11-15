@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2431,7 +2431,7 @@ private fun testAlerts() {
     eq(Alerts.textKind("normal text", true), null, "no alarm")
     val l = Control.parse("""{"e":"led","msg":false,"unread":0,"emg":true,"ec":"EA7ZZZ-9","et":"Mic-E: Emergency!","ek":"emergency","em":false,"eq":3,"eo":true,"fl":true}""") as ControlEvent.Led
     val a = Alerts.fromLed(l, 1000)!!
-    eq(a.kind, AlertKind.APRS_BEACON, "led beacon"); eq(a.key, "aprs:EA7ZZZ-9", "led key")
+    eq(a.kind, AlertKind.ROAD, "led beacon of a -9: road emergency"); eq(a.key, "aprs:EA7ZZZ-9", "led key")
     val ais = Alerts.fromLed(l.copy(kind = "ais_sos", emgCall = "970123456"), 1000)!!
     eq(ais.kind, AlertKind.AIS_DISTRESS, "led AIS"); eq(ais.mmsi, 970123456L, "led AIS mmsi"); eq(ais.key, "ais:970123456", "led AIS key")
     eq(Alerts.fromLed(l.copy(seq = 0), 1000), null, "old firmware: no alert from led")
@@ -2882,4 +2882,40 @@ private fun testBeacon406() {
     check(r1.size == 1 && r1[0].valid && r1[0].bits.contentEquals(b) && abs(r1[0].offsetHz - 4000) < 30, "406 receiver: ${r1.map { it.summary() + " " + it.offsetHz }}")
     val r2 = air(Beacon406.userMaritime(224, "123456", null, null, long = false), -9_000.0, 1.0, 2)
     check(r2.size == 1 && r2[0].valid && !r2[0].long, "406 receiver short, noisy: ${r2.map { it.summary() }}")
+}
+
+private fun testCarText() {
+    eq(CarText.direction(44.0), "north-east", "car direction 44°")
+    eq(CarText.direction(350.0, words = false), "N", "car direction 350° short")
+    eq(CarText.direction(-90.0), "west", "car direction -90°")
+    eq(CarText.where(8.26, "km", 225.0), "8.3 km south-west", "car where under 10")
+    eq(CarText.where(12.4, "km", 45.0, words = false), "12 km NE", "car where shown")
+    val t0 = 1_000_000L
+    fun m(id: Long, out: Boolean, st: MessageStatus, at: Long, tries: Int = 1, no: String? = "1", text: String = "x") =
+        ChatMessage(id, "EA7XYZ-9", text, out, if (out) no else null, st, at, tries)
+    eq(CarText.status(m(1, true, MessageStatus.ACKED, t0)), "confirmed", "car status acked")
+    eq(CarText.status(m(1, true, MessageStatus.ACKED, t0, no = null)), "sent", "car status without ack wanted")
+    eq(CarText.status(m(1, true, MessageStatus.PENDING, t0, tries = 2)), "retry 2/3", "car status retry")
+    eq(CarText.status(m(1, true, MessageStatus.PENDING, t0)), "sent, waiting for the ack", "car status first try")
+    eq(CarText.status(m(1, true, MessageStatus.FAILED, t0, tries = 3)), "not confirmed", "car status failed")
+    eq(CarText.status(m(1, false, MessageStatus.RECEIVED, t0)), null, "car status received")
+    eq(CarText.quote("Where are you?"), "Where are you?", "car quote short")
+    eq(CarText.quote("Meet you at the repeater site on the hill after lunch"), "Meet you at the repeater site on…", "car quote cut at a space")
+    val ask = m(1, true, MessageStatus.ACKED, t0, text = "Where are you?")
+    val ans = m(2, false, MessageStatus.RECEIVED, t0 + 5 * 60_000, text = "On my way")
+    eq(CarText.answers(listOf(ask, ans), ans)?.id, 1L, "car answers the last sent")
+    eq(CarText.spoken("On my way", ask), "Re “Where are you?”: On my way", "car spoken reply")
+    eq(CarText.answers(listOf(ask, ans.copy(timeMs = t0 + 40 * 60_000)), ans.copy(timeMs = t0 + 40 * 60_000)), null, "car answers: too late")
+    val other = m(3, false, MessageStatus.RECEIVED, t0 + 6 * 60_000, text = "QRV 145.500")
+    eq(CarText.answers(listOf(ask, ans, other), other), null, "car answers: something came in between")
+    check(CarText.signature(listOf(ask)) != CarText.signature(listOf(ask.copy(status = MessageStatus.PENDING))), "car signature sees a status change")
+    check(CarText.tellFavourite(t0, 0) && !CarText.tellFavourite(t0 + 60_000, t0) && CarText.tellFavourite(t0 + CarText.FAVOURITE_QUIET_MS, t0), "car favourite quiet time")
+    // road emergency (V-27): emergency beacon of a -9 station, or "V-27" in the comment; not a message, not another SSID
+    eq(Alerts.fromAprs("EA7ABC-9", "EMERGENCY SOS", false, t0)?.kind, AlertKind.ROAD, "V-27 from a -9 beacon")
+    eq(Alerts.fromAprs("EA7ABC-7", "EMERGENCY SOS", false, t0)?.kind, AlertKind.APRS_BEACON, "-7 beacon stays an emergency beacon")
+    eq(Alerts.fromAprs("EA7ABC", "SOS V-27 A-4 km 512", false, t0)?.kind, AlertKind.ROAD, "V-27 in the comment")
+    eq(Alerts.fromAprs("EA7ABC-9", "SOS please call", true, t0)?.kind, AlertKind.APRS_MESSAGE, "a message from a -9 stays a message")
+    eq(Alerts.fromAprs("EA7ABC-9", "MOB", false, t0)?.kind, AlertKind.MOB, "MOB from a -9 stays MOB")
+    eq(Alerts.ssid("EA7ABC-9"), 9, "ssid -9"); eq(Alerts.ssid("EA7ABC"), 0, "ssid none"); eq(Alerts.ssid("OBJ-X"), -1, "ssid odd")
+    eq(CarText.trendArrow(-1.4), "↓", "car trend falling"); eq(CarText.trendArrow(0.3), "→", "car trend steady"); eq(CarText.trendArrow(null), "", "car trend none")
 }

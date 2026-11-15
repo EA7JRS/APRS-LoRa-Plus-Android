@@ -247,6 +247,13 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                             Text(s.call, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (s.emergency) Alp.RedSoft else Alp.Text)
                             Text(s.kind + " · heard " + Fmt.hhmm(s.lastMs, utc = true) + "Z · " + Fmt.ago(s.lastMs), fontSize = 14.sp, color = Alp.Muted)
                         }
+                        val favs = remember { Settings(ctx) }
+                        var fav by remember(s.call) { mutableStateOf(s.call.uppercase() in favs.favStations) }
+                        Text(if (fav) "★" else "☆", fontSize = 30.sp, color = if (fav) Alp.Amber else Alp.Muted,
+                            modifier = Modifier.clickable {
+                                fav = !fav
+                                favs.favStations = if (fav) favs.favStations + s.call.uppercase() else favs.favStations - s.call.uppercase()
+                            }.padding(horizontal = 4.dp))
                         if (s.moving) Text("MOVING", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Alp.Cyan,
                             modifier = Modifier.border(1.dp, Alp.Cyan, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp))
                     }
