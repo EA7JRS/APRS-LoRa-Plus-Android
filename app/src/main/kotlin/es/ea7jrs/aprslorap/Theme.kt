@@ -32,6 +32,8 @@ class Palette(
     val selected: Long, val green: Long, val greenDim: Long, val greenBg: Long, val cyan: Long, val amber: Long, val amberDim: Long, val red: Long,
     val redSoft: Long, val text: Long, val muted: Long, val faint: Long, val subText: Long, val subMuted: Long, val off: Long, val symbolBg: Long,
     val outline: Long, val skyBg: Long, val bandB: Long,
+    /** Background of band B: the panel with a touch of its colour, so the two bands are told apart at a glance. */
+    val bandBBg: Long = subPanel,
 )
 
 /** Dark: the logo's palette (dark blue-grey, neon green, cyan; amber for what is active or selected). */
@@ -39,7 +41,7 @@ val DARK = Palette(
     true, 0xFF131A22, 0xFF0B1016, 0xFF18222D, 0xFF263443, 0xFF161F29, 0xFF222F3C, 0xFF1E2A36, 0xFF2E3E4F,
     0xFF202D3A, 0xFF3CE68A, 0xFF2F8F5D, 0xFF1D3A30, 0xFF28B5E1, 0xFFFFB347, 0xFFA8763A, 0xFFFF6B6B,
     0xFFFF8A80, 0xFFE8EEF3, 0xFF9FB0BF, 0xFF6F8293, 0xFFC9D4DE, 0xFF8FA3B6, 0xFF4A5D70, 0xFFD9E1E8,
-    0xFF6A7F94, 0xFF000000, 0xFF3A4A5B,
+    0xFF6A7F94, 0xFF000000, 0xFF28B5E1, 0xFF142230,          // band B in cyan (Manuel, 2026-11-15); band A is green
 )
 
 /** Light: the same hues, darkened enough to read on white in daylight. */
@@ -47,7 +49,7 @@ val LIGHT = Palette(
     false, 0xFFF2F5F8, 0xFF0B1016, 0xFFFFFFFF, 0xFFD3DCE5, 0xFFEEF2F6, 0xFFD8E0E8, 0xFFE7EDF3, 0xFFC0CCD8,
     0xFFE2EEF8, 0xFF0B9A52, 0xFF6CC79A, 0xFFDDF4E7, 0xFF0779AB, 0xFFB86200, 0xFFE0AE70, 0xFFD32F2F,
     0xFFC62828, 0xFF14202B, 0xFF52616F, 0xFF7E8D9B, 0xFF2C3A47, 0xFF56687A, 0xFFA7B4C0, 0xFFE9EEF3,
-    0xFF7A8C9D, 0xFFFFFFFF, 0xFFB7C3CF,
+    0xFF7A8C9D, 0xFFFFFFFF, 0xFF0779AB, 0xFFE6F2F9,
 )
 
 /** Colours of the app; they follow the palette in use, so the screens redraw when the theme changes. */
@@ -82,6 +84,7 @@ object Alp {
     val Outline: Color get() = c(pal.outline)
     val SkyBg: Color get() = c(pal.skyBg)            // background of the GPS sky plot (black / white, as GNSS status apps)
     val BandB: Color get() = c(pal.bandB)
+    val BandBBg: Color get() = c(pal.bandBBg)
 }
 
 /** Theme chosen by the user: dark, light, as Android (system) or automatic (light by day, dark by night at our position). */

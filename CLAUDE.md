@@ -219,6 +219,8 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   hasta la primera descarga; fuentes `country-files.com/bigcty/cty.dat` (la de OpenHamClock), `/cty/cty.dat` y Win-Test; redirecciones
   seguidas a mano (solo https); reintento a los 10 min (antes 1 h); tecla «cty.dat UPDATE» en la lista de nodos; estado con la versión
   (`Cty.version`, «=VER…»), el origen y el motivo de cada fallo. No se pudo comprobar la descarga desde la sesión (los dominios están bloqueados).
+- **Banda B en cian** (Manuel, 2026-11-15, opción 1 de la vista previa): barra lateral, insignia «B» y título en `Alp.BandB` (#28B5E1 oscuro,
+  #0779AB claro) y fondo con un tinte (`Alp.BandBBg`: #142230 / #E6F2F9); la banda A sigue en verde.
 
 - **Receptor LR-FHSS y balizas oídas** (2026-11-13; Manuel: «podemos incluir un decodificador de este tipo de baliza?», «Situar las
   estaciones recibidas sobre mapa, y enviarlas como Spot al cluster»; lo de «LR-FHSS descartado» de más arriba era recibirlo con el

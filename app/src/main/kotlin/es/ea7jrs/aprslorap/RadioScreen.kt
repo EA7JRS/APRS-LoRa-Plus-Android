@@ -249,13 +249,13 @@ private fun BandB(nav: Navigator, big: Boolean) {
         }
         else -> { title = "NO RADIO"; hz = null; mode = ""; reading = null; extra = null; target = { nav.tool(Tool.CAT) } }
     }
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Alp.SubPanel).clickable(onClick = target)) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Alp.BandBBg).clickable(onClick = target)) {
         Box(Modifier.padding(top = 12.dp).width(5.dp).height(if (big) 90.dp else 36.dp).clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)).background(Alp.BandB))
         Column(Modifier.padding(start = 20.dp, end = 14.dp, top = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("B", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Alp.Bg,
-                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.SubMuted).padding(horizontal = 7.dp))
-                Text(title, fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Alp.SubMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.BandB).padding(horizontal = 7.dp))
+                Text(title, fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Alp.BandB, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
                 if (mode.isNotEmpty()) Text(mode, fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Alp.SubText,
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Alp.Bg).padding(horizontal = 6.dp))
