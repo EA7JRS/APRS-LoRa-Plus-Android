@@ -146,12 +146,18 @@ fun VesselTab() {
         }
         // Without a key: the public MarineTraffic page, looked at by the person (its terms forbid reading it automatically).
         var ship by remember { mutableStateOf(settings.marineTrafficShip) }
+        var mtPage by remember { mutableStateOf<String?>(null) }
+        mtPage?.let { u ->
+            MarineTrafficPage(u, mmsiL, wantCall, onConfirm = {
+                if (mmsiL != 0L) { checkedCode = MtCheck.Source.MARINETRAFFIC.code; mcStatus = "Confirmed by hand in MarineTraffic for $wantCall" }
+            }, onClose = { mtPage = null })
+        }
         OutlinedTextField(ship, { ship = it.trim(); settings.marineTrafficShip = ship },
             label = { Text("MarineTraffic shipid or vessel link (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = {
                 if (mmsiL == 0L && MtCheck.shipIdFrom(ship) == 0L) { mcStatus = "Set the MMSI first"; return@OutlinedButton }
-                try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MtCheck.webUrl(mmsiL, MtCheck.shipIdFrom(ship))))) } catch (e: ActivityNotFoundException) {}
+                mtPage = MtCheck.webUrl(mmsiL, MtCheck.shipIdFrom(ship))      // inside the app (MarineTrafficWeb.kt)
             }) { Text("MarineTraffic page", fontSize = 13.sp) }
             OutlinedButton(onClick = {
                 if (mmsiL == 0L) { mcStatus = "Set the MMSI first"; return@OutlinedButton }
