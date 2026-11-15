@@ -675,6 +675,20 @@ class Settings(ctx: Context) {
         get() = p.getFloat("navtex_khz", 518f).toDouble()
         set(v) { p.edit().putFloat("navtex_khz", v.toFloat()).apply() }
     /** NAVTEX subject D (search and rescue, distress) opens the alert window with the alarm. */
+    var dscAlarm: Boolean
+        get() = p.getBoolean("dsc_alarm", true)
+        set(v) { p.edit().putBoolean("dsc_alarm", v).apply() }
+
+    companion object {
+        /** The MF / HF DSC channel in use (kHz), for the decoder thread. */
+        @Volatile var dscKhzNow = 2187.5
+    }
+
+    /** MF / HF DSC channel (kHz) chosen in Modes. */
+    var dscKhz: Double
+        get() = p.getFloat("dsc_khz", 2187.5f).toDouble()
+        set(v) { p.edit().putFloat("dsc_khz", v.toFloat()).apply(); dscKhzNow = v }
+
     var navtexAlarm: Boolean
         get() = p.getBoolean("navtex_alarm", true)
         set(v) { p.edit().putBoolean("navtex_alarm", v).apply() }

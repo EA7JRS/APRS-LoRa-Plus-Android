@@ -45,6 +45,7 @@ class TrackerService : Service() {
         Spotter.init(this)
         AlertCenter.init(this)
         NavtexHub.init(this)
+        DscHub.init(this)
         stopping = false
         val settings = Settings(this)
         val notifier = Notifier(this)

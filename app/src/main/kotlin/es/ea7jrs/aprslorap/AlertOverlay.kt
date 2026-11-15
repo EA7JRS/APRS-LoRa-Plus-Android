@@ -218,6 +218,7 @@ private fun kindLine(a: EmergencyAlert): String = when (a.kind) {
     AlertKind.MAN_DOWN -> "This tracker · no movement detected"
     AlertKind.OFFICIAL -> a.official?.let { it.src.title + " · " + it.levelName.lowercase().replaceFirstChar { c -> c.uppercase() } } ?: "Official alert"
     AlertKind.NAVTEX -> "NAVTEX · search and rescue"
+    AlertKind.DSC -> "DSC · " + a.text.substringBefore(" · ")
 }
 
 /** Level colours of the official alerts (yellow, orange, red; information in grey), the same as the tracker and the Display. */
@@ -351,6 +352,32 @@ private fun alertView(nav: Navigator, a: EmergencyAlert, ctx: android.content.Co
                 rows = listOfNotNull(
                     d?.let { "Distance / bearing" to Fmt.km(it.first) + " · " + Fmt.deg(it.second) },
                     if (pos.size > 1) "Positions" to "${pos.size} in the text" else null,
+                ),
+                actions = acts,
+            )
+        }
+        AlertKind.DSC -> {
+            val c = AlertCenter.dscCalls[a.key]
+            val lat = c?.lat; val lon = c?.lon
+            val d = Own.to(lat, lon)
+            val acts = ArrayList<Triple<String, String, () -> Unit>>()
+            acts.add(action("DSC", "calls") { nav.tool(Tool.MODES) })
+            if (lat != null && lon != null) {
+                acts.add(action("GO TO", "Google Maps") { goToPos(ctx, lat, lon, a.who) })
+                acts.add(action("ROTOR", d?.let { "aim " + Fmt.deg(it.second) } ?: "aim") { aimRotorAt(lat, lon, a.who) })
+            }
+            AlertView(
+                a.who, c?.let { es.ea7jrs.aprslorap.core.Dsc.mmsiKind(it.distressShip ?: it.selfId) } ?: "DSC", "ais", null,
+                d?.let { Fmt.km(it.first) }, d?.second, d?.let { Fmt.deg(it.second) } ?: "",
+                lat = lat, lon = lon, line2 = a.text,
+                heard = java.text.SimpleDateFormat("HH:mm", Locale.US).format(java.util.Date(a.atMs)),
+                rows = listOfNotNull(
+                    c?.nature?.let { "Nature" to es.ea7jrs.aprslorap.core.Dsc.natureName(it) },
+                    if (lat != null && lon != null) "Position" to Fmt.latLon(lat, true) + "  " + Fmt.latLon(lon, false) + (c?.time?.let { " at ${it.take(2)}:${it.drop(2)} UTC" } ?: "") else "Position" to "not given",
+                    d?.let { "Distance / bearing" to Fmt.km(it.first) + " · " + Fmt.deg(it.second) },
+                    c?.takeIf { it.format != es.ea7jrs.aprslorap.core.Dsc.FMT_DISTRESS }?.let { "Sent by" to it.selfId + " (" + es.ea7jrs.aprslorap.core.Dsc.mmsiKind(it.selfId) + ")" },
+                    c?.subsequent?.let { "Then" to es.ea7jrs.aprslorap.core.Dsc.tc1Name(it) },
+                    "MMSI" to a.who.removePrefix("MMSI "),
                 ),
                 actions = acts,
             )

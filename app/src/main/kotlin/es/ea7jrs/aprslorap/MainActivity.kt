@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
         Spotter.init(this)
         AlertCenter.init(this)
         NavtexHub.init(this)
+        DscHub.init(this)
         LogStore.init(this)
         DxLink.loadCty(this)                          // cty.dat: read it, and a new one if it is more than a week old
         enableEdgeToEdge(

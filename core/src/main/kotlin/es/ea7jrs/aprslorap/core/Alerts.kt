@@ -18,6 +18,8 @@ enum class AlertKind(val title: String, val distress: Boolean) {
     OFFICIAL("OFFICIAL ALERT", false),
     /** A NAVTEX message of subject D (search and rescue, distress relay, piracy): [EmergencyAlert.text] is the message. */
     NAVTEX("NAVTEX SAR / DISTRESS", true),
+    /** A DSC distress alert, relay or acknowledgement (channel 70 or MF / HF): [EmergencyAlert.mmsi] is the ship in distress. */
+    DSC("DSC DISTRESS", true),
 }
 
 /**

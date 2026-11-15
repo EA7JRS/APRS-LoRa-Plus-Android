@@ -277,11 +277,13 @@ object Modems {
     }
 
     /** The modes offered on screen. */
-    val MODES = listOf("CW", "RTTY 45/170", "RTTY 50/170", "RTTY 75/170", "RTTY 50/450", "RTTY 50/850", "BPSK31", "BPSK63", "BPSK125", "BPSK250", "NAVTEX")
+    val MODES = listOf("CW", "RTTY 45/170", "RTTY 50/170", "RTTY 75/170", "RTTY 50/450", "RTTY 50/850", "BPSK31", "BPSK63", "BPSK125", "BPSK250", "NAVTEX", "DSC VHF", "DSC HF")
 
     fun create(mode: String, centerHz: Double): Modem = when {
         mode == "CW" -> Cw(centerHz)
         mode == "NAVTEX" -> Navtex.Decoder(centerHz)
+        mode == "DSC VHF" -> Dsc.Decoder(centerHz, vhf = true)
+        mode == "DSC HF" -> Dsc.Decoder(centerHz, vhf = false)
         mode.startsWith("RTTY") -> {
             val (b, s) = mode.removePrefix("RTTY ").split('/')
             Rtty(centerHz, if (b == "45") 45.45 else b.toDouble(), s.toDouble())

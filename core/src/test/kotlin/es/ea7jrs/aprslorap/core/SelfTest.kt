@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex(); testNavaids()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex(); testNavaids(); testDsc()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2734,4 +2734,52 @@ private fun testNavaids() {
     m.feed(xr, xi, n)
     val res = m.result()
     check(res != null && kotlin.math.abs(res.offsetHz - 1234.5) < 1.0 && res.snrDb > 20 && res.frames == 3, "ppm meter: $res")
+}
+
+private fun testDsc() {
+    // the 10-unit symbols: phasing words as SDRangel lists them (125 = 1011111001, 111 = 1111011001, 106 = 0101011011)
+    eq(Dsc.codeword(125), 0b1011111001, "dsc codeword 125"); eq(Dsc.codeword(111), 0b1111011001, "dsc codeword 111")
+    eq(Dsc.codeword(106), 0b0101011011, "dsc codeword 106"); eq(Dsc.codeword(110), 0b0111011010, "dsc codeword 110")
+    check((0 until 128).all { Dsc.symbolOf(Dsc.codeword(it)) == it }, "dsc symbols round trip")
+    check(Dsc.symbolOf(Dsc.codeword(42) xor 0b0001000000) == -1, "dsc one bit error detected")
+    // a distress alert: fields, position, time, ECC, NMEA
+    val alert = Dsc.distressAlert("224123450", 105, 36.1167, -5.35, "1423")
+    val a = Dsc.parse(alert)
+    check(a.valid && a.eccOk && a.format == Dsc.FMT_DISTRESS && a.selfId == "224123450" && a.nature == 105 && a.time == "1423" && a.subsequent == 100, "dsc alert fields: ${a.summary()}")
+    near(a.lat ?: 0.0, 36.1167, 0.01, "dsc alert lat"); near(a.lon ?: 0.0, -5.35, 0.01, "dsc alert lon")
+    eq(a.positionDigits, "1360700521", "dsc alert position digits"); eq(a.distressShip, "224123450", "dsc distress ship")
+    eq(Dsc.nmea(a).substringBefore('*'), "\$CDDSC,12,2241234500,12,05,00,1360700521,1423,,,S,", "dsc nmea alert")
+    check(Dsc.nmea(a).substringAfter('*') == String.format("%02X", Nmea.checksum(Dsc.nmea(a).drop(1).substringBefore('*'))), "dsc nmea checksum")
+    val bad = alert.copyOf().also { it[5] = it[5] xor 1 }
+    check(!Dsc.parse(bad).valid && !Dsc.parse(bad).eccOk, "dsc ECC catches a wrong symbol")
+    // relay from a coast station, acknowledgement to all ships, individual call with a channel
+    val relay = Dsc.parse(Dsc.distressRelay("002241026", "224123450", 101, 28.1, -15.4, null))
+    check(relay.valid && relay.format == Dsc.FMT_ALL_SHIPS && relay.category == Dsc.CAT_DISTRESS && relay.tc1 == Dsc.TC_DISTRESS_RELAY &&
+        relay.distressId == "224123450" && relay.nature == 101 && relay.time == null && relay.lat != null && Dsc.mmsiKind(relay.selfId) == "coast station" && Dsc.mid(relay.selfId) == 224,
+        "dsc relay: ${relay.summary()}")
+    eq(Dsc.nmea(relay).substringBefore('*'), "\$CDDSC,16,0022410260,12,12,00,1280601524,,2241234500,01,S,", "dsc nmea relay")
+    val ind = Dsc.parse(Dsc.call("224000111", "224999990", Dsc.CAT_ROUTINE, 72))
+    check(ind.valid && ind.format == Dsc.FMT_INDIVIDUAL && ind.address == "224999990" && ind.rxChannel == "72" && ind.eos == Dsc.EOS_REQ && !ind.distress, "dsc individual: ${ind.summary()}")
+    // through the air: VHF at 8 kHz with noise and a level difference of the two tones (FM pre-emphasis), and MF / HF
+    fun air(msg: IntArray, vhf: Boolean, noise: Double, seed: Long, flip: Int = -1): List<Dsc.Call> {
+        val bits = Dsc.transmission(msg, if (vhf) 20 else 200)
+        if (flip >= 0) for (k in 0 until 4) bits[flip + k] = 1 - bits[flip + k]        // a burst of errors in one copy
+        val audio = if (vhf) Dsc.modulate(bits, 8000, Dsc.VHF_BAUD, Dsc.VHF_F1, Dsc.VHF_F0) else Dsc.modulate(bits, 8000, Dsc.HF_BAUD, 1700.0 - 85, 1700.0 + 85)
+        if (vhf) { var prev = 0f; for (i in audio.indices) { val x = audio[i]; audio[i] = x - 0.6f * prev; prev = x } }   // pre-emphasis: 2100 Hz louder
+        val r = java.util.Random(seed)
+        for (i in audio.indices) audio[i] = (audio[i] + noise * r.nextGaussian()).toFloat()
+        val got = ArrayList<Dsc.Call>()
+        val d = Dsc.Decoder(1700.0, vhf); d.onCall = { got.add(it) }
+        var i = 0
+        while (i < audio.size) { val n = minOf(512, audio.size - i); d.process(audio.copyOfRange(i, i + n), n); i += n }
+        return got
+    }
+    val v1 = air(alert, true, 0.0, 1)
+    check(v1.size == 1 && v1[0].symbols.contentEquals(alert), "dsc VHF clean: ${v1.map { it.summary() }}")
+    val v2 = air(alert, true, 0.15, 2)
+    check(v2.size == 1 && v2[0].symbols.contentEquals(alert), "dsc VHF noisy: ${v2.map { it.summary() }}")
+    val v3 = air(alert, true, 0.0, 3, flip = 20 + 10 * 20 + 3)          // errors in one copy of a message symbol: time diversity repairs it
+    check(v3.size == 1 && v3[0].symbols.contentEquals(alert) && v3[0].errors > 0, "dsc VHF time diversity: ${v3.map { it.summary() + " e" + it.errors }}")
+    val h1 = air(alert, false, 0.5, 4)
+    check(h1.size == 1 && h1[0].symbols.contentEquals(alert), "dsc HF noisy: ${h1.map { it.summary() }}")
 }
