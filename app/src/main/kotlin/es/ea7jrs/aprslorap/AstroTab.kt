@@ -5,6 +5,7 @@
  */
 package es.ea7jrs.aprslorap
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,13 +45,14 @@ object AstroSights {
 
 /**
  * Celestial navigation with a sextant, as Carta > Astro of the APRS LoRa+ plotter: the Sun or the Moon (lower or upper limb), Venus, Mars, Jupiter, Saturn or one of the
- * 57 navigational stars and Polaris, the altitude corrections, the computed altitude, azimuth and intercept, and the fix from
+ * 157 stars (a list of what is visible now, with the best three for a fix), the altitude corrections, the computed altitude, azimuth and intercept, and the fix from
  * two or more lines (earlier lines are advanced for the run since they were taken). Computed on the phone to almanac precision.
  */
 @Composable
 fun AstroTab() {
     var body by rememberSaveable { mutableStateOf(0) }            // 0 / 1 Sun lower / upper limb, 2 / 3 Moon, 4-7 Venus, Mars, Jupiter, Saturn, 8 star
     var star by rememberSaveable { mutableStateOf(0) }
+    var showSky by rememberSaveable { mutableStateOf(false) }
     var deg by rememberSaveable { mutableStateOf("") }
     var min by rememberSaveable { mutableStateOf("") }
     var index by rememberSaveable { mutableStateOf("0") }
@@ -127,6 +129,36 @@ fun AstroTab() {
                 OutlinedButton(onClick = { body = (body + 1) % 9 }) { Text(bodyNames[body]) }
                 OutlinedButton(onClick = { body = 8; star = (star + Celnav.STARS.size - 1) % Celnav.STARS.size }) { Text("<") }
                 OutlinedButton(onClick = { body = 8; star = (star + 1) % Celnav.STARS.size }) { Text(">") }
+                OutlinedButton(onClick = { showSky = !showSky }) { Text(if (showSky) "Hide" else "Visible") }
+            }
+            if (showSky) {
+                if (me == null) Text("Needs a position to know what is above the horizon.", fontSize = 12.sp, color = Alp.Amber)
+                else {
+                    val jdNow = Celnav.julianDay(System.currentTimeMillis())
+                    val sky = Celnav.visibleBodies(jdNow, me.first, me.second)
+                    val trio = Celnav.bestStarTriple(sky)?.let { setOf(it.first, it.second, it.third) } ?: emptySet()
+                    val sun = Celnav.sunGhaDec(jdNow).let { Celnav.bodyAltAz(it.gha, it.dec, me.first, me.second).alt }
+                    val phase = when {
+                        sun > -3 -> "Daylight: only the brightest stars can be seen, with difficulty."
+                        sun < -12 -> "Full night: without a visible horizon the altitudes are not reliable."
+                        else -> "Twilight: the right time for star sights."
+                    }
+                    Text("Between 10° and 80°, by azimuth. $phase" + if (trio.isNotEmpty()) " Amber: the three stars that best spread round the horizon." else "",
+                        fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(top = 4.dp))
+                    if (sky.isEmpty()) Text("Nothing between 10° and 80°.", fontSize = 13.sp)
+                    for ((i, it) in sky.withIndex()) {
+                        val main = it.kind < 3 || it.index < Celnav.NAV_STARS
+                        Text(String.format(Locale.US, "%-14s  %4.0f°  %03.0f°", it.name, it.alt, it.az),
+                            fontSize = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontWeight = if (i in trio) FontWeight.Bold else FontWeight.Normal,
+                            color = if (i in trio) Alp.Amber else if (main) androidx.compose.ui.graphics.Color.Unspecified else Alp.Muted,
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                body = when (it.kind) { 0 -> 0; 1 -> 2; 2 -> 4 + it.index; else -> 8 }
+                                if (it.kind == 3) star = it.index
+                                showSky = false
+                            }.padding(vertical = 4.dp))
+                    }
+                }
             }
             if (body >= 2) {
                 val hint = me?.let {

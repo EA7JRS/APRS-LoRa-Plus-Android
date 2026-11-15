@@ -412,4 +412,41 @@ object Celnav {
         val dn = (u * c - v * b) / det; val de = (v * a - u * b) / det
         return Pair(estLat + dn / 60.0, estLon + de / 60.0 / cos(rad(estLat)))
     }
+
+    /** A body that can be observed now. kind: 0 Sun, 1 Moon, 2 planet (index = [Planet] ordinal), 3 star (index in [STARS]). */
+    data class SkyItem(val kind: Int, val index: Int, val alt: Double, val az: Double, val mag: Double) {
+        val name: String get() = when (kind) { 0 -> "Sun"; 1 -> "Moon"; 2 -> Planet.values()[index].label; else -> STARS[index].name }
+    }
+
+    /** Sun, Moon, the four planets and the stars between [minAlt] and [maxAlt] (true altitude, degrees), sorted by azimuth (as the plotter core). */
+    fun visibleBodies(jd: Double, lat: Double, lon: Double, minAlt: Double = 10.0, maxAlt: Double = 80.0): List<SkyItem> {
+        val out = ArrayList<SkyItem>()
+        fun add(kind: Int, index: Int, gha: Double, dec: Double, mag: Double) {
+            val aa = bodyAltAz(gha, dec, lat, lon)
+            if (aa.alt in minAlt..maxAlt) out.add(SkyItem(kind, index, aa.alt, aa.az, mag))
+        }
+        sunGhaDec(jd).let { add(0, 0, it.gha, it.dec, -26.7) }
+        moonGhaDec(jd).let { add(1, 0, it.gha, it.dec, -10.0) }
+        val pmag = doubleArrayOf(-4.2, 0.5, -2.3, 0.7)
+        for (p in Planet.values()) planetGhaDec(p, jd).let { add(2, p.ordinal, it.gha, it.dec, pmag[p.ordinal]) }
+        val aries = ariesGha(jd)
+        for ((i, st) in STARS.withIndex()) starShaDec(st, jd).let { add(3, i, (aries + it.sha) % 360.0, it.dec, st.mag) }
+        out.sortBy { it.az }
+        return out
+    }
+
+    /** Three stars (15° to 75°) for a good fix: widest minimum azimuth separation in 10° steps, then the brightest. */
+    fun bestStarTriple(items: List<SkyItem>): Triple<Int, Int, Int>? {
+        fun sep(a: Double, b: Double): Double { val d = abs(a - b); return if (d > 180) 360 - d else d }
+        val ok = items.indices.filter { items[it].kind == 3 && items[it].alt in 15.0..75.0 }
+        var best = -1.0; var res: Triple<Int, Int, Int>? = null
+        for (x in ok.indices) for (y in x + 1 until ok.size) for (z in y + 1 until ok.size) {
+            val a = items[ok[x]]; val b = items[ok[y]]; val c = items[ok[z]]
+            val m = minOf(sep(a.az, b.az), sep(a.az, c.az), sep(b.az, c.az))
+            val score = kotlin.math.floor(m / 10.0) * 100.0 - (a.mag + b.mag + c.mag)
+            if (score > best) { best = score; res = Triple(ok[x], ok[y], ok[z]) }
+        }
+        return res
+    }
+
 }

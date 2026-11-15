@@ -2547,6 +2547,13 @@ private fun testCelnav() {
     val si = Celnav.starShaDec(Celnav.findStar("sirius")!!, jd(2030, 7, 4, 12))
     near(si.sha, 258.3789, 0.0005, "celnav Sirius 2030 SHA"); near(si.dec, -16.7609, 0.0005, "celnav Sirius 2030 dec")
     check(Celnav.STARS.size == 157 && Celnav.NAV_STARS == 58 && Celnav.STARS[57].name == "Polaris" && Celnav.findStar("Caph") != null && Celnav.findStar("nada") == null, "celnav catalogue")
+    run {
+        // same sky as the plotter test: 15 Jun 2026 21:30 UTC at 36.5 N 6.3 W (nautical twilight off Cadiz)
+        val sky = Celnav.visibleBodies(jd(2026, 6, 15, 21) + 0.5 / 24.0, 36.5, -6.3)
+        check(sky.size == 54 && sky.zipWithNext().all { it.first.az <= it.second.az } && sky.all { it.alt in 10.0..80.0 } && sky.none { it.kind == 0 }, "celnav visible bodies")
+        val t = Celnav.bestStarTriple(sky)
+        check(t != null && listOf(t.first, t.second, t.third).map { sky[it].name }.toSet() == setOf("Vega", "Arcturus", "Merak"), "celnav best triple")
+    }
     near(Celnav.dipArcmin(11.08), 5.9, 0.05, "celnav dip"); near(Celnav.refractionArcmin(15.0 + 1 / 60.0), 3.6, 0.06, "celnav refraction")
     near(Celnav.observedAltitude(35 + 20.0 / 60, 1.5, 3.0, Celnav.Limb.LOWER, 15.9, 0.15), 35 + 30.1 / 60, 0.1 / 60, "celnav Ho lower limb")
     // three stars from 36 30 N 006 20 W with the assumed position 8' south and 6' west: the fix comes back
