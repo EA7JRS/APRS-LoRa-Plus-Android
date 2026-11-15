@@ -204,7 +204,7 @@ fun AstroTab() {
             HorizontalDivider()
         }
         item {
-            Text("Sun, Aries and stars are computed on the phone to almanac precision (0.1'). No Moon or planets. The phone clock must be right: one second is up to 0.25 nm. " +
+            Text("Sun, Aries and stars are computed on the phone to almanac precision (0.1'), planets to 0.1' and the Moon to 0.3'. The phone clock must be right: one second is up to 0.25 nm. " +
                 "Earlier lines are advanced by the change of the assumed position since they were taken.", fontSize = 11.sp, color = Alp.Muted, modifier = Modifier.padding(vertical = 8.dp))
         }
     }
