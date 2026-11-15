@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2622,4 +2622,45 @@ private fun testCelnav() {
     val run = Celnav.fixFromSights(eLat, eLon, listOf(adv, sights[2]))
     check(run != null, "celnav running fix")
     near(run!!.first, tLat, 0.4 / 60, "celnav running fix lat"); near(run.second, tLon, 0.5 / 60, "celnav running fix lon")
+}
+
+private fun testDeviation() {
+    val d = Deviation
+    near(d.totalCorrection(135.4, 131.2), 4.2, 1e-9, "Ct")
+    near(d.deviationFromCt(4.2, -1.5), 5.7, 1e-9, "deviation from Ct")
+    near(d.totalCorrection(2.0, 358.0), 4.0, 1e-9, "Ct across north")
+    near(d.totalCorrection(358.0, 2.0), -4.0, 1e-9, "Ct across north, west")
+    near(d.deviationFromCt(-3.0, 2.0), -5.0, 1e-9, "deviation west")
+    // Polaris from 40 N: within 1.5 degrees of north at any time
+    val pol = Celnav.STARS.first { it.name == "Polaris" }
+    var ok = true
+    for (h in 0 until 24 step 3) {
+        val jd = Celnav.julianDay(java.util.GregorianCalendar(java.util.TimeZone.getTimeZone("UTC")).apply { clear(); set(2026, 10, 15, h, 0) }.timeInMillis)
+        val sd = Celnav.starShaDec(pol, jd)
+        val aa = Celnav.bodyAltAz((Celnav.ariesGha(jd) + sd.sha) % 360.0, sd.dec, 40.0, -5.0)
+        if (kotlin.math.abs(d.angleDiff(aa.az, 0.0)) > 1.5 || kotlin.math.abs(aa.alt - 40.0) > 1.5) ok = false
+    }
+    check(ok, "Polaris azimuth near north")
+    val A = 1.0; val B = 2.0; val C = 3.0; val D = -0.5; val E = 0.7
+    fun curve(h: Double): Double { val r = Math.toRadians(h); return A + B * kotlin.math.sin(r) + C * kotlin.math.cos(r) + D * kotlin.math.sin(2 * r) + E * kotlin.math.cos(2 * r) }
+    val k = Deviation.Card()
+    for (h in 0 until 360 step 45) k.add(h.toDouble(), curve(h.toDouble()))
+    check(k.points.size == 8 && k.terms == 5 && k.rmsDeg < 1e-6, "card: eight headings, five terms")
+    near(k.coef[0], A, 1e-6, "A"); near(k.coef[1], B, 1e-6, "B"); near(k.coef[2], C, 1e-6, "C"); near(k.coef[3], D, 1e-6, "D"); near(k.coef[4], E, 1e-6, "E")
+    near(k.at(100.0), curve(100.0), 1e-6, "card at 100")
+    val ra = k.compassFromMagnetic(100.0)
+    near(ra + k.at(ra), 100.0, 1e-3, "compass heading for a magnetic one")
+    k.add(46.0, curve(46.0) + 1.0)
+    check(k.points.size == 8 && k.rmsDeg > 0.1, "same heading replaces")
+    val k2 = Deviation.Card(); k2.decode(k.encode())
+    check(k2.points.size == 8 && kotlin.math.abs(k2.at(200.0) - k.at(200.0)) < 0.1, "card encode / decode")
+    val t3 = Deviation.Card(); t3.add(0.0, 4.0); t3.add(120.0, 1.0); t3.add(240.0, -2.0)
+    check(t3.terms == 3, "three headings: A B C"); near(t3.at(0.0), 4.0, 1e-6, "three at 0"); near(t3.at(240.0), -2.0, 1e-6, "three at 240")
+    val tc = Deviation.Card(); for ((h, v) in listOf(10.0 to 2.0, 16.0 to 3.0, 22.0 to 2.5, 28.0 to 2.5, 34.0 to 2.0)) tc.add(h, v)
+    check(tc.terms == 1, "clustered headings: mean only"); near(tc.at(200.0), 2.4, 1e-6, "clustered mean")
+    val t1 = Deviation.Card(); t1.add(90.0, -3.0)
+    check(t1.terms == 1, "one observation"); near(t1.at(270.0), -3.0, 1e-9, "one observation everywhere")
+    t1.remove(0); check(t1.points.isEmpty() && t1.terms == 0 && t1.at(0.0) == 0.0, "removed")
+    val full = Deviation.Card(); for (i in 0 until 30) full.add(i * 12.0, 1.0)
+    check(full.points.size == Deviation.Card.MAX && kotlin.math.abs(full.points[0].compassHdg - 72.0) < 1e-6, "full card drops the oldest")
 }

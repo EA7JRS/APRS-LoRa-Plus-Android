@@ -666,4 +666,8 @@ class Settings(ctx: Context) {
     var rbnAlertMe: Boolean
         get() = p.getBoolean("rbn_alert_me", false)
         set(v) { p.edit().putBoolean("rbn_alert_me", v).apply() }
+    /** Compass deviation card of Celestial navigation > Compass check: "hdg10:dev10;..." in tenths of a degree, as the plotter keeps it. */
+    var devCard: String
+        get() = p.getString("dev_card", "")!!
+        set(v) { p.edit().putString("dev_card", v).apply() }
 }
