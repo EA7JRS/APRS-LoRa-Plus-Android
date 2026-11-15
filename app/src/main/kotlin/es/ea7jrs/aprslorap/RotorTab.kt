@@ -58,6 +58,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import es.ea7jrs.aprslorap.core.RotorProto
+import es.ea7jrs.aprslorap.core.SMeter
 import kotlinx.coroutines.delay
 import java.util.Locale
 import java.util.UUID
@@ -489,7 +490,7 @@ private fun RotorCatSection(canControl: Boolean, settings: Settings) {
     Text(listOfNotNull(RotorProto.modeName(c.mode), "VFO ${c.vfo}", c.txFreqHz?.takeIf { c.split }?.let { "TX ${RotorProto.freq(it)}" },
         c.toneHz?.let { String.format(Locale.US, "CTCSS %.1f", it) }, c.sText,
         "TX".takeIf { c.ptt }).joinToString(" · "), fontSize = 14.sp)
-    LinearProgressIndicator(progress = { (c.smeter.coerceAtLeast(0) / 15f) }, modifier = Modifier.fillMaxWidth())
+    SMeterBar(SMeter.fromCat(c.smeter), Modifier.fillMaxWidth())
 
     fun tune(hz: Long) {
         if (hz <= 0) return
