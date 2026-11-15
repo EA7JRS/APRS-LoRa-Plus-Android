@@ -2113,7 +2113,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testDeviation(); testNavtex()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2663,4 +2663,46 @@ private fun testDeviation() {
     t1.remove(0); check(t1.points.isEmpty() && t1.terms == 0 && t1.at(0.0) == 0.0, "removed")
     val full = Deviation.Card(); for (i in 0 until 30) full.add(i * 12.0, 1.0)
     check(full.points.size == Deviation.Card.MAX && kotlin.math.abs(full.points[0].compassHdg - 72.0) < 1e-6, "full card drops the oldest")
+}
+
+private fun testNavtex() {
+    // CCIR 476: 35 valid codes (four marks), letters and figures both ways
+    check((0 until 128).count { Navtex.validCode(it) } == 35, "ccir476 valid codes")
+    check(Navtex.codeToChar(0x47, false) == 'A' && Navtex.codeToChar(0x47, true) == '-', "ccir476 A / -")
+    val codes = Navtex.textToCodes("ZCZC GA05\r\nGALE 8 AT 36-07.5N 005-21.2W\r\nNNNN\r\n")
+    val back = StringBuilder(); var figs = false
+    for (c in codes) when (c) { Navtex.CODE_LTRS -> figs = false; Navtex.CODE_FIGS -> figs = true; else -> back.append(Navtex.codeToChar(c, figs)) }
+    check(back.toString() == "ZCZC GA05\r\nGALE 8 AT 36-07.5N 005-21.2W\r\nNNNN\r\n", "ccir476 round trip")
+    // interleave: the repeat of each character comes 5 slots (35 bits) after its first copy
+    val st = Navtex.interleave(intArrayOf(0x47, 0x4b), phasingPairs = 2, tailPairs = 1)
+    check(st[0] == Navtex.CODE_REP && st[1] == Navtex.CODE_ALPHA && st[4] == 0x47 && st[9] == 0x47 && st[6] == 0x4b && st[11] == 0x4b, "sitor-b interleave")
+    // a whole message through the modem, clean and with noise and an offset the AFC must pull in
+    fun run(text: String, snrNoise: Double, offsetHz: Double, seed: Long, reverse: Boolean = false): List<Navtex.Message> {
+        val audio = Navtex.modulate(Navtex.interleave(Navtex.textToCodes(text), 60, 30), centerHz = 1000.0 + offsetHz)
+        if (reverse) { /* LSB: swap mark and space by mirroring around 1000 Hz is not needed; the decoder flag is tested separately */ }
+        val r = java.util.Random(seed)
+        for (i in audio.indices) audio[i] = (audio[i] + snrNoise * r.nextGaussian()).toFloat()
+        val got = ArrayList<Navtex.Message>()
+        val d = Navtex.Decoder(1000.0); d.onMessage = { got.add(it) }
+        var i = 0
+        while (i < audio.size) { val n = minOf(400, audio.size - i); d.process(audio.copyOfRange(i, i + n), n); i += n }
+        return got
+    }
+    val text = "ZCZC GA05\r\nTARIFA NAVTEX NAV WARNING 123/26\r\nWRECK IN 36-07.5N 005-21.2W. VESSELS KEEP CLEAR 1 MILE.\r\nNNNN\r\n"
+    val m1 = run(text, 0.0, 0.0, 1)
+    check(m1.size == 1 && m1[0].station == 'G' && m1[0].subject == 'A' && m1[0].number == 5 && !m1[0].lostHeader && !m1[0].lostTrailer, "navtex clean: header ${m1.map { it.id }}")
+    check(m1.firstOrNull()?.text == "TARIFA NAVTEX NAV WARNING 123/26\nWRECK IN 36-07.5N 005-21.2W. VESSELS KEEP CLEAR 1 MILE.", "navtex clean: text '${m1.firstOrNull()?.text}'")
+    val m2 = run(text, 0.5, 40.0, 7)                     // noise of about the signal level in 4 kHz, and 40 Hz off
+    check(m2.size == 1 && m2[0].id == "GA05" && m2[0].text.contains("36-07.5N 005-21.2W"), "navtex noisy and 40 Hz off: ${m2.map { it.id + ' ' + it.text.take(30) }}")
+    // subjects, slots, stations, positions
+    check(Navtex.subjectName('D').startsWith("Search") && Navtex.firstSlotMin('X') == 230 && Navtex.firstSlotMin('A') == 0 && Navtex.firstSlotMin('Y') == null, "navtex slots")
+    val t0 = java.util.GregorianCalendar(java.util.TimeZone.getTimeZone("UTC")).apply { clear(); set(2026, 10, 15, 12, 0) }.timeInMillis
+    check(Navtex.nextSlotMs('G', t0) == t0 + 60 * 60_000L, "navtex next slot G from 12:00 is 13:00")
+    check(Navtex.nextSlotMs('A', t0) == t0, "navtex slot A at 12:00 in progress")
+    val csv = "Spain;ESP;518.0;G;EAC;Tarifa;36 01 N;05 35 W;II;EE\nSpain;ESP;490.0;T;EAC;Tarifa;36 01 N;05 35 W;II;SS\nTurkey;TUR;518.0;G;XXX;Somewhere;41 00 N;29 00 E;III;EE\nbad line"
+    val stations = Navtex.parseStations(csv)
+    check(stations.size == 3 && kotlin.math.abs(stations[0].lon + (5 + 35 / 60.0)) < 1e-9, "navtex stations csv")
+    check(Navtex.findStation(stations, 'G', 518.0, 36.5, -6.0)?.name == "Tarifa" && Navtex.findStation(stations, 'G', 518.0, 41.0, 28.0)?.name == "Somewhere", "navtex station nearest")
+    val pos = Navtex.positions("A 36-07.5N 005-21.2W B 3607.5N 00521.2W C 42 11,718N 009 59,778E D 2026 10-20 NM 36-70.0N 004-10.0W")
+    check(pos.size == 3 && kotlin.math.abs(pos[1].first - (36 + 7.5 / 60)) < 1e-9 && kotlin.math.abs(pos[1].second + (5 + 21.2 / 60)) < 1e-9, "navtex positions: $pos")
 }

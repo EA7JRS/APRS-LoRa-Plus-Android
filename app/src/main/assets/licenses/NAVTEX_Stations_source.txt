@@ -1,0 +1,3 @@
+navtex/NAVTEX_Stations.csv comes from fldigi (data/NAVTEX_Stations.csv, https://github.com/w1hkj/fldigi),
+GNU General Public License version 3 or later. Station letters, frequencies and positions may have changed:
+check them against the official lists (IMO GMDSS Master Plan, NGA Pub. 117, the national list of radio signals).

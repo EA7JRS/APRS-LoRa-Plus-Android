@@ -670,4 +670,12 @@ class Settings(ctx: Context) {
     var devCard: String
         get() = p.getString("dev_card", "")!!
         set(v) { p.edit().putString("dev_card", v).apply() }
+    /** NAVTEX frequency the receiver is on, kHz (518 international in English, 490 national, 4209.5 HF): to know which station sent a message. */
+    var navtexKhz: Double
+        get() = p.getFloat("navtex_khz", 518f).toDouble()
+        set(v) { p.edit().putFloat("navtex_khz", v.toFloat()).apply() }
+    /** NAVTEX subject D (search and rescue, distress) opens the alert window with the alarm. */
+    var navtexAlarm: Boolean
+        get() = p.getBoolean("navtex_alarm", true)
+        set(v) { p.edit().putBoolean("navtex_alarm", v).apply() }
 }

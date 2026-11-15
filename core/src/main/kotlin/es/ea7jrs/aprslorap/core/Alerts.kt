@@ -16,6 +16,8 @@ enum class AlertKind(val title: String, val distress: Boolean) {
     MAN_DOWN("MAN DOWN", false),
     /** Weather, tsunami, earthquake, space weather or NOAA Weather Radio: the [EmergencyAlert.official] alert. */
     OFFICIAL("OFFICIAL ALERT", false),
+    /** A NAVTEX message of subject D (search and rescue, distress relay, piracy): [EmergencyAlert.text] is the message. */
+    NAVTEX("NAVTEX SAR / DISTRESS", true),
 }
 
 /**

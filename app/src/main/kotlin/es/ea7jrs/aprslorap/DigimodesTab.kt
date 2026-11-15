@@ -123,8 +123,8 @@ fun DigimodesTab() {
             drawImage(bmp.asImageBitmap(), srcOffset = IntOffset.Zero, srcSize = IntSize(WF_W, WF_H), dstSize = IntSize(size.width.toInt(), size.height.toInt()))
             val x = (st.centerHz / 4000.0 * size.width).toFloat()
             drawLine(Color.Red, Offset(x, 0f), Offset(x, size.height), strokeWidth = 2f)
-            if (st.mode.startsWith("RTTY")) {
-                val shift = st.mode.substringAfter('/').toDoubleOrNull() ?: 170.0
+            if (st.mode.startsWith("RTTY") || st.mode == "NAVTEX") {
+                val shift = if (st.mode == "NAVTEX") 170.0 else st.mode.substringAfter('/').toDoubleOrNull() ?: 170.0
                 for (d in listOf(-shift / 2, shift / 2)) { val xx = ((st.centerHz + d) / 4000.0 * size.width).toFloat(); drawLine(Color.Yellow, Offset(xx, 0f), Offset(xx, size.height), strokeWidth = 1f) }
             }
         }
@@ -137,6 +137,7 @@ fun DigimodesTab() {
             TextButton(onClick = { AppState.modemText.value = "" }) { Text("Clear") }
         }
         Text(text.ifEmpty { "—" }, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+        if (mode == "NAVTEX") NavtexSection()
         WsjtSection(source)
         SpottingSection()
         Text("CW, RTTY and BPSK receive in the manner of fldigi (varicode, Baudot and PSK timing from fldigi, GPL). More fldigi modes come in the next steps.", fontSize = 11.sp)

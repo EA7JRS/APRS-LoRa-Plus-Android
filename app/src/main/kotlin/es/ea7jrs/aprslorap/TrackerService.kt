@@ -44,6 +44,7 @@ class TrackerService : Service() {
         if (controller != null) return START_STICKY        // already running
         Spotter.init(this)
         AlertCenter.init(this)
+        NavtexHub.init(this)
         stopping = false
         val settings = Settings(this)
         val notifier = Notifier(this)

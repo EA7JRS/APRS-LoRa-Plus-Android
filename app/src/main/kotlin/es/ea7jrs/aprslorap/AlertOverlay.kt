@@ -217,6 +217,7 @@ private fun kindLine(a: EmergencyAlert): String = when (a.kind) {
     AlertKind.EAI -> "This tracker · own emergency beacon"
     AlertKind.MAN_DOWN -> "This tracker · no movement detected"
     AlertKind.OFFICIAL -> a.official?.let { it.src.title + " · " + it.levelName.lowercase().replaceFirstChar { c -> c.uppercase() } } ?: "Official alert"
+    AlertKind.NAVTEX -> "NAVTEX · search and rescue"
 }
 
 /** Level colours of the official alerts (yellow, orange, red; information in grey), the same as the tracker and the Display. */
@@ -329,6 +330,28 @@ private fun alertView(nav: Navigator, a: EmergencyAlert, ctx: android.content.Co
                 d?.let { Fmt.km(it.first) }.takeIf { o.src.quake || o.src == es.ea7jrs.aprslorap.core.AlertSrc.TSUNAMI }, d?.second, d?.let { Fmt.deg(it.second) } ?: "",
                 line2 = o.text, line3 = listOf(valid, o.instruction).filter { it.isNotBlank() }.joinToString(" · "),
                 heard = o.src.title, level = o.levelName,
+                actions = acts,
+            )
+        }
+        AlertKind.NAVTEX -> {
+            val pos = es.ea7jrs.aprslorap.core.Navtex.positions(a.text)
+            val p0 = pos.firstOrNull()
+            val d = Own.to(p0?.first, p0?.second)
+            val acts = ArrayList<Triple<String, String, () -> Unit>>()
+            acts.add(action("NAVTEX", "messages") { nav.tool(Tool.MODES) })
+            if (p0 != null) {
+                acts.add(action("GO TO", "Google Maps") { goToPos(ctx, p0.first, p0.second, "NAVTEX") })
+                acts.add(action("ROTOR", d?.let { "aim " + Fmt.deg(it.second) } ?: "aim") { aimRotorAt(p0.first, p0.second, "NAVTEX") })
+            }
+            AlertView(
+                a.who, "NAVTEX message", "official", null,
+                d?.let { Fmt.km(it.first) }, d?.second, d?.let { Fmt.deg(it.second) } ?: "",
+                message = a.text, lat = p0?.first, lon = p0?.second,
+                heard = java.text.SimpleDateFormat("HH:mm", Locale.US).format(java.util.Date(a.atMs)),
+                rows = listOfNotNull(
+                    d?.let { "Distance / bearing" to Fmt.km(it.first) + " · " + Fmt.deg(it.second) },
+                    if (pos.size > 1) "Positions" to "${pos.size} in the text" else null,
+                ),
                 actions = acts,
             )
         }

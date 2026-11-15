@@ -91,6 +91,9 @@ object AlertCenter {
         offer(EmergencyAlert("oa:" + o.id, AlertKind.OFFICIAL, o.event, o.area, false, null, System.currentTimeMillis(), false, o), sound)
     }
 
+    /** A NAVTEX message of subject D (search and rescue, distress relay, piracy). */
+    fun onNavtex(e: NavtexHub.Entry) = offer(NavtexHub.alertOf(e))
+
     private fun offer(a: EmergencyAlert, sound: Boolean = true) {
         val isNew = synchronized(queue) { queue.offer(a, System.currentTimeMillis()) }
         publish()
@@ -135,6 +138,7 @@ object AlertCenter {
             AlertKind.AIS_DISTRESS, AlertKind.AIS_COLLISION -> a.mmsi?.let { AppState.aisVessels.value[it] }?.let { lat = it.lat; lon = it.lon }
             AlertKind.EAI, AlertKind.MAN_DOWN -> {}
             AlertKind.OFFICIAL -> { lat = a.official?.lat; lon = a.official?.lon }
+            AlertKind.NAVTEX -> es.ea7jrs.aprslorap.core.Navtex.positions(a.text).firstOrNull()?.let { lat = it.first; lon = it.second }
             else -> {
                 val s = AppState.stations.value.firstOrNull { it.call.equals(a.who, true) }
                 val h = AppState.heard.value.firstOrNull { it.call.equals(a.who, true) }
@@ -150,12 +154,12 @@ object AlertCenter {
             AlertKind.OFFICIAL -> a.official?.let { o -> listOf(o.event, o.area, o.text, o.instruction).filter { it.isNotBlank() }.joinToString(". ") } ?: a.text
             else -> listOf(a.text, where ?: "").filter { it.isNotBlank() }.joinToString(". ")
         }
-        val replyTo = if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
+        val replyTo = if (a.kind == AlertKind.NAVTEX) null else if (a.kind == AlertKind.APRS_BEACON || a.kind == AlertKind.APRS_MESSAGE || a.kind == AlertKind.MOB) a.who.uppercase() else null
         // avatar: the station's APRS symbol; AIS: the APRS yacht (distress) or ship symbol, as the tracker shows them
         val icon = when (a.kind) {
             AlertKind.AIS_DISTRESS -> n.symbolIcon(a.who, '/', 'Y')
             AlertKind.AIS_COLLISION -> n.symbolIcon(a.who, '/', 's')
-            AlertKind.EAI, AlertKind.MAN_DOWN, AlertKind.OFFICIAL -> null
+            AlertKind.EAI, AlertKind.MAN_DOWN, AlertKind.OFFICIAL, AlertKind.NAVTEX -> null
             else -> n.symbolIcon(a.who)
         }
         n.alert(CAR_PREFIX + a.key, a.official?.title ?: a.kind.title, a.who, text.ifBlank { a.kind.title }, replyTo, lat, lon, icon)

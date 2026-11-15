@@ -42,7 +42,7 @@ private val CREDITS = listOf(
     Triple("ft8_lib (FT8 / FT4)", "Kārlis Goba, MIT (KISS FFT, BSD-3-Clause)", "https://github.com/kgoba/ft8_lib"),
     Triple("rtlsdr-wsprd (WSPR)", "K1JT, K9AN, Guenael Jouchet VA2GKA; GPL-3.0", "https://github.com/Guenael/rtlsdr-wsprd"),
     Triple("WSJT-X (FST4W decoder ported to C, UDP and PSK Reporter formats)", "Joe Taylor K1JT, Steven Franke K9AN and the WSJT-X team, GPL-3.0", "https://wsjt.sourceforge.io/"),
-    Triple("fldigi (PSK, RTTY and CW modems ported to Kotlin)", "W1HKJ and contributors, GPL-3.0", "https://www.w1hkj.org/"),
+    Triple("fldigi (PSK, RTTY, CW and NAVTEX modems ported to Kotlin; NAVTEX station list)", "W1HKJ, F4ECW, AB1KW and contributors, GPL-3.0", "https://www.w1hkj.org/"),
     Triple("Artemis database (from sigidwiki.com)", "AresValley", "https://github.com/AresValley/Artemis"),
     Triple("TrustedQSL / TaffyQSL (LoTW signing format)", "ARRL; TaffyQSL GPL-3.0", "https://lotw.arrl.org/"),
     Triple("usb-serial-for-android", "mik3y, MIT", "https://github.com/mik3y/usb-serial-for-android"),
