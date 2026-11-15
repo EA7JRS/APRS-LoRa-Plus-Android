@@ -119,7 +119,7 @@ private fun AlertWindow(nav: Navigator, a: EmergencyAlert, i: Int, n: Int, onPre
             }
             Column(Modifier.weight(1f)) {
                 Text(a.official?.title ?: a.kind.title, fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 24.sp, color = Color(0xFF131A22), maxLines = 1)
-                Text(kindLine(a), fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF131A22), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (a.kind != AlertKind.ROAD) Text(kindLine(a), fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF131A22), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (n > 1) {
                 Text("‹", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF131A22), modifier = Modifier.clickable(onClick = onPrev).padding(horizontal = 8.dp))
