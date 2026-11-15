@@ -8,6 +8,15 @@ package es.ea7jrs.aprslorap
 import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -306,6 +315,72 @@ fun CompassRose(modifier: Modifier, headingUp: Double = 0.0, targetDeg: Double? 
             }
         }
         if (ownCourse == null) drawCircle(Alp.Green, 5.dp.toPx(), c)
+    }
+}
+
+/**
+ * Rotor dial, the same style as sat-aprs (EquipoRotor.tsx), the Display and the rotor box: ticks every 5 degrees (long every
+ * 30, medium every 10), numbers every 30, red N; blue two-tone needle with counterweight (turns the short way, 1.4 s);
+ * target in amber (dotted line and index on the rim); heading of a moving station in green; mechanical stops in red.
+ */
+@Composable
+fun RotorDial(modifier: Modifier, azDeg: Double?, targetDeg: Double? = null, headingDeg: Double? = null, minAz: Double = 0.0, maxAz: Double = 360.0) {
+    val measurer = rememberTextMeasurer()
+    // accumulated angle: past north the needle keeps turning the short way instead of going all the way round
+    var acc by remember { mutableFloatStateOf(Float.NaN) }
+    azDeg?.let { az -> acc = if (acc.isNaN()) az.toFloat() else acc + ((((az.toFloat() - acc) % 360f) + 540f) % 360f) - 180f }
+    val shown by animateFloatAsState(if (acc.isNaN()) 0f else acc, tween(1400, easing = LinearEasing), label = "rotor")
+    Canvas(modifier) {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val s = size.minDimension / 220f
+        fun at(deg: Float, r: Float, side: Float = 0f): Offset {
+            val t = Math.toRadians(deg.toDouble()); val ux = sin(t).toFloat(); val uy = -cos(t).toFloat()
+            return Offset(c.x + (r * ux - side * uy) * s, c.y + (r * uy + side * ux) * s)
+        }
+        fun tri(a: Offset, b: Offset, d: Offset) = Path().apply { moveTo(a.x, a.y); lineTo(b.x, b.y); lineTo(d.x, d.y); close() }
+        drawCircle(Brush.radialGradient(listOf(Color(0xFF16283A), Color(0xFF060B14)), center = Offset(c.x, c.y - 0.08f * 106 * s), radius = 143 * s), 106 * s, c)
+        drawCircle(Color(0xFF334155), 106 * s, c, style = Stroke(2 * s))
+        drawCircle(Color(0xFF1E293B), 62 * s, c, style = Stroke(1 * s))
+        if (maxAz - minAz < 360) {                                  // dead zone between the stops
+            drawArc(Color(0xB3F87171), (maxAz - 90).toFloat(), (360 - (maxAz - minAz)).toFloat(), false,
+                topLeft = Offset(c.x - 104 * s, c.y - 104 * s), size = androidx.compose.ui.geometry.Size(208 * s, 208 * s), style = Stroke(4 * s))
+        }
+        for (d in 0 until 360 step 5) {
+            val major = d % 30 == 0; val mid = d % 10 == 0
+            drawLine(Color(if (major) 0xFFE2E8F0 else if (mid) 0xFF94A3B8 else 0xFF475569), at(d.toFloat(), if (major) 90f else if (mid) 94f else 97f),
+                at(d.toFloat(), 103f), (if (major) 2f else 1f) * s, StrokeCap.Round)
+        }
+        for (d in 0 until 360 step 30) {
+            val card = when (d) { 0 -> "N"; 90 -> "E"; 180 -> "S"; 270 -> "W"; else -> null }
+            val style = if (card != null) TextStyle(fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, fontSize = (17 * s).toSp(),
+                color = if (d == 0) Color(0xFFF87171) else Color(0xFFF1F5F9))
+            else TextStyle(fontFamily = TechMono, fontSize = (11 * s).toSp(), color = Color(0xFF94A3B8))
+            val l = measurer.measure(card ?: d.toString(), style)
+            val p = at(d.toFloat(), if (card != null) 76f else 78f)
+            drawText(l, topLeft = Offset(p.x - l.size.width / 2f, p.y - l.size.height / 2f))
+        }
+        headingDeg?.let { h ->
+            val hf = h.toFloat()
+            drawPath(tri(at(hf, 60f), at(hf, 48f, -6f), at(hf, 48f, 6f)), Color(0xFFA7F3D0), style = Stroke(1.5f * s, join = StrokeJoin.Round))
+            drawLine(Color(0x80A7F3D0), at(hf, 48f), at(hf, 16f), 1 * s)
+        }
+        targetDeg?.let { t ->
+            val tf = t.toFloat()
+            drawLine(Color(0xFFFBBF24), at(tf, 14f), at(tf, 88f), 1.5f * s, StrokeCap.Round, PathEffect.dashPathEffect(floatArrayOf(3 * s, 5 * s)))
+            val p = tri(at(tf, 91f), at(tf, 105f, -7f), at(tf, 105f, 7f))
+            drawPath(p, Color(0xFFFBBF24)); drawPath(p, Color(0xFF060B14), style = Stroke(1 * s))
+        }
+        if (azDeg != null) {
+            val a = shown
+            drawPath(tri(at(a, 0f, -5f), at(a, -34f), at(a, 0f, 5f)), Color(0xFF475569))
+            val tip = tri(at(a, 0f, -7f), at(a, 86f), at(a, 0f, 7f))
+            drawPath(tip, Brush.linearGradient(listOf(Color(0xFF7DD3FC), Color(0xFF38BDF8), Color(0xFF0284C7)), at(a, 0f, -7f), at(a, 0f, 7f)))
+            drawPath(tip, Color(0xFFE0F2FE), style = Stroke(0.6f * s, join = StrokeJoin.Round))
+            drawLine(Color(0x99E0F2FE), at(a, 6f), at(a, 80f), 0.8f * s)
+        }
+        drawCircle(Color(0xFF0F172A), 9 * s, c)
+        drawCircle(Color(0xFF7DD3FC), 9 * s, c, style = Stroke(2 * s))
+        drawCircle(Color(0xFF7DD3FC), 3 * s, c)
     }
 }
 

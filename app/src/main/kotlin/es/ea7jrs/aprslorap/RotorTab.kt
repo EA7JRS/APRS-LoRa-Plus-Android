@@ -285,28 +285,13 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
         OutlinedButton(enabled = canControl, onClick = { RotorLink.command(RotorProto.reboot()) }) { Text("Restart the rotor box") }
 }
 
-/** Compass: red = where the antenna points, blue = target; north up. */
+/** Rotor dial (sat-aprs style); the heading of a moving tracker is drawn in green. */
 @Composable
 private fun RotorCompass(p: RotorProto.Position?, i: RotorProto.Info) {
-    val ring = MaterialTheme.colorScheme.outline
-    val north = MaterialTheme.colorScheme.error
+    val g by AppState.gnss.collectAsState()
+    val heading = g?.takeIf { it.fix && (it.speedKmh ?: 0.0) > 3.0 }?.courseDeg
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(200.dp)) {
-            val r = size.minDimension / 2f - 6f
-            val c = Offset(size.width / 2f, size.height / 2f)
-            fun at(deg: Double, rad: Float) = Offset(c.x + (sin(Math.toRadians(deg)) * rad).toFloat(), c.y - (cos(Math.toRadians(deg)) * rad).toFloat())
-            drawCircle(ring, radius = r, center = c, style = Stroke(3f))
-            for (a in 0 until 360 step 30) drawLine(if (a == 0) north else ring, at(a.toDouble(), r - if (a % 90 == 0) 22f else 12f), at(a.toDouble(), r), strokeWidth = if (a % 90 == 0) 5f else 3f)
-            // Mechanical stops of the azimuth when the range is not a full turn
-            if (i.limits.maxAz - i.limits.minAz < 360) {
-                drawLine(Color(0xFFFF9800), c, at(i.limits.minAz, r), strokeWidth = 2f)
-                drawLine(Color(0xFFFF9800), c, at(i.limits.maxAz, r), strokeWidth = 2f)
-            }
-            p?.targetAzDeg?.let { drawLine(Color(0xFF2196F3), c, at(it, r - 16f), strokeWidth = 5f) }
-            p?.let { drawLine(Color(0xFFE53935), c, at(it.azDeg, r - 8f), strokeWidth = 8f) }
-            drawCircle(ring, radius = 6f, center = c)
-        }
-        Text("N", Modifier.align(Alignment.TopCenter), fontSize = 12.sp)
+        RotorDial(Modifier.size(220.dp), p?.azDeg, p?.targetAzDeg, heading, i.limits.minAz, i.limits.maxAz)
     }
 }
 
