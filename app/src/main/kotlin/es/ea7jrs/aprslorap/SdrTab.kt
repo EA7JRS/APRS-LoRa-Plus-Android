@@ -156,7 +156,7 @@ fun SdrTab() {
         Section("Tuning")
         Field("Frequency", st.freqHz?.let { Sdr.mhz(it) + " MHz" } ?: "—")
         Field("Mode / filter", (st.mode ?: "—") + (st.bandwidthHz?.let { " / ${it} Hz" } ?: ""))
-        if (st.signalDb != null) Field("Signal", String.format(Locale.US, "%.1f dB", st.signalDb) + (st.snrDb?.let { String.format(Locale.US, ", SNR %.1f dB", it) } ?: ""))
+        if (st.signalDb != null) Field("Signal", String.format(Locale.US, "%.1f " + (if (kind == Sdr.Kind.RTLTCP) "dBFS" else "dB"), st.signalDb) + (st.snrDb?.let { String.format(Locale.US, ", SNR %.1f dB", it) } ?: ""))
         if (kind == Sdr.Kind.RTLTCP) {
             Text(if (sql <= -100f) "Squelch (NFM): open" else String.format(Locale.US, "Squelch (NFM): %.0f dB", sql), fontSize = 13.sp)
             Slider(sql, { sql = it }, valueRange = -100f..0f, onValueChangeFinished = { val v = if (sql <= -100f) -200 else sql.toInt(); settings.sdrSquelchDb = v; SdrControl.squelch(v.toDouble()) })
@@ -180,11 +180,18 @@ fun SdrTab() {
             }
         }
         if (kind != Sdr.Kind.SPYSERVER) {
+            // DV (digital voice) sits with the analog modes; the flavour (DMR, D-STAR, C4FM, M17...) is chosen in its section below.
+            val dvActive = dvStatus.startsWith("Decoding")
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (m in Sdr.MODES) {
-                    val go = { settings.sdrMode = m; settings.sdrBandwidth = bw.toIntOrNull() ?: 0; SdrControl.mode(m, bw.toIntOrNull() ?: 0) }
-                    if (st.mode == m) Button(onClick = go, enabled = st.connected) { Text(m, fontSize = 10.sp) }
+                    val go = { if (DigitalVoiceRunner.active) DigitalVoiceRunner.stop(); settings.sdrMode = m; settings.sdrBandwidth = bw.toIntOrNull() ?: 0; SdrControl.mode(m, bw.toIntOrNull() ?: 0) }
+                    if (st.mode == m && !dvActive) Button(onClick = go, enabled = st.connected) { Text(m, fontSize = 10.sp) }
                     else OutlinedButton(onClick = go, enabled = st.connected) { Text(m, fontSize = 10.sp) }
+                }
+                if (kind == Sdr.Kind.RTLTCP && DigitalVoiceRunner.available(ctx)) {
+                    val goDv = { settings.sdrMode = "NFM"; settings.sdrBandwidth = 12_500; SdrControl.mode("NFM", 12_500); DigitalVoiceRunner.start(ctx, dvMode) }
+                    if (dvActive) Button(onClick = goDv, enabled = st.connected) { Text("DV", fontSize = 10.sp) }
+                    else OutlinedButton(onClick = goDv, enabled = st.connected) { Text("DV", fontSize = 10.sp) }
                 }
             }
             OutlinedTextField(bw, { bw = it.filter(Char::isDigit).take(6) }, label = { Text("Filter Hz (with the mode; empty = keep)") }, singleLine = true,
@@ -219,12 +226,12 @@ fun SdrTab() {
 
         // ---- digital voice
         if (kind == Sdr.Kind.RTLTCP) {
-            Section("Digital voice (DMR, D-STAR, C4FM, P25...)")
+            Section("Digital voice (DV): flavour")
             if (!DigitalVoiceRunner.available(ctx)) Text("This build of the app has no decoder for this phone's processor.", fontSize = 12.sp)
             else {
                 for (row in es.ea7jrs.aprslorap.core.DigitalVoice.MODES.keys.chunked(4)) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (m in row) {
-                        val go = { dvMode = m; settings.dvMode = m }
+                        val go = { dvMode = m; settings.dvMode = m; if (DigitalVoiceRunner.active) DigitalVoiceRunner.start(ctx, m) }   // apply at once if already decoding
                         if (m == dvMode) Button(onClick = go) { Text(m, fontSize = 10.sp) } else OutlinedButton(onClick = go) { Text(m, fontSize = 10.sp) }
                     }
                 }
@@ -235,6 +242,7 @@ fun SdrTab() {
                     }, enabled = st.connected) { Text(if (dvStatus.startsWith("Decoding")) "Restart" else "Decode") }
                     OutlinedButton(onClick = { DigitalVoiceRunner.stop() }, enabled = dvStatus != "Off") { Text("Stop") }
                 }
+                Text("Pick the flavour here, then DV in the mode row (next to AM / FM / CW) to decode. Auto tries to recognise it.", fontSize = 11.sp)
                 Text(dvStatus, fontSize = 12.sp)
                 for (l in dvLog.takeLast(14).asReversed()) Text(l, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                 Text("dsd-fme (lwvmobile) with mbelib, inside the app; the analog audio is muted while it decodes. No keys are used: encrypted calls stay muted. mbelib implements vocoders that may be covered by patents: personal use.", fontSize = 11.sp)

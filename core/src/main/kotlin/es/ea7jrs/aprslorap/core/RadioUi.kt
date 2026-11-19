@@ -32,6 +32,18 @@ object SMeter {
         return Reading((9 + floor(diff / 6.0).toInt()).coerceAtLeast(0), 0, dbm)
     }
 
+    /**
+     * Uncalibrated S-meter for the app's own receiver (RTL-SDR, SDRconnect, SpyServer): [dbfs] is the channel power relative to
+     * the ADC full scale (0 = full scale), not an absolute dBm — these receivers have no calibrated reference. S9 is taken at
+     * [s9Dbfs] and 6 dB per S point, so the needle moves with the signal instead of pinning to the top. [dbfs] above full scale
+     * never happens; 0 dBFS reads S9+40 (overload). Not frequency-dependent: there is nothing to calibrate against.
+     */
+    fun fromDbfs(dbfs: Double, s9Dbfs: Double = -40.0): Reading {
+        val diff = dbfs - s9Dbfs
+        if (diff >= 0) return Reading(9, diff.roundToInt().coerceAtMost(60), null)
+        return Reading((9 + floor(diff / 6.0).toInt()).coerceAtLeast(0), 0, null)
+    }
+
     /** CAT S-meter as the rotor box sends it: 0..9, then 10 = S9+10, 11 = S9+20...; negative = unknown. */
     fun fromCat(s: Int): Reading? = when {
         s < 0 -> null

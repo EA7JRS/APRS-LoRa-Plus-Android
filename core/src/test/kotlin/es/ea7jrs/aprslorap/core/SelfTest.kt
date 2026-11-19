@@ -2161,6 +2161,14 @@ private fun testRadioUi() {
     eq(SMeter.fromCat(7)?.label, "S7", "CAT S7")
     eq(SMeter.fromCat(11)?.label, "S9+20", "CAT 11 = S9+20")
     eq(SMeter.fromCat(-1), null, "CAT unknown")
+    // relative (uncalibrated) S-meter in dBFS: S9 at −40 dBFS, 6 dB/S; does not pin to the top on a quiet band
+    eq(SMeter.fromDbfs(-40.0).label, "S9", "dBFS S9 at −40")
+    eq(SMeter.fromDbfs(-46.0).label, "S8", "dBFS S8")
+    eq(SMeter.fromDbfs(-70.0).label, "S4", "dBFS quiet band is not full scale")
+    eq(SMeter.fromDbfs(-20.0).label, "S9+20", "dBFS strong signal")
+    eq(SMeter.fromDbfs(0.0).label, "S9+40", "dBFS full scale = overload")
+    eq(SMeter.fromDbfs(-120.0).label, "S0", "dBFS noise floor")
+    eq(SMeter.fromDbfs(-40.0).dbm, null, "dBFS reading carries no dBm")
 
     // aprs.fi sprites: 16 columns, '!' first
     eq(AprsSymbols.of('/', '>'), AprsSymbols.Symbol(AprsSymbols.Cell(0, 13, 1), null), "car /> in the primary sheet")

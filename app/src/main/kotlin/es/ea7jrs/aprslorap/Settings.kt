@@ -340,8 +340,8 @@ class Settings(ctx: Context) {
     var sdrBiasTee: Boolean
         get() = p.getBoolean("sdr_biast", false)
         set(v) { p.edit().putBoolean("sdr_biast", v).apply() }
-    var sdrGainPercent: Int                                   // -1 = automatic
-        get() = p.getInt("sdr_gain", -1)
+    var sdrGainPercent: Int                                   // -1 = automatic; default 40 %: the RTL-SDR hardware AGC overloads on an antenna
+        get() = p.getInt("sdr_gain", 40)
         set(v) { p.edit().putInt("sdr_gain", v.coerceIn(-1, 100)).apply() }
     var sdrSquelchDb: Int
         get() = p.getInt("sdr_sql", -200)

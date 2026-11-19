@@ -243,8 +243,8 @@ private fun BandB(nav: Navigator, big: Boolean) {
         }
         sdr.connected -> {
             title = "SDR · " + sdr.device.ifEmpty { "receiver" }; hz = sdr.freqHz; mode = sdr.mode ?: "—"
-            reading = sdr.signalDb?.let { SMeter.fromDbm(it, sdr.freqHz ?: 0L) }
-            extra = listOfNotNull(sdr.signalDb?.let { String.format(Locale.US, "%.0f dBm", it) }, sdr.snrDb?.let { String.format(Locale.US, "SNR %.0f", it) }).joinToString(" · ")
+            reading = sdr.signalDb?.let { SMeter.fromDbfs(it) }       // uncalibrated receiver: relative level in dBFS, not dBm
+            extra = listOfNotNull(sdr.signalDb?.let { String.format(Locale.US, "%.0f dBFS", it) }, sdr.snrDb?.let { String.format(Locale.US, "SNR %.0f", it) }).joinToString(" · ")
             target = { nav.tool(Tool.SDR) }
         }
         else -> { title = "NO RADIO"; hz = null; mode = ""; reading = null; extra = null; target = { nav.tool(Tool.CAT) } }
