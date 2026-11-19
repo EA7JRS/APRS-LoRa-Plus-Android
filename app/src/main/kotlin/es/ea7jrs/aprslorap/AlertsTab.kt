@@ -6,6 +6,7 @@
 package es.ea7jrs.aprslorap
 
 import androidx.compose.foundation.background
+import es.ea7jrs.aprslorap.core.HfProp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import es.ea7jrs.aprslorap.core.OfficialAlert
+import es.ea7jrs.aprslorap.core.OfficialAlerts
 import es.ea7jrs.aprslorap.core.SpaceWx
 import java.util.Locale
 
@@ -59,7 +61,7 @@ fun AlertsTab() {
         space?.let { SpaceCard(it) }
         AlertSettings(settings)
         Text("Sources: AEMET (Meteoalerta, © AEMET), MeteoAlarm (EUMETNET, CC BY 4.0), NWS / NOAA (US public domain), tsunami.gov (PTWC, NTWC), " +
-             "USGS and EMSC-CSEM earthquakes, NOAA SWPC space weather. The phone downloads them with its internet at the tracker's position (or its own); " +
+             "USGS, EMSC-CSEM and Raspberry Shake ShakeNet earthquakes, NOAA SWPC space weather. The phone downloads them with its internet at the tracker's position (or its own); " +
              "only the US weather service gets that position, rounded to 0.01°. Not a replacement for the official channels of civil protection.", fontSize = 11.sp, color = Alp.Muted)
     }
 }
@@ -91,9 +93,12 @@ private fun SpaceCard(w: SpaceWx) {
         }
         Column {
             Text(listOfNotNull(w.kpNow?.let { String.format(Locale.US, "Kp %.1f", it) }, w.sfi?.let { String.format(Locale.US, "SFI %.0f", it) },
+                w.ssn?.let { String.format(Locale.US, "SSN %.0f", it) },
                 w.xray.takeIf { it.isNotEmpty() }?.let { "X-ray $it" }).joinToString(" · "), fontSize = 14.sp, color = Alp.Text)
             Text(listOfNotNull(w.bz?.let { String.format(Locale.US, "Bz %+.0f nT", it) }, w.bt?.let { String.format(Locale.US, "Bt %.0f nT", it) },
-                w.windKms?.let { String.format(Locale.US, "wind %.0f km/s", it) }, w.gMax.takeIf { it > 0 }?.let { "G$it forecast" }).joinToString(" · "), fontSize = 13.sp, color = Alp.SubText)
+                w.windKms?.let { String.format(Locale.US, "wind %.0f km/s", it) }, w.density?.let { String.format(Locale.US, "%.1f p/cm³", it) },
+                OfficialAlerts.windPressureNpa(w)?.let { String.format(Locale.US, "%.1f nPa", it) },
+                w.gMax.takeIf { it > 0 }?.let { "G$it forecast" }).joinToString(" · "), fontSize = 13.sp, color = Alp.SubText)
         }
     }
     // Kp of the last 24 h (3-hour values), dotted line at Kp 5
@@ -103,6 +108,27 @@ private fun SpaceCard(w: SpaceWx) {
             Box(Modifier.width(14.dp).height((4 + k * 4.5).dp).clip(RoundedCornerShape(2.dp)).background(if (lv >= 1) officialColor(lv) else Alp.Green))
         }
         Text("  Kp 24 h", fontSize = 11.sp, color = Alp.Muted)
+    }
+    // HF now (formulas of sat-aprs, as the tracker's TELEMETRY > HF): MUF / LUF here and the state of each band for DX
+    val sfi = w.sfi
+    val pos = Own.position()
+    if (sfi != null && pos != null) {
+        val elev = es.ea7jrs.aprslorap.core.Astro.sunPosition(System.currentTimeMillis(), pos.first, pos.second).altDeg
+        val e = HfProp.estimate(sfi, elev, HfProp.xrayFlux(w.xray))
+        val kp = w.kpNow ?: 0.0
+        Text(String.format(Locale.US, "HF now: MUF %.1f · LUF %.1f MHz", e.muf, e.luf) + (HfProp.bestDx(e, kp)?.let { " · best DX $it" } ?: "") +
+            if (elev > 0) " (day)" else " (night)", fontSize = 13.sp, color = Alp.Text)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((name, mhz) in HfProp.BANDS) {
+                val st = HfProp.state(mhz, e, kp)
+                val c = when (st) { HfProp.State.OPEN -> Alp.Green; HfProp.State.FAIR -> officialColor(1); HfProp.State.POOR -> officialColor(2); else -> Alp.Muted }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(name.removeSuffix("m"), fontSize = 11.sp, color = Alp.SubText)
+                    Text(st.short, fontSize = 11.sp, color = c, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Text("Estimated from the solar flux, the sun's elevation here, X-rays and Kp; without an ionosonde.", fontSize = 11.sp, color = Alp.Muted)
     }
 }
 
@@ -126,7 +152,7 @@ private fun AlertSettings(s: Settings) {
     }
     sw("Download official alerts", on) { on = it; s.alertsOn = it; if (it) OfficialAlertsFetcher.fetchNow(ctx, s) }
     sw("Weather (AEMET · MeteoAlarm · NWS)", wx) { wx = it; s.alertWeather = it }
-    sw("Earthquakes (USGS · EMSC)", eq) { eq = it; s.alertQuakes = it }
+    sw("Earthquakes (USGS · EMSC · ShakeNet)", eq) { eq = it; s.alertQuakes = it }
     sw("Tsunamis (tsunami.gov)", tsu) { tsu = it; s.alertTsunami = it }
     sw("Space weather (SWPC)", spc) { spc = it; s.alertSpace = it }
     sw("NOAA Weather Radio (SAME: T-TWR, RTL-SDR)", same) { same = it; s.alertSame = it }

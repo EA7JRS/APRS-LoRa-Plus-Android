@@ -3,7 +3,7 @@
 //
 // Official alerts with the phone's internet, at the tracker's GNSS position (or the phone's last one): weather (AEMET in Spain: the
 // public Meteoalerta RSS and the .tar.gz of every CAP, checked against each polygon; MeteoAlarm elsewhere in Europe, filtered by the
-// zones the user writes; NWS in the US, per point), tsunamis (tsunami.gov), earthquakes (USGS worldwide, EMSC near) and space weather
+// zones the user writes; NWS in the US, per point), tsunamis (tsunami.gov), earthquakes (USGS worldwide, EMSC and ShakeNet near) and space weather
 // (NOAA SWPC). Every [Settings.alertMinutes]; the new ones open the alert window, and all of them go to the tracker ("alert",
 // "alertdel", "spacewx") when its firmware knows them. SAME headers (NOAA Weather Radio) come from the tracker (T-TWR) or the app's
 // RTL-SDR receiver ([onSame]).
@@ -33,6 +33,9 @@ object OfficialAlertsFetcher {
     private val sentToTracker = HashMap<String, Int>()           // tracker id -> level sent
     private val fromTracker = HashSet<String>()                  // SAME alerts the tracker decoded itself (not sent back)
     private var spaceSentMs = 0L
+    private var ssnValue: Double? = null                         // sunspot number (SWPC; refreshed every 6 h)
+    private var ssnAtMs = 0L
+    private var dailyFlux: Double? = null                        // 10.7 cm flux of the daily indices (if the summary fails)
     private var country = ""                                    // ISO code of the position (cached)
     private var countryAt: Pair<Double, Double>? = null
 
@@ -130,18 +133,30 @@ object OfficialAlertsFetcher {
                     val q = ArrayList<OfficialAlert>()
                     runCatching { q.addAll(OfficialAlerts.usgs(text(OfficialAlerts.USGS_45_DAY))) }.onFailure { errors.add("USGS: ${it.message}") }
                     if (pos != null) runCatching { q.addAll(OfficialAlerts.emsc(text(OfficialAlerts.emscUrl(pos.first, pos.second, nowS - 86400)))) }.onFailure { errors.add("EMSC: ${it.message}") }
+                    if (pos != null) runCatching { q.addAll(OfficialAlerts.fdsnText(text(OfficialAlerts.shakeUrl(pos.first, pos.second, nowS - 86400)), AlertSrc.SHAKE)) }.onFailure { errors.add("ShakeNet: ${it.message}") }
                     val all = OfficialAlerts.quakeLevels(q, pos?.first, pos?.second)
                     // the list keeps the ones that matter here: yellow or more, and the information ones closer than 1000 km
                     val near = all.filter { a -> a.level >= 1 || within(pos, a, 1000.0) }
                     bySource[AlertSrc.USGS] = near.filter { it.src == AlertSrc.USGS }
                     bySource[AlertSrc.EMSC] = near.filter { it.src == AlertSrc.EMSC }
-                } else { bySource.remove(AlertSrc.USGS); bySource.remove(AlertSrc.EMSC) }
+                    bySource[AlertSrc.SHAKE] = near.filter { it.src == AlertSrc.SHAKE }
+                } else { bySource.remove(AlertSrc.USGS); bySource.remove(AlertSrc.EMSC); bySource.remove(AlertSrc.SHAKE) }
                 if (settings.alertSpace) run("SWPC") {
                     var w = SpaceWx()
                     OfficialAlerts.swpcScales(text(OfficialAlerts.SWPC_SCALES), w)?.let { w = it }
                     runCatching { OfficialAlerts.swpcKp(text(OfficialAlerts.SWPC_KP), w)?.let { w = it } }
                     for (u in listOf(OfficialAlerts.SWPC_FLUX, OfficialAlerts.SWPC_MAG, OfficialAlerts.SWPC_WIND)) runCatching { OfficialAlerts.swpcSummary(text(u), w)?.let { w = it } }
+                    // real-time solar wind (1 min, as sat-aprs): over the summaries when it answers
+                    runCatching { OfficialAlerts.rtswWind(text(OfficialAlerts.SWPC_RTSW_WIND), w)?.let { w = it } }
+                    runCatching { OfficialAlerts.rtswMag(text(OfficialAlerts.SWPC_RTSW_MAG), w)?.let { w = it } }
                     runCatching { OfficialAlerts.swpcXray(text(OfficialAlerts.SWPC_XRAY), w)?.let { w = it } }
+                    if (System.currentTimeMillis() - ssnAtMs > 3_600_000L || ssnValue == null) {          // once an hour, as sat-aprs
+                        val daily = runCatching { OfficialAlerts.swpcDailyIndices(text(OfficialAlerts.SWPC_DAILY_INDICES)) }.getOrNull()
+                        val v = daily?.second ?: runCatching { OfficialAlerts.swpcSsn(text(OfficialAlerts.SWPC_SSN_MONTHLY)) }.getOrNull()
+                        if (v != null) { ssnValue = v; ssnAtMs = System.currentTimeMillis() }
+                        if (daily?.first != null) dailyFlux = daily.first
+                    }
+                    w = w.copy(ssn = ssnValue, sfi = w.sfi ?: dailyFlux)
                     AppState.spaceWx.value = w.copy(updatedMs = System.currentTimeMillis())
                     bySource[AlertSrc.SWPC] = OfficialAlerts.swpcAlerts(text(OfficialAlerts.SWPC_ALERTS), nowS)
                 } else bySource.remove(AlertSrc.SWPC)

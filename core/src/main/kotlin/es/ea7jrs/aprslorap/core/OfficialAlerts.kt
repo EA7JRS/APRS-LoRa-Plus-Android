@@ -18,16 +18,17 @@ import kotlin.math.roundToLong
  * - weather: AEMET (public Meteoalerta RSS and the .tar.gz of every CAP, with polygons), MeteoAlarm (Atom feed per country, CC BY 4.0)
  *   and the US NWS (api.weather.gov, GeoJSON, per point);
  * - tsunamis: tsunami.gov (PTWC PHEB and NTWC PAAQ Atom feeds);
- * - earthquakes: USGS (GeoJSON, worldwide) and EMSC (FDSN, Europe and the Mediterranean, with IGN data);
+ * - earthquakes: USGS (GeoJSON, worldwide), EMSC (FDSN, Europe and the Mediterranean, with IGN data) and ShakeNet (Raspberry Shake
+ *   QuakeLink, FDSN text, automatic locations of the Raspberry Shake network; terms of use not published);
  * - space weather: NOAA SWPC (G / R / S scales, Kp, 10.7 cm flux, solar wind, alerts);
  * - NOAA Weather Radio (SAME): [SameDecoder].
  * Every alert gets a common level 0 (information), 1 yellow, 2 orange, 3 red.
  */
 enum class AlertSrc(val code: String, val title: String) {
     AEMET("aemet", "AEMET"), METEOALARM("ma", "MeteoAlarm"), NWS("nws", "NWS"), TSUNAMI("tsu", "TSUNAMI"), SWPC("swpc", "SWPC"),
-    SAME("same", "SAME"), USGS("usgs", "USGS"), EMSC("emsc", "EMSC"), OTHER("other", "ALERT");
+    SAME("same", "SAME"), USGS("usgs", "USGS"), EMSC("emsc", "EMSC"), SHAKE("shake", "ShakeNet"), OTHER("other", "ALERT");
 
-    val quake: Boolean get() = this == USGS || this == EMSC
+    val quake: Boolean get() = this == USGS || this == EMSC || this == SHAKE
 
     companion object { fun of(code: String?) = entries.firstOrNull { it.code == code } ?: OTHER }
 }
@@ -52,6 +53,9 @@ data class SpaceWx(
     val g: Int = -1, val r: Int = -1, val s: Int = -1, val gMax: Int = -1, val kp: List<Double> = emptyList(), val kpTime: Long = 0,
     val sfi: Double? = null, val bz: Double? = null, val bt: Double? = null, val windKms: Double? = null, val xray: String = "",
     val updatedMs: Long = 0,
+    val ssn: Double? = null,                                      // sunspot number (SWPC, daily; monthly as a fallback)
+    val density: Double? = null, val tempK: Double? = null,       // solar wind: protons / cm3 and K (RTSW, 1 min)
+    val windTime: Long = 0,                                       // time of the solar wind reading (Unix s)
 ) {
     val kpNow: Double? get() = kp.lastOrNull()
     val valid: Boolean get() = g >= 0 || kp.isNotEmpty() || sfi != null
@@ -74,6 +78,14 @@ object OfficialAlerts {
     const val SWPC_WIND = "https://services.swpc.noaa.gov/products/summary/solar-wind-speed.json"
     const val SWPC_ALERTS = "https://services.swpc.noaa.gov/products/alerts.json"
     const val SWPC_XRAY = "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json"
+    // Sunspot number and 10.7 cm flux of the day: SWPC's daily solar indices (a small text file, last 30 days; the source sat-aprs
+    // reads, once an hour) and, if it fails, the monthly observed solar-cycle indices ("time-tag", "ssn")
+    // Real-time solar wind at L1 (DSCOVR / ACE), 1-minute values, newest first: speed, density and temperature of the protons and
+    // the magnetic field (Bt, Bz GSM). The same feeds sat-aprs reads; the summaries above remain as a fallback.
+    const val SWPC_RTSW_WIND = "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json"
+    const val SWPC_RTSW_MAG = "https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json"
+    const val SWPC_DAILY_INDICES = "https://services.swpc.noaa.gov/text/daily-solar-indices.txt"
+    const val SWPC_SSN_MONTHLY = "https://services.swpc.noaa.gov/json/solar-cycle/observed-solar-cycle-indices.json"
 
     // ---------------------------------------------------------------- XML
     private val ENTITY = Regex("&(#x?[0-9A-Fa-f]+|amp|lt|gt|quot|apos|nbsp);")
@@ -372,6 +384,56 @@ object OfficialAlerts {
             minMag, lat, lon, radiusDeg, f.format(java.util.Date(sinceS * 1000)))
     }
 
+    /** ShakeNet (Raspberry Shake, QuakeLink): FDSN event service in the FDSN text format, near a position. */
+    fun shakeUrl(lat: Double, lon: Double, sinceS: Long, minMag: Double = 3.5, radiusDeg: Double = 15.0): String {
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        return String.format(Locale.US, "https://quakelink.raspberryshake.org/fdsnws/event/1/query?format=text&orderby=time&limit=50&minmagnitude=%.1f" +
+            "&latitude=%.2f&longitude=%.2f&maxradius=%.0f&starttime=%s", minMag, lat, lon, radiusDeg, f.format(java.util.Date(sinceS * 1000)))
+    }
+
+    /**
+     * FDSN-WS 1.2 text ("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog|Contributor|ContributorID|MagType|Magnitude|
+     * MagAuthor|EventLocationName|EventType"): columns by their header names, the standard order without a header; events that
+     * are not earthquakes (quarry blasts...) are left out. Same as quakeParseFdsnText of the plotter core.
+     */
+    fun fdsnText(text: String, src: AlertSrc): List<OfficialAlert> {
+        var cId = -1; var cTime = -1; var cLat = -1; var cLon = -1; var cDep = -1; var cMag = -1; var cPlace = -1; var cType = -1
+        var header = false
+        val out = ArrayList<OfficialAlert>()
+        for (raw in text.split('\n')) {
+            val line = raw.trimEnd('\r')
+            if (line.isBlank()) continue
+            val f = line.split('|').map { it.trim() }
+            if (line.startsWith("#")) {
+                f.forEachIndexed { i, n0 ->
+                    val n = n0.removePrefix("#").lowercase(Locale.US)
+                    when {
+                        n.contains("eventid") -> cId = i
+                        n.contains("time") -> if (cTime < 0) cTime = i
+                        n.contains("latitude") -> cLat = i
+                        n.contains("longitude") -> cLon = i
+                        n.contains("depth") -> cDep = i
+                        n.contains("magtype") || n.contains("magauthor") -> {}
+                        n.contains("magnitude") -> cMag = i
+                        n.contains("locationname") -> cPlace = i
+                        n.contains("eventtype") -> cType = i
+                    }
+                }
+                header = cTime >= 0 && cLat >= 0 && cLon >= 0 && cMag >= 0
+                continue
+            }
+            if (!header) { cId = 0; cTime = 1; cLat = 2; cLon = 3; cDep = 4; cMag = 10; cPlace = 12; cType = 13; header = true }
+            fun at(i: Int) = f.getOrNull(i) ?: ""
+            val lat = at(cLat).toDoubleOrNull() ?: continue
+            val lon = at(cLon).toDoubleOrNull() ?: continue
+            val mag = at(cMag).toDoubleOrNull() ?: continue
+            if (at(cType).isNotEmpty() && !at(cType).contains("earthquake", true)) continue
+            val t = parseIso(at(cTime)).takeIf { it != 0L } ?: continue
+            out.add(quake(src.code + "/" + at(cId).ifEmpty { at(cTime) }, src, mag, at(cPlace), lat, lon, at(cDep).toDoubleOrNull() ?: 0.0, t))
+        }
+        return out
+    }
+
     private fun quake(id: String, src: AlertSrc, mag: Double, place: String, lat: Double, lon: Double, depth: Double, t: Long) =
         OfficialAlert(id, src, 0, String.format(Locale.US, "M%.1f Earthquake", mag), place, String.format(Locale.US, "Depth %.0f km", abs(depth)),
             "", t, t, if (t != 0L) t + 86400 else 0, lat, lon)
@@ -414,12 +476,14 @@ object OfficialAlerts {
 
     private val CARD = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
-    /** Levels and "Depth 10 km, 245 km NE" from the own position; drops the duplicates (EMSC is kept: more local data). */
+    private fun rank(s: AlertSrc) = when (s) { AlertSrc.EMSC -> 2; AlertSrc.USGS -> 1; else -> 0 }
+
+    /** Levels and "Depth 10 km, 245 km NE" from the own position; drops the duplicates (EMSC first: more local data; then USGS, then ShakeNet). */
     fun quakeLevels(list: List<OfficialAlert>, lat: Double?, lon: Double?): List<OfficialAlert> {
         val q = ArrayList<OfficialAlert>()
         for (a in list) {
             val k = q.indexOfFirst { quakeSame(it, a) }
-            if (k < 0) q.add(a) else if (a.src == AlertSrc.EMSC && q[k].src != AlertSrc.EMSC) q[k] = a
+            if (k < 0) q.add(a) else if (rank(a.src) > rank(q[k].src)) q[k] = a
         }
         return q.map { a ->
             val depth = a.text.substringBefore(",")
@@ -477,6 +541,70 @@ object OfficialAlerts {
         numOf(o["Bt"])?.let { r = r.copy(bt = it); any = true }
         numOf(o["WindSpeed"])?.let { r = r.copy(windKms = it); any = true }
         return if (any) r else null
+    }
+
+    /** Newest RTSW 1-min row with a value (the active spacecraft first, as SWPC marks it). Objects or rows with a header. */
+    private fun rtswRows(json: String): List<Map<String, Any?>> {
+        val arr = runCatching { Json.parse(json) as? List<*> }.getOrNull() ?: return emptyList()
+        val first = arr.firstOrNull()
+        val rows: List<Map<String, Any?>> = if (first is List<*>) {
+            val head = first.map { it?.toString()?.lowercase() ?: "" }
+            arr.drop(1).mapNotNull { r -> (r as? List<*>)?.let { row -> head.indices.associate { head[it] to row.getOrNull(it) } } }
+        } else arr.mapNotNull { r -> @Suppress("UNCHECKED_CAST") (r as? Map<String, Any?>) }
+        val newest = rows.sortedByDescending { it["time_tag"]?.toString() ?: "" }
+        return newest.filter { it["active"] != false } + newest.filter { it["active"] == false }
+    }
+
+    fun rtswWind(json: String, w: SpaceWx): SpaceWx? {
+        for (r in rtswRows(json)) {
+            val v = numOf(r["proton_speed"] ?: r["speed"]) ?: continue
+            val n = numOf(r["proton_density"] ?: r["density"])
+            if (v <= 0) continue
+            return w.copy(windKms = v, density = n ?: w.density, tempK = numOf(r["proton_temperature"] ?: r["temperature"]) ?: w.tempK,
+                windTime = parseIso(r["time_tag"]?.toString()).takeIf { it > 0 } ?: w.windTime)
+        }
+        return null
+    }
+
+    fun rtswMag(json: String, w: SpaceWx): SpaceWx? {
+        for (r in rtswRows(json)) {
+            val bz = numOf(r["bz_gsm"] ?: r["bz_gse"] ?: r["bz"]) ?: continue
+            return w.copy(bz = bz, bt = numOf(r["bt"]) ?: w.bt)
+        }
+        return null
+    }
+
+    /** Solar wind dynamic pressure (nPa) = m_p * n * v^2 = 1.6726e-6 * n (cm-3) * v^2 (km/s); null without both. */
+    fun windPressureNpa(w: SpaceWx): Double? {
+        val n = w.density ?: return null
+        val v = w.windKms ?: return null
+        return 1.6726e-6 * n * v * v
+    }
+
+    /** Last data line of SWPC's daily-solar-indices.txt: "yyyy mm dd flux ssn ..." -> (10.7 cm flux, sunspot number), as sat-aprs. */
+    fun swpcDailyIndices(text: String): Pair<Double?, Double?>? {
+        for (line in text.lines().asReversed()) {
+            val t = line.trim()
+            if (t.isEmpty() || t.startsWith("#") || t.startsWith(":")) continue
+            val p = t.split(Regex("\\s+"))
+            if (p.size < 5 || p[0].length != 4 || p[0].toIntOrNull() == null) continue
+            val flux = p[3].toDoubleOrNull()?.takeIf { it > 0 }
+            val ssn = p[4].toDoubleOrNull()?.takeIf { it >= 0 }
+            if (flux == null && ssn == null) continue
+            return flux to ssn
+        }
+        return null
+    }
+
+    /** The latest sunspot number of either SWPC solar-cycle feed (daily "swpc_ssn" or monthly "ssn"); null if none. */
+    fun swpcSsn(json: String): Double? {
+        val arr = runCatching { Json.parse(json) as? List<*> }.getOrNull() ?: return null
+        for (e in arr.asReversed()) {
+            val o = e as? Map<*, *> ?: continue
+            val v = numOf(o["swpc_ssn"]) ?: numOf(o["ssn"]) ?: continue
+            if (v >= 0) return v
+        }
+        return null
     }
 
     fun swpcXray(json: String, w: SpaceWx): SpaceWx? {
@@ -552,6 +680,7 @@ object OfficialAlerts {
         w.bt?.let { put("bt", (it * 10).roundToLong() / 10.0) }
         w.windKms?.let { put("ws", it.roundToLong()) }
         if (w.xray.isNotEmpty()) put("xr", w.xray)
+        w.ssn?.let { put("sn", it.roundToLong()) }
     }
 
     /** An alert sent by the tracker (event "alert": SAME decoded by the T-TWR) or in its "alerts" list. */

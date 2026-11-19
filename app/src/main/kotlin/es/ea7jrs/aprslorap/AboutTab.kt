@@ -59,6 +59,7 @@ private val CREDITS = listOf(
     Triple("ADS-B / Mode S decoder (message formats and worked examples of \"The 1090 MHz Riddle\"; pulse detection after dump1090)", "Junzi Sun (TU Delft); Salvatore Sanfilippo, BSD", "https://mode-s.org/1090mhz/"),
     Triple("OpenHamClock (ideas and feed formats of the HAM, SPACE and EVENTS map layers)", "OpenHamClock contributors, MIT", "https://github.com/accius/openhamclock"),
     Triple("CQ and ITU zone boundaries (hamradio-zones-geojson)", "HB9HIL, MIT", "https://github.com/HB9HIL/hamradio-zones-geojson"),
+    Triple("Earthquakes", "USGS (public domain), EMSC-CSEM SeismicPortal (CC BY 4.0), Raspberry Shake ShakeNet / QuakeLink", "https://quakelink.raspberryshake.org/"),
     Triple("Weather, space and event feeds", "NOAA (AWC, SWPC, NHC, NDBC) and NASA (EONET, GIBS): public domain", "https://www.noaa.gov/"),
     Triple("Barlow and Share Tech Mono fonts", "Jeremy Tribby (Barlow), Carrois Type Design (Share Tech); SIL Open Font License 1.1", "https://fonts.google.com/"),
 )

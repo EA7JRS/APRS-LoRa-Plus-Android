@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import es.ea7jrs.aprslorap.core.AlertSrc
 import es.ea7jrs.aprslorap.core.AprsSymbols
 import es.ea7jrs.aprslorap.core.Aviation
 import es.ea7jrs.aprslorap.core.Terminator
@@ -408,7 +409,7 @@ fun MapScreen(nav: Navigator) {
                     icon = BitmapDrawable(ctx.resources, MarkerArt.tag(ctx, String.format(java.util.Locale.US, "M %.1f", m), 0xD9131A22.toInt(), 0xFFFF8A80.toInt()))
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); alpha = opacity("quakes") / 100f
                     setOnMarkerClickListener { _, _ -> card = MapCard(a.event, 0xFFFF8A80.toInt(), listOf("Where" to a.area, "When" to Fmt.ago(a.sent * 1000), "Depth" to a.text)
-                        .filter { it.second.isNotBlank() }, "USGS / EMSC-CSEM SeismicPortal"); true }
+                        .filter { it.second.isNotBlank() }, a.src.title + when (a.src) { AlertSrc.EMSC -> "-CSEM SeismicPortal"; AlertSrc.SHAKE -> " (Raspberry Shake)"; else -> "" }); true }
                 })
             }
             if ("sigmet" in ovOn) for (g in aviation.sigmets.filter { it.to == 0L || it.to * 1000 > nowMs }) {

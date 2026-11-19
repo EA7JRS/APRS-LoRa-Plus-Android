@@ -144,8 +144,11 @@ diferencia entre la estima y la situación del GNSS del tracker.
 - **Ventana de emergencia** sobre cualquier pantalla: balizas y mensajes APRS de emergencia, Mic-E «Emergency», peligro AIS y
   riesgo de abordaje, EAI y hombre al agua del tracker, DSC DISTRESS y 406 MHz DISTRESS BEACON. El móvil puede sonar, vibrar
   y encender la linterna; en Android Auto cada alerta llega como conversación (responder, marcar como leída, ir a).
-- **Avisos oficiales** (ALERTS): AEMET (con polígono), MeteoAlarm, NWS, tsunami.gov, terremotos (USGS, EMSC), tiempo espacial
-  del SWPC y SAME de NOAA Weather Radio (del tracker o del RTL-SDR de la app), cada 15 min; también se mandan al tracker.
+- **Avisos oficiales** (ALERTS): AEMET (con polígono), MeteoAlarm, NWS, tsunami.gov, terremotos (USGS, EMSC, ShakeNet de Raspberry
+  Shake), tiempo espacial del SWPC (escalas, Kp, flujo solar, número de manchas SSN, viento solar en tiempo real con densidad y
+  presión, y una estimación de HF: MUF, LUF y estado de las bandas, con las fórmulas de sat-aprs; la absorción por rayos X solo de
+  día, como el D-RAP de SWPC) y SAME de NOAA Weather Radio (del tracker o del RTL-SDR de la app), cada 15 min; también se mandan
+  al tracker.
 
 ## 12. Mi barco (AIS)
 

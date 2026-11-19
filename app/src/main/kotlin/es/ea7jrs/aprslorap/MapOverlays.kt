@@ -16,7 +16,7 @@ import java.net.URL
 
 /**
  * Map overlays, each with its own transparency. Terms (2026-11-13): EUMETSAT imagery is CC BY 4.0; OpenWeather maps use the
- * user's own key (and a limit of tiles per minute); USGS is public domain and EMSC CC BY 4.0; the day / night line is computed;
+ * user's own key (and a limit of tiles per minute); USGS is public domain, EMSC CC BY 4.0 and ShakeNet without published terms; the day / night line is computed;
  * METAR, TAF and SIGMET come from the NOAA Aviation Weather Center (public domain, AviationFetcher). The HAM, SPACE and EVENTS
  * layers follow OpenHamClock (MIT, HamLayersFetcher): NOAA and NASA feeds are public domain; wspr.live, PSK Reporter and
  * SondeHub are community services (Manuel, 2026-11-13: they stay, in every build; their terms for a paid app are still to be
@@ -35,7 +35,7 @@ object MapOverlays {
 
     val ALL = listOf(
         Ov("alerts", "Official alerts", Group.WARNINGS, 0xFFFF8C1A, "Alerts: AEMET, MeteoAlarm, NWS", 80, play = true, tile = false),
-        Ov("quakes", "Earthquakes", Group.WARNINGS, 0xFFFF8A80, "Earthquakes: USGS, EMSC-CSEM SeismicPortal", 80, play = true, tile = false),
+        Ov("quakes", "Earthquakes", Group.WARNINGS, 0xFFFF8A80, "Earthquakes: USGS, EMSC-CSEM SeismicPortal, Raspberry Shake ShakeNet", 80, play = true, tile = false),
         Ov("metar", "METAR + TAF", Group.AVIATION, 0xFF3CE68A, "METAR / TAF: NOAA aviationweather.gov", 100, play = true, tile = false),
         Ov("sigmet", "SIGMET", Group.AVIATION, 0xFFFF6B6B, "SIGMET: NOAA aviationweather.gov", 80, play = true, tile = false),
         Ov("ham_grid", "Maidenhead grid", Group.HAM, 0xFFB39DDB, "", 70, play = true, tile = false),

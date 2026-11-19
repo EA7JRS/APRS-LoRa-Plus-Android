@@ -142,8 +142,10 @@ the current from the difference between the DR and the tracker's GNSS position.
 - **Emergency window** over any screen: APRS emergency beacons and messages, Mic-E "Emergency", AIS distress and collision
   risk, the tracker's EAI and man overboard, DSC DISTRESS, 406 MHz DISTRESS BEACON. The phone can sound, vibrate and flash
   the torch; in Android Auto each alert arrives as a conversation (reply, mark as read, go to).
-- **Official alerts** (ALERTS): AEMET (polygons), MeteoAlarm, NWS, tsunami.gov, earthquakes (USGS, EMSC), SWPC space weather
-  and NOAA Weather Radio SAME (from the tracker or the app's RTL-SDR), every 15 min; sent to the tracker too.
+- **Official alerts** (ALERTS): AEMET (polygons), MeteoAlarm, NWS, tsunami.gov, earthquakes (USGS, EMSC, Raspberry Shake ShakeNet),
+  SWPC space weather (scales, Kp, solar flux, sunspot number SSN, real-time solar wind with density and pressure, and an HF
+  estimate: MUF, LUF and band state, with the sat-aprs formulas; X-ray absorption on the day side only, as SWPC's D-RAP) and NOAA
+  Weather Radio SAME (from the tracker or the app's RTL-SDR), every 15 min; sent to the tracker too.
 
 ## 12. My vessel (AIS)
 

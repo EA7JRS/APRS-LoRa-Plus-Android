@@ -1640,6 +1640,15 @@ private fun testOfficialAlerts() {
     check(q.size == 3 && O.quakeSame(q[0], q[1]) && !O.quakeSame(q[0], q[2]), "quakes USGS / EMSC")
     val ql = O.quakeLevels(q, 36.5, -6.0)
     check(ql.size == 2 && ql[0].src == AlertSrc.EMSC && ql[0].level == 0 && ql[1].level == 1 && ql[1].text.startsWith("Depth 10 km, ") && ql[1].text.endsWith(" km SE"), "quake levels")
+    // ShakeNet: FDSN-WS 1.2 text (sample written from the standard; the real answer could not be read from the session), same as the plotter core
+    val sk = O.fdsnText("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog|Contributor|ContributorID|MagType|Magnitude|MagAuthor|EventLocationName|EventType\n" +
+        "rs2026wabc|2026-11-04T16:14:52.100|36.04|-5.47|12.0|RaspberryShake||RaspberryShake|rs2026wabc|ML|4.4|RaspberryShake|Strait of Gibraltar|earthquake\n" +
+        "rs2026wabd|2026-11-04T10:00:00|37.1|-3.9|1|RaspberryShake||||ML|2.1||Granada quarry|quarry blast\r\n", AlertSrc.SHAKE)
+    check(sk.size == 1 && sk[0].id == "shake/rs2026wabc" && sk[0].onset == O.unixFromUtc(2026, 11, 4, 16, 14, 52) && sk[0].area == "Strait of Gibraltar" &&
+        sk[0].text == "Depth 12 km" && O.quakeMag(sk[0]) == 4.4 && AlertSrc.SHAKE.quake, "ShakeNet FDSN text")
+    check(O.quakeLevels(sk + q[2], 36.5, -6.0).let { it.size == 1 && it[0].src == AlertSrc.EMSC }, "EMSC wins over ShakeNet")
+    check(O.shakeUrl(36.5, -6.0, O.unixFromUtc(2026, 11, 12, 20, 5, 9)).let { it.contains("quakelink.raspberryshake.org/fdsnws/event/1/query?format=text") && it.endsWith("&starttime=2026-11-12T20:05:09") }, "ShakeNet URL")
+    eq(O.fdsnText("rs1|2026-11-04T16:14:52|36.0|-5.5|10|||||ML|3.9||Gibraltar|earthquake", AlertSrc.SHAKE).size, 1, "FDSN text without a header")
     check(O.quakeLevel(5.4, 186.0) == 2 && O.quakeLevel(7.1, 9842.0) == 0 && O.quakeLevel(7.6, 2500.0) == 2 && O.quakeLevel(6.2, 250.0) == 3, "quake level rule")
     var w = O.swpcScales("{\"0\":{\"R\":{\"Scale\":\"1\"},\"S\":{\"Scale\":\"0\"},\"G\":{\"Scale\":\"3\"}},\"1\":{\"G\":{\"Scale\":\"2\"}},\"2\":{\"G\":{\"Scale\":\"1\"}},\"3\":{\"G\":{\"Scale\":null}}}", SpaceWx())!!
     check(w.g == 3 && w.r == 1 && w.s == 0 && w.gMax == 2, "SWPC scales")
@@ -1647,6 +1656,30 @@ private fun testOfficialAlerts() {
     check(w.kp.size == 2 && w.kpNow == 5.0 && w.kpTime == O.unixFromUtc(2026, 11, 12) && O.kpToG(5.0) == 1, "SWPC Kp rows")
     check(O.swpcKp("[{\"time_tag\":\"2026-11-12T03:00:00\",\"Kp\":6.67},{\"time_tag\":\"2026-11-12T00:00:00\",\"Kp\":5.0}]", w)?.kpNow == 6.67, "SWPC Kp objects")
     w = O.swpcSummary("{\"Flux\":\"182\"}", w)!!; w = O.swpcSummary("{\"Bt\":\"14\",\"Bz\":\"-12\"}", w)!!
+    eq(O.swpcSsn("""[{"Obsdate":"2026-11-17T00:00:00","swpc_ssn":131},{"Obsdate":"2026-11-18T00:00:00","swpc_ssn":118}]"""), 118.0, "daily SSN: the last one")
+    eq(O.swpcSsn("""[{"time-tag":"2026-09","ssn":121.4,"smoothed_ssn":-1},{"time-tag":"2026-10","ssn":null}]"""), 121.4, "monthly SSN: the last with a value")
+    eq(O.swpcSsn("<html>"), null, "SSN: not JSON")
+    val daily = ":Product: Daily Solar Data            DSD.txt\n#  Last 30 Days Daily Solar Data\n#\n#                         Sunspot       Stanford GOES15\n" +
+        "#           Radio  SESC     Area          Solar  X-Ray  ------ Flares ------\n" +
+        "  2026 11 17  148    131     560      2    -999   B6.1   5  0  0  0  0  0  0\n  2026 11 18  152    118     610      1    -999   C1.0   3  1  0  0  0  0  0\n"
+    eq(O.swpcDailyIndices(daily), 152.0 to 118.0, "daily solar indices: flux and SSN of the last day")
+    eq(O.swpcDailyIndices("# nothing"), null, "daily solar indices: no data")
+    val rw = O.rtswWind("""[{"time_tag":"2026-11-19T21:39:00","active":false,"source":"ACE","proton_speed":470.0,"proton_density":4.0},
+        {"time_tag":"2026-11-19T21:40:00","active":true,"source":"DSCOVR","proton_speed":487.3,"proton_density":5.4,"proton_temperature":110200},
+        {"time_tag":"2026-11-19T21:40:00","active":false,"source":"ACE","proton_speed":480.0,"proton_density":5.0}]""", SpaceWx())!!
+    near(rw.windKms!!, 487.3, 1e-9, "RTSW: speed of the active spacecraft"); near(rw.density!!, 5.4, 1e-9, "RTSW: density"); near(rw.tempK!!, 110200.0, 1e-9, "RTSW: temperature")
+    val rm = O.rtswMag("""[["time_tag","active","bt","bx_gsm","by_gsm","bz_gsm"],["2026-11-19 21:40:00.000",true,6.1,1.0,2.0,-4.2]]""", rw)!!
+    near(rm.bz!!, -4.2, 1e-9, "RTSW: Bz GSM from rows with a header"); near(rm.bt!!, 6.1, 1e-9, "RTSW: Bt")
+    near(O.windPressureNpa(rm)!!, 2.1449, 1e-3, "solar wind dynamic pressure")
+    // HF: the same values as the tracker's tools/test_forecast.cpp (formulas of sat-aprs)
+    val hn = HfProp.estimate(150.0, -20.0, 0.0); near(hn.muf, 12.1 * 0.85, 1e-6, "HF night MUF"); near(hn.luf, 1.925 * 0.7, 1e-6, "HF night LUF")
+    val hd = HfProp.estimate(150.0, 90.0, 3.1e-6); near(hd.muf, 33.7, 1e-6, "HF day MUF"); near(hd.luf, 1.925 + 3.2 + 1.5, 1e-6, "HF day LUF with C3.1")
+    eq(HfProp.state(28.5, hd, 2.0), HfProp.State.OPEN, "HF 10 m open"); eq(HfProp.state(3.65, hd, 2.0), HfProp.State.ABSORBED, "HF 80 m absorbed")
+    eq(HfProp.state(14.15, hn, 2.0), HfProp.State.SHUT, "HF 20 m shut at night"); eq(HfProp.state(7.1, hd, 5.0), HfProp.State.POOR, "HF storm")
+    near(HfProp.estimate(150.0, -20.0, 3.1e-6).luf, 1.925 * 0.7, 1e-6, "HF no X-ray absorption at night")
+    near(HfProp.estimate(150.0, 30.0, 3.1e-6).luf, 1.925 + 0.5 * 3.2 + 1.5 * Math.pow(0.5, 0.75), 1e-6, "HF X-ray D-RAP scaling")
+    near(HfProp.xrayFlux("M2.4"), 2.4e-5, 1e-12, "X-ray class to flux"); eq(HfProp.bestDx(hd, 2.0), "10m", "HF best DX band")
+    eq(O.spaceCommand(SpaceWx(ssn = 118.4))["sn"], 118L, "spacewx command carries the SSN")
     check(w.sfi == 182.0 && w.bz == -12.0 && w.bt == 14.0, "SWPC summaries")
     eq(O.swpcXray("[{\"flux\":1.2e-6,\"energy\":\"0.1-0.8nm\"},{\"flux\":2.4e-5,\"energy\":\"0.1-0.8nm\"},{\"flux\":1e-7,\"energy\":\"0.05-0.4nm\"}]", w)?.xray, "M2.4", "X-ray class")
     check(O.xrayClass(3.1e-4) == "X3.1" && O.xrayClass(5e-8) == "A5.0", "X-ray classes")
