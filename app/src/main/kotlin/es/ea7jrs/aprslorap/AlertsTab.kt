@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -83,18 +84,29 @@ private fun AlertRow(a: OfficialAlert) {
     }
 }
 
+/** A NOAA scale value: in a box of the NOAA colour with black letters from level 1, plain text at level 0. */
+@Composable
+private fun NoaaBadge(text: String, level: Int, size: Int) {
+    if (level >= 1) Text(text, fontSize = size.sp, fontWeight = FontWeight.Bold, color = Color.Black,
+        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF000000.toInt() or OfficialAlerts.noaaScaleRgb(level))).padding(horizontal = 4.dp))
+    else Text(text, fontSize = size.sp, fontWeight = FontWeight.Bold, color = Alp.Text)
+}
+
 @Composable
 private fun SpaceCard(w: SpaceWx) {
     Section("Space weather (NOAA SWPC)")
     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        for ((b, v) in listOf('G' to w.g, 'R' to w.r, 'S' to w.s)) {
-            val lv = if (v >= 4) 3 else if (v == 3) 2 else if (v >= 1) 1 else -1
-            Text(if (v >= 0) "$b$v" else "$b–", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = if (lv >= 1) officialColor(lv) else Alp.Green)
-        }
+        // NOAA (SWPC) colour code, as on its website: box in yellow, light orange, orange, red or dark red for levels 1 to 5 with
+        // black letters; level 0 without colour. The X-rays the same with their R scale; Kp in green below G1
+        for ((b, v) in listOf('G' to w.g, 'R' to w.r, 'S' to w.s)) NoaaBadge(if (v >= 0) "$b$v" else "$b–", v, 22)
+        val xr = OfficialAlerts.xrayToR(HfProp.xrayFlux(w.xray))
         Column {
             Text(listOfNotNull(w.kpNow?.let { String.format(Locale.US, "Kp %.1f", it) }, w.sfi?.let { String.format(Locale.US, "SFI %.0f", it) },
                 w.ssn?.let { String.format(Locale.US, "SSN %.0f", it) },
-                w.xray.takeIf { it.isNotEmpty() }?.let { "X-ray $it" }).joinToString(" · "), fontSize = 14.sp, color = Alp.Text)
+                w.xray.takeIf { it.isNotEmpty() && xr == 0 }?.let { "X-ray $it" }).joinToString(" · "), fontSize = 14.sp, color = Alp.Text)
+            if (w.xray.isNotEmpty() && xr >= 1) Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("X-ray ", fontSize = 14.sp, color = Alp.Text); NoaaBadge(w.xray, xr, 14)
+            }
             Text(listOfNotNull(w.bz?.let { String.format(Locale.US, "Bz %+.0f nT", it) }, w.bt?.let { String.format(Locale.US, "Bt %.0f nT", it) },
                 w.windKms?.let { String.format(Locale.US, "wind %.0f km/s", it) }, w.density?.let { String.format(Locale.US, "%.1f p/cm³", it) },
                 OfficialAlerts.windPressureNpa(w)?.let { String.format(Locale.US, "%.1f nPa", it) },
@@ -104,8 +116,9 @@ private fun SpaceCard(w: SpaceWx) {
     // Kp of the last 24 h (3-hour values), dotted line at Kp 5
     Row(Modifier.height(48.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         for (k in w.kp) {
-            val lv = if (k >= 7) 3 else if (k >= 6) 2 else if (k >= 5) 1 else -1
-            Box(Modifier.width(14.dp).height((4 + k * 4.5).dp).clip(RoundedCornerShape(2.dp)).background(if (lv >= 1) officialColor(lv) else Alp.Green))
+            val g = OfficialAlerts.kpToG(k)
+            Box(Modifier.width(14.dp).height((4 + k * 4.5).dp).clip(RoundedCornerShape(2.dp))
+                .background(if (g >= 1) Color(0xFF000000.toInt() or OfficialAlerts.noaaScaleRgb(g)) else Alp.Green))
         }
         Text("  Kp 24 h", fontSize = 11.sp, color = Alp.Muted)
     }

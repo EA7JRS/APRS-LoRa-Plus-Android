@@ -501,6 +501,16 @@ object OfficialAlerts {
 
     fun kpToG(kp: Double) = when { kp >= 9 -> 5; kp >= 8 -> 4; kp >= 7 -> 3; kp >= 6 -> 2; kp >= 5 -> 1; else -> 0 }
 
+    /** R scale of an X-ray flux (W/m2): M1 R1, M5 R2, X1 R3, X10 R4, X20 R5. Same as xrayToR of the plotter core. */
+    fun xrayToR(f: Double) = when { f >= 2e-3 -> 5; f >= 1e-3 -> 4; f >= 1e-4 -> 3; f >= 5e-5 -> 2; f >= 1e-5 -> 1; else -> 0 }
+
+    /**
+     * NOAA (SWPC) scale colours as on its website, 0xRRGGBB: 1 yellow, 2 light orange, 3 orange, 4 red, 5 dark red; 0 for level 0
+     * (NOAA gives it no colour: each screen uses its own). Same as noaaScaleRgb of the plotter core.
+     */
+    fun noaaScaleRgb(level: Int): Int = NOAA_RGB[level.coerceIn(0, 5)]
+    private val NOAA_RGB = intArrayOf(0, 0xFFFF00, 0xFFC800, 0xFF9600, 0xFF0000, 0xC80000)
+
     fun xrayClass(w: Double): String {
         if (!(w > 0)) return ""
         val k = (floor(log10(w)).toInt() + 8).coerceIn(0, 4)

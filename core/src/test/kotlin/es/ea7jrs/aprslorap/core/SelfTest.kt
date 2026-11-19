@@ -1655,6 +1655,10 @@ private fun testOfficialAlerts() {
     w = O.swpcKp("[[\"time_tag\",\"Kp\",\"a_running\",\"station_count\"],[\"2026-11-11 21:00:00.000\",\"2.33\",\"9\",\"8\"],[\"2026-11-12 00:00:00.000\",\"5.00\",\"48\",\"8\"]]", w)!!
     check(w.kp.size == 2 && w.kpNow == 5.0 && w.kpTime == O.unixFromUtc(2026, 11, 12) && O.kpToG(5.0) == 1, "SWPC Kp rows")
     check(O.swpcKp("[{\"time_tag\":\"2026-11-12T03:00:00\",\"Kp\":6.67},{\"time_tag\":\"2026-11-12T00:00:00\",\"Kp\":5.0}]", w)?.kpNow == 6.67, "SWPC Kp objects")
+    check(O.xrayToR(9.9e-6) == 0 && O.xrayToR(1e-5) == 1 && O.xrayToR(5e-5) == 2 && O.xrayToR(1e-4) == 3 && O.xrayToR(1e-3) == 4 && O.xrayToR(2e-3) == 5 &&
+        O.xrayToR(HfProp.xrayFlux("X1.0")) == 3 && O.xrayToR(HfProp.xrayFlux("M5.2")) == 2, "X-ray R scale")
+    check(O.noaaScaleRgb(0) == 0 && O.noaaScaleRgb(1) == 0xFFFF00 && O.noaaScaleRgb(2) == 0xFFC800 && O.noaaScaleRgb(3) == 0xFF9600 &&
+        O.noaaScaleRgb(4) == 0xFF0000 && O.noaaScaleRgb(5) == 0xC80000 && O.noaaScaleRgb(9) == 0xC80000 && O.kpToG(8.67) == 4 && O.kpToG(9.0) == 5, "NOAA scale colours")
     w = O.swpcSummary("{\"Flux\":\"182\"}", w)!!; w = O.swpcSummary("{\"Bt\":\"14\",\"Bz\":\"-12\"}", w)!!
     eq(O.swpcSsn("""[{"Obsdate":"2026-11-17T00:00:00","swpc_ssn":131},{"Obsdate":"2026-11-18T00:00:00","swpc_ssn":118}]"""), 118.0, "daily SSN: the last one")
     eq(O.swpcSsn("""[{"time-tag":"2026-09","ssn":121.4,"smoothed_ssn":-1},{"time-tag":"2026-10","ssn":null}]"""), 121.4, "monthly SSN: the last with a value")
