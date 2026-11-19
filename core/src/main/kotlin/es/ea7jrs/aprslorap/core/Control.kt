@@ -238,7 +238,13 @@ sealed class ControlEvent {
     data class VesselEv(val vessel: Vessel.State) : ControlEvent()
     data class CwRx(val on: Boolean, val letter: String?, val dbm: Double?, val snr: Double?, val wpm: Int?, val freqHz: Long? = null) : ControlEvent()
     /** Radio activity for the TX / RX lights: "tx" while a frame is being sent, "idle" after it, "rx" for each frame heard. */
-    data class Rf(val state: String, val rssi: Int?, val snr: Double?) : ControlEvent()
+    /** TX / RX lights; with each received frame also the modem (IS2 ModemType), bit rate, frequency (Hz) and the frame hash. */
+    data class Rf(val state: String, val rssi: Int?, val snr: Double?, val modem: Int? = null, val bitrate: Long? = null,
+                  val freqHz: Long? = null, val hash: Long? = null) : ControlEvent() {
+        /** Reception metadata for the iGate (#is2-meta); the SNR only for LoRa, where the radio measures it. */
+        fun rxMeta(): RxMeta = RxMeta(rssi?.toDouble()?.takeIf { it != 0.0 },
+            snr.takeIf { modem == null || modem == RxMeta.MODEM_LORA_APRS }, modem, bitrate, freqHz)
+    }
     /** Tracker lights: unread-message LED, emergency alarm sounding (station, detail) and the white flash. */
     data class Led(val msg: Boolean, val unread: Int, val emg: Boolean, val emgCall: String, val emgText: String, val flash: Boolean,
                    val kind: String = "", val fromMsg: Boolean = false, val seq: Int = 0, val open: Boolean = false) : ControlEvent()
@@ -363,7 +369,7 @@ object Control {
             "aislist" -> ControlEvent.AisList(o.int("tot") ?: 0, o.int("from") ?: 0, o.int("msgs") ?: 0, o.str("src") ?: "", o.str("ch") ?: "",
                 o.objList("items").mapNotNull { AisVessel.parse(it, System.currentTimeMillis()) })
             "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"), o.long("f"))
-            "rf" -> ControlEvent.Rf(o.str("s") ?: "idle", o.int("rssi"), o.num("snr"))
+            "rf" -> ControlEvent.Rf(o.str("s") ?: "idle", o.int("rssi"), o.num("snr"), o.int("m"), o.long("br"), o.long("f"), o.long("h"))
             "led" -> ControlEvent.Led(o.bool("msg") ?: false, o.int("unread") ?: 0, o.bool("emg") ?: false, o.str("ec") ?: "", o.str("et") ?: "", o.bool("fl") ?: false,
                 o.str("ek") ?: "", o.bool("em") ?: false, o.int("eq") ?: 0, o.bool("eo") ?: false)
             "eai" -> ControlEvent.Eai(o.int("sos") ?: 0, o.int("sent") ?: 0, o.int("left"), o.str("by") ?: "", o.bool("fm") ?: false, o.int("fmLeft"),

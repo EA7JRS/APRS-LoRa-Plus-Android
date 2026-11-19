@@ -7,6 +7,7 @@ package es.ea7jrs.aprslorap
 
 import es.ea7jrs.aprslorap.core.Ax25Frame
 import es.ea7jrs.aprslorap.core.G3ruh
+import es.ea7jrs.aprslorap.core.RxMeta
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -28,7 +29,7 @@ object PacketRunner {
             val line = f?.toTnc2() ?: ("(not AX.25) " + bytes.joinToString("") { String.format("%02X", it) }.take(80))
             val l = AppState.packetLog.value
             AppState.packetLog.value = (if (l.size >= 50) l.drop(1) else l) + (fmt.format(Date()) + " " + line)
-            if (f != null) AppState.controller?.onPhoneRadioFrame(f, "RTL-SDR")
+            if (f != null) AppState.controller?.onPhoneRadioFrame(f, "RTL-SDR", RxMeta(modem = RxMeta.MODEM_AX25, bitrate = baud.toLong()))
             AppState.packetStatus.value = "Packet ${baud.toInt()} bd: ${decoder?.frames ?: 0} frame(s), ${decoder?.badFcs ?: 0} with bad FCS"
         }
         active = true

@@ -59,7 +59,7 @@ The main screen works like a mobile radio: two bands, touch keys and the **[F]**
 - **MSG**: conversations (RX / TX / PAGER), state of each message (sent, acknowledged, failed, rejected), three retries,
   duplicates removed, *TxCLR* to cancel the pending ones. Messages arrive as notifications with reply and mark-as-read,
   which is what Android Auto reads aloud.
-- **IGATE**: mobile iGate, radio → APRS-IS only (`qAO`, receive-only). Each frame goes out exactly as heard, with no spaces or bytes removed; no duplicate filtering (the servers do it), and nothing heard while the link is down is kept to send later. One connection only, to `rotate.aprs2.net` by default.
+- **IGATE**: mobile iGate, radio → APRS-IS only (`qAO`, receive-only). Each frame goes out exactly as heard, with no spaces or bytes removed; no duplicate filtering (the servers do it), and nothing heard while the link is down is kept to send later. One connection only, to `rotate.aprs2.net` by default. Before each frame it sends, when known, the RSSI, SNR, modem, bit rate and frequency of the reception on an `#is2-meta` line (servers without IS2 take it for a comment).
 - **WX**: APRS weather stations with wind and Beaufort, dew point, feels-like, cloud base and pressure trend (3 h), sorted
   by distance, time, temperature or wind.
 - **HEARD**: the stations heard by the tracker itself and its message log; send a message from the tracker. *QSY* for

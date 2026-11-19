@@ -91,3 +91,64 @@ class IGate(
         }
     }
 }
+
+/**
+ * How a packet was heard on the air, sent to APRS-IS on a "#is2-meta" line just before the packet (aprsc doc/IS2PLAIN.md): a
+ * plaintext client feeds the IS2 reception metadata this way, and servers without IS2 take the line for a comment. Only the
+ * values that are known go out; with none, no line at all.
+ */
+data class RxMeta(
+    val rssiDbm: Double? = null,
+    val snrDb: Double? = null,
+    val modem: Int? = null,
+    val bitrate: Long? = null,
+    val freqHz: Long? = null,
+) {
+    fun line(): String? {
+        val parts = ArrayList<String>()
+        rssiDbm?.takeIf { it < 0 && it > -200 }?.let { parts.add("rx_rssi_dbm=" + num(it)) }
+        snrDb?.takeIf { it > -50 && it < 60 }?.let { parts.add("rx_snr_db=" + num(it)) }
+        modem?.takeIf { it in 1..1024 }?.let { parts.add("rx_modem=$it") }
+        bitrate?.takeIf { it > 0 }?.let { parts.add("rx_bitrate=$it") }
+        freqHz?.takeIf { it > 0 }?.let { parts.add("rx_frequency=$it") }
+        return if (parts.isEmpty()) null else "#is2-meta " + parts.joinToString(" ")
+    }
+
+    companion object {
+        /** ModemType of aprsis2.proto. */
+        const val MODEM_AX25 = 1
+        const val MODEM_LORA_APRS = 2
+        const val MODEM_M17 = 9
+
+        private fun num(v: Double): String =
+            if (v == Math.rint(v)) v.toLong().toString() else String.format(java.util.Locale.ROOT, "%.1f", v)
+
+        /** FNV-1a (32 bits) of "SOURCE:info", as the tracker puts it in its "rf" event (h): pairs the event with the KISS frame. */
+        fun hash(frame: Ax25Frame): Long {
+            var h = 2166136261L
+            fun add(b: Int) { h = ((h xor (b.toLong() and 0xFF)) * 16777619L) and 0xFFFFFFFFL }
+            for (c in frame.source.text()) add(c.code)
+            add(':'.code)
+            for (b in frame.info) add(b.toInt())
+            return h
+        }
+    }
+}
+
+/** The tracker's "rf" receive events waiting for their KISS frame (it comes a moment later, on the other characteristic). */
+class RxMetaMatcher(private val maxAgeMs: Long = 5_000, private val size: Int = 8) {
+    private data class Pending(val hash: Long, val meta: RxMeta, val atMs: Long)
+    private val pending = ArrayDeque<Pending>()
+
+    @Synchronized fun offer(hash: Long, meta: RxMeta, nowMs: Long) {
+        pending.addLast(Pending(hash, meta, nowMs))
+        while (pending.size > size) pending.removeFirst()
+    }
+
+    @Synchronized fun take(frame: Ax25Frame, nowMs: Long): RxMeta? {
+        pending.removeAll { nowMs - it.atMs > maxAgeMs }
+        val h = RxMeta.hash(frame)
+        val i = pending.indexOfFirst { it.hash == h }
+        return if (i < 0) null else pending.removeAt(i).meta
+    }
+}

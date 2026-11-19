@@ -183,6 +183,23 @@ private fun testIGate() {
     eq(g.toIsLine(Tnc2.parse("EA7XX-10>APRS:}EA2XYZ>APRS,TCPIP,EA7XX-10*::EA7JRS-7 :hi{1")!!), null, "third party from APRS-IS (TCPIP)")
     eq(g.toIsLine(Tnc2.parse("EA7XX-10>APRS:}EA2XYZ>APRS,TCPXX*,qAR,EA1ZZ::EA7JRS-7 :hi")!!), null, "third party with TCPXX / q construct")
     eq(g.toIsLine(Tnc2.parse("EA7XX-10>APRS:}garbage")!!), null, "malformed third party")
+    // IS2 reception metadata on a "#is2-meta" line (aprsc doc/IS2PLAIN.md), paired with the frame by the tracker's hash
+    eq(RxMeta(-97.5, 8.2, RxMeta.MODEM_LORA_APRS, 293, 433775000).line(),
+        "#is2-meta rx_rssi_dbm=-97.5 rx_snr_db=8.2 rx_modem=2 rx_bitrate=293 rx_frequency=433775000", "is2-meta line")
+    eq(RxMeta(-110.0, null, RxMeta.MODEM_AX25, 1200).line(), "#is2-meta rx_rssi_dbm=-110 rx_modem=1 rx_bitrate=1200", "is2-meta: only the known values")
+    eq(RxMeta().line(), null, "no metadata, no line")
+    eq(RxMeta(rssiDbm = 0.0, modem = 0).line(), null, "values out of range left out")
+    eq(RxMeta.hash(f), 3827310285L, "frame hash = FNV-1a of SOURCE:info, as the tracker computes it")
+    val rf = Control.parse("""{"e":"rf","s":"rx","rssi":-97,"snr":7.5,"m":2,"br":293,"f":433775000,"h":3827310285}""") as ControlEvent.Rf
+    val mm = RxMetaMatcher()
+    mm.offer(rf.hash!!, rf.rxMeta(), 1000)
+    eq(mm.take(Tnc2.parse("EA9ZZZ>APRS:!x")!!, 1500), null, "another frame does not take the metadata")
+    eq(mm.take(f, 1600)?.line(), "#is2-meta rx_rssi_dbm=-97 rx_snr_db=7.5 rx_modem=2 rx_bitrate=293 rx_frequency=433775000", "rf event paired with its frame")
+    eq(mm.take(f, 1700), null, "used once")
+    mm.offer(rf.hash!!, rf.rxMeta(), 1000)
+    eq(mm.take(f, 7000), null, "too old")
+    eq((Control.parse("""{"e":"rf","s":"rx","rssi":-80,"snr":0,"m":1,"br":1200}""") as ControlEvent.Rf).rxMeta().line(),
+        "#is2-meta rx_rssi_dbm=-80 rx_modem=1 rx_bitrate=1200", "AX.25 (AFSK): no SNR")
     eq(g.loginLine("r/37/-4/100"), "user EA7JRS-7 pass 21434 vers APRSLoRaPlusAndroid 0.1 filter r/37/-4/100", "login line")
 }
 

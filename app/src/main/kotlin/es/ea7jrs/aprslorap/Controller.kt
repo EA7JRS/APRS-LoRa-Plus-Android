@@ -9,6 +9,8 @@ import es.ea7jrs.aprslorap.core.Aprs
 import es.ea7jrs.aprslorap.core.AprsPacket
 import es.ea7jrs.aprslorap.core.Ax25Frame
 import es.ea7jrs.aprslorap.core.Tocall
+import es.ea7jrs.aprslorap.core.RxMeta
+import es.ea7jrs.aprslorap.core.RxMetaMatcher
 import es.ea7jrs.aprslorap.core.Control
 import es.ea7jrs.aprslorap.core.ControlEvent
 import es.ea7jrs.aprslorap.core.Vessel
@@ -82,6 +84,7 @@ class Controller(
     private val trackerAcks = MessageEngine.trackerSendsAcks(myCall, settings.trackerCallsign)
     private val engine = MessageEngine(myCall, { info -> transmitInfo(info) }, { System.currentTimeMillis() }, sendAcks = !trackerAcks)
     private val iGate = IGate(myCall, softwareVersion = BuildConfig.VERSION_NAME)
+    private val rxMeta = RxMetaMatcher()          // "rf" events of the tracker -> #is2-meta of the frame they belong to
     private val txQueue = ArrayDeque<ByteArray>()
     private var lastTxMs = 0L
 
@@ -137,15 +140,15 @@ class Controller(
     fun onBleBytes(data: ByteArray) {
         exec.execute {
             safe {
-                for (f in decoder.feed(data)) Ax25Frame.decode(f)?.let { onFrame(it) }
+                for (f in decoder.feed(data)) Ax25Frame.decode(f)?.let { onFrame(it, null, rxMeta.take(it, System.currentTimeMillis())) }
             }
         }
     }
 
     /** A frame heard by the phone's own receiver (RTL-SDR: APRS FSK 9600...), handled like one from the tracker. */
-    fun onPhoneRadioFrame(frame: Ax25Frame, via: String = "phone receiver") { exec.execute { safe { onFrame(frame, via) } } }
+    fun onPhoneRadioFrame(frame: Ax25Frame, via: String = "phone receiver", meta: RxMeta? = null) { exec.execute { safe { onFrame(frame, via, meta) } } }
 
-    private fun onFrame(frame: Ax25Frame, via: String? = null) {
+    private fun onFrame(frame: Ax25Frame, via: String? = null, meta: RxMeta? = null) {
         val now = System.currentTimeMillis()
         table.onFrame(frame, now)
         AppState.addLog("RX " + (via?.let { "[$it] " } ?: "") + frame.toTnc2())
@@ -177,7 +180,9 @@ class Controller(
                 notifier.favouriteHeard(from.uppercase(), st?.lat, st?.lon, digi ?: via)
             }
         }
-        if (settings.igateEnabled && Licence.isValid(settings)) iGate.toIsLine(frame)?.let { isSend(it) }
+        if (settings.igateEnabled && Licence.isValid(settings)) iGate.toIsLine(frame)?.let { line ->
+            isSend(meta?.line()?.let { it + "\r\n" + line } ?: line)    // the metadata line just before its packet, same connection
+        }
         publish()
     }
 
@@ -370,7 +375,10 @@ class Controller(
             }
             is ControlEvent.Rf -> when (ev.state) {
                 "tx" -> AppState.rfTxSinceMs.value = System.currentTimeMillis()
-                "rx" -> AppState.rfRxAtMs.value = System.currentTimeMillis()
+                "rx" -> {
+                    AppState.rfRxAtMs.value = System.currentTimeMillis()
+                    ev.hash?.let { rxMeta.offer(it, ev.rxMeta(), System.currentTimeMillis()) }
+                }
                 else -> AppState.rfTxSinceMs.value = 0L
             }
             is ControlEvent.Led -> { AppState.trackerLeds.value = ev; AlertCenter.onLed(ev) }
