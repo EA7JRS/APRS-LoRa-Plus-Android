@@ -84,7 +84,7 @@ class DevicesScreen(ctx: CarContext) : LiveScreen(ctx) {
         val rotorLinked = AppState.rotorInfo.value != null
         val follow = settings.rotorFollow && settings.rotorFollowMode == 0
         val items = ItemList.Builder()
-            .addItem(GridItem.Builder().setTitle(if (eaiOn) "SOS ON" else "SOS V-27").setText(if (eaiOn) "beacon every 30 s" else "asks first")
+            .addItem(GridItem.Builder().setTitle(if (eaiOn) "SOS ON" else "SOS").setText(if (eaiOn) "beacon every 30 s" else "asks first")
                 .setImage(CarIcon.Builder(IconCompat.createWithBitmap(V27.bitmap())).build(), GridItem.IMAGE_TYPE_LARGE)
                 .setOnClickListener { if (canCommand(true)) screenManager.push(SosConfirmScreen(carContext)) }.build())
             .addItem(GridItem.Builder().setTitle("BEACON").setText("send now")
@@ -135,9 +135,7 @@ class DevicesScreen(ctx: CarContext) : LiveScreen(ctx) {
 class SosConfirmScreen(ctx: CarContext) : LiveScreen(ctx, 60_000) {
     override fun onGetTemplate(): Template {
         val call = settings.callsign
-        val road = es.ea7jrs.aprslorap.core.Alerts.ssid(call) == 9
-        val text = "$call will send the emergency beacon with its GPS position every 30 s." +
-            if (road) " With SSID -9, APRS LoRa+ shows it to others as a road emergency (V-27)." else ""
+        val text = "$call will send the emergency beacon with its GPS position every 30 s."
         return MessageTemplate.Builder(text)
             .setTitle("Start SOS on the tracker?")
             .setHeaderAction(Action.BACK)
