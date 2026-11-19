@@ -10,7 +10,12 @@ import java.net.Socket
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-/** Connection to an APRS-IS server (radio -> internet). Reconnects with growing waits. */
+/**
+ * Connection to an APRS-IS server (radio -> internet). Reconnects with growing waits. As aprsc's IGATE-HINTS.md asks: one
+ * connection only; the host name (rotate.aprs2.net by default) is looked up again on every connection, never kept; packets
+ * are sent only while the login is verified, and nothing heard while the link is down is kept for later (another iGate has
+ * already sent it, and late copies make moving stations jump back); lines go out as bytes (ISO-8859-1), never re-encoded.
+ */
 class IsClient(
     private val host: String,
     private val port: Int,
@@ -19,6 +24,7 @@ class IsClient(
 ) {
     private val queue = LinkedBlockingQueue<String>(200)
     @Volatile private var running = false
+    @Volatile private var verified = false
     private var thread: Thread? = null
 
     fun start() {
@@ -29,11 +35,14 @@ class IsClient(
 
     fun stop() {
         running = false
+        verified = false
+        queue.clear()
         thread?.interrupt()
         onStatus("Off")
     }
 
     fun send(line: String) {
+        if (!verified) return                                             // link down or not verified: dropped, not kept
         if (!queue.offer(line)) { queue.poll(); queue.offer(line) }       // full: drop the oldest
     }
 
@@ -41,13 +50,15 @@ class IsClient(
         var wait = 5
         while (running) {
             try {
+                verified = false
+                queue.clear()
                 onStatus("Connecting to $host...")
                 Socket().use { s ->
-                    s.connect(InetSocketAddress(host, port), 10_000)
+                    s.connect(InetSocketAddress(host, port), 10_000)          // new DNS lookup each time (round-robin)
                     s.soTimeout = 1000
                     val out = s.getOutputStream()
                     val inp = s.getInputStream()
-                    out.write((loginLine() + "\r\n").toByteArray())
+                    out.write((loginLine() + "\r\n").toByteArray(Charsets.ISO_8859_1))
                     out.flush()
                     onStatus("Logging in...")
                     val buf = ByteArray(512)
@@ -58,8 +69,8 @@ class IsClient(
                             val n = inp.read(buf)
                             if (n < 0) throw java.io.IOException("closed by the server")
                             val text = String(buf, 0, n, Charsets.ISO_8859_1)
-                            if (text.contains("unverified")) onStatus("Login refused: check the callsign")
-                            else if (text.contains("verified")) onStatus("Connected")
+                            if (text.contains("unverified")) { verified = false; onStatus("Login refused: check the callsign") }
+                            else if (text.contains("verified")) { verified = true; onStatus("Connected") }
                         } catch (e: java.net.SocketTimeoutException) {
                             // nothing to read: normal
                         }
@@ -75,8 +86,11 @@ class IsClient(
                     }
                 }
             } catch (e: InterruptedException) {
+                verified = false
                 return
             } catch (e: Exception) {
+                verified = false
+                queue.clear()
                 if (!running) return
                 onStatus("Retrying in ${wait}s (${e.message})")
                 try { Thread.sleep(wait * 1000L) } catch (ie: InterruptedException) { return }

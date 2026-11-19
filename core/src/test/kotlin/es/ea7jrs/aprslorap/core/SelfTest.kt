@@ -163,17 +163,26 @@ private fun testMessaging() {
 private fun testIGate() {
     eq(IGate.passcode("N0CALL"), 13023, "APRS-IS passcode of N0CALL")
     eq(IGate.passcode("n0call-7"), 13023, "passcode ignores the SSID and the case")
-    var t = 0L
-    val g = IGate("EA7JRS-7", { t })
+    val g = IGate("EA7JRS-7")
     val f = Tnc2.parse("EA1ABC>APRS,WIDE1-1*:!4903.50N/07201.75W-x")!!
-    eq(g.toIsLine(f), "EA1ABC>APRS,WIDE1-1*,qAR,EA7JRS-7:!4903.50N/07201.75W-x", "IS line")
-    eq(g.toIsLine(f), null, "duplicate within 30 s")
-    t += 31_000
-    check(g.toIsLine(f) != null, "gated again after the window")
+    eq(g.toIsLine(f), "EA1ABC>APRS,WIDE1-1*,qAO,EA7JRS-7:!4903.50N/07201.75W-x", "IS line (receive-only: qAO)")
+    eq(g.toIsLine(f), "EA1ABC>APRS,WIDE1-1*,qAO,EA7JRS-7:!4903.50N/07201.75W-x", "no duplicate filter in an RX iGate (IGATE-HINTS)")
     eq(g.toIsLine(Tnc2.parse("EA1ABC>APRS,TCPIP*:!x")!!), null, "TCPIP path")
+    eq(g.toIsLine(Tnc2.parse("EA1ABC>APRS,TCPXX:!x")!!), null, "TCPXX path")
     eq(g.toIsLine(Tnc2.parse("EA1ABC>APRS,NOGATE:!x")!!), null, "NOGATE")
     eq(g.toIsLine(Tnc2.parse("EA1ABC>APRS,RFONLY:!x")!!), null, "RFONLY")
-    eq(g.toIsLine(Tnc2.parse("EA1ABC>APRS:}EA2XYZ>APRS:!x")!!), null, "third party")
+    eq(g.toIsLine(Tnc2.parse("EA1ABC>APRS:?APRS?")!!), null, "generic query")
+    // the bytes are not touched: trailing spaces, NUL, Mic-E binary bytes; cut only at the first CR / LF
+    val raw = Ax25Frame(Ax25Address("APRS"), Ax25Address("EA1ABC", 9), emptyList(), byteArrayOf(0x60, 0x1C, 0x00, 0x7F, 0xB0.toByte(), 0x20, 0x20, 0x0D, 0x41))
+    val rawLine = g.toIsLine(raw)!!
+    eq(rawLine.toByteArray(Charsets.ISO_8859_1).takeLast(7).toList(), byteArrayOf(0x60, 0x1C, 0x00, 0x7F, 0xB0.toByte(), 0x20, 0x20).toList(), "binary bytes and trailing spaces kept, cut at CR")
+    eq(IGate.firstLine("ab\ncd\re"), "ab", "first line ends at the first LF or CR")
+    // 3rd party: the RF header and "}" stripped, inner packet gated; not if it came from the internet
+    eq(g.toIsLine(Tnc2.parse("EA7XX-10>APRS,WIDE1-1:}EA2XYZ>APDR16,WIDE2-1,EA7XX-10*:!3700.00N/00600.00W>")!!),
+        "EA2XYZ>APDR16,WIDE2-1,EA7XX-10*,qAO,EA7JRS-7:!3700.00N/00600.00W>", "third party: inner packet gated")
+    eq(g.toIsLine(Tnc2.parse("EA7XX-10>APRS:}EA2XYZ>APRS,TCPIP,EA7XX-10*::EA7JRS-7 :hi{1")!!), null, "third party from APRS-IS (TCPIP)")
+    eq(g.toIsLine(Tnc2.parse("EA7XX-10>APRS:}EA2XYZ>APRS,TCPXX*,qAR,EA1ZZ::EA7JRS-7 :hi")!!), null, "third party with TCPXX / q construct")
+    eq(g.toIsLine(Tnc2.parse("EA7XX-10>APRS:}garbage")!!), null, "malformed third party")
     eq(g.loginLine("r/37/-4/100"), "user EA7JRS-7 pass 21434 vers APRSLoRaPlusAndroid 0.1 filter r/37/-4/100", "login line")
 }
 

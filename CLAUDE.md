@@ -12,7 +12,7 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
 
 ## Decisiones tomadas
 - Enlace principal con el tracker: **BLE con KISS**. Alternativa: KISS por TCP (puerto 8001 por defecto) por WiFi. Bluetooth clásico y BLE TNC2 quedan fuera por ahora.
-- **iGate móvil en la primera versión**: solo radio → APRS-IS. Internet → radio queda fuera.
+- **iGate móvil en la primera versión**: solo radio → APRS-IS. Internet → radio queda fuera. Cumple `doc/IGATE-HINTS.md` de aprsc (Manuel, 2026-11-19): `qAO` (solo recepción), trama byte a byte hasta el primer CR / LF, sin filtro de duplicados, terceros `}` desenvueltos (fuera si llevan TCPIP / TCPXX / q), una sola conexión, DNS en cada conexión, nada guardado con el enlace caído (`IGate.kt`, `IsClient.kt`). Un iGate que emita (IS → RF) tendría que seguir aprs-is.net/IGating.aspx entero y pasar a terceros.
 - **Ir a (GO TO) con Google Maps**: solo en la app, no en el tracker. Detalle de estación, y en la notificación de mensaje si la estación tiene posición.
 - Mensajería en el móvil: escribir, responder, estado (enviado / confirmado / fallido / rechazado).
 - **Control del tracker por BLE** (decidido 2026-11-05): segundo servicio GATT en el firmware con JSON por líneas (`docs/BLE_CONTROL.md`, copia del firmware). Modo de radio con reinicio (APRS se guarda; los demás solo para el siguiente arranque, memoria RTC), perfil de baliza, perfil LoRa, baliza, digipeater, CW, sensores, GNSS, historial y avisos DAPNET, NMEA en bruto.

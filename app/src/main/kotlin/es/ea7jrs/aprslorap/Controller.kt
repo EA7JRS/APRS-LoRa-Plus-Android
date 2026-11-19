@@ -81,7 +81,7 @@ class Controller(
     private val myCall = settings.callsign
     private val trackerAcks = MessageEngine.trackerSendsAcks(myCall, settings.trackerCallsign)
     private val engine = MessageEngine(myCall, { info -> transmitInfo(info) }, { System.currentTimeMillis() }, sendAcks = !trackerAcks)
-    private val iGate = IGate(myCall, { System.currentTimeMillis() })
+    private val iGate = IGate(myCall, softwareVersion = BuildConfig.VERSION_NAME)
     private val txQueue = ArrayDeque<ByteArray>()
     private var lastTxMs = 0L
 

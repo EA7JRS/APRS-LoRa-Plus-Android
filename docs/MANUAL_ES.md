@@ -61,7 +61,7 @@ La pantalla principal se maneja como una emisora móvil: dos bandas, teclas tác
 - **MSG**: conversaciones (RX / TX / PAGER), estado de cada mensaje (enviado, confirmado, fallido, rechazado), tres envíos,
   sin repetidos, *TxCLR* cancela los pendientes. Los mensajes llegan como notificaciones con responder y marcar como leído,
   que es lo que lee en voz alta Android Auto.
-- **IGATE**: iGate móvil, solo radio → APRS-IS.
+- **IGATE**: iGate móvil, solo radio → APRS-IS (`qAO`, de solo recepción). Pasa cada trama tal cual llega, sin quitar espacios ni bytes; no descarta duplicados (lo hacen los servidores) y no guarda lo oído con la conexión caída para mandarlo después. Una sola conexión, a `rotate.aprs2.net` por defecto.
 - **WX**: estaciones meteorológicas APRS con viento y Beaufort, rocío, sensación, base de nubes y tendencia de la presión
   (3 h), ordenadas por distancia, hora, temperatura o viento.
 - **HEARD**: las estaciones que oye el propio tracker y su registro de mensajes; enviar un mensaje desde el tracker. *QSY*
