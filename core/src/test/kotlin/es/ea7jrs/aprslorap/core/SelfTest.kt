@@ -1155,6 +1155,7 @@ private fun testModems() {
 }
 
 private fun testG3ruh() {
+    eq(Ax25Frame.create("EA7JRS-7", Tocall.APP, emptyList(), ">x")?.toTnc2(), "EA7JRS-7>APLJRA:>x", "app tocall APLJRA")
     eq(G3ruh.crc16("123456789".toByteArray()), 0x906E, "CRC-16/X.25 check value")
     val frame = Tnc2.parse("EA7JRS-7>APZLRP,WIDE1-1:!3711.49N/00356.20W>APRS LoRa+ FSK test")!!.encode()
     // 1) bits straight into the decoder's line stage: 5 samples a bit, ideal levels

@@ -5,6 +5,14 @@
  */
 package es.ea7jrs.aprslorap.core
 
+/** Destination (tocall) of the frames we send, assigned by the official aprs-deviceid registry on 2026-11-16. */
+object Tocall {
+    /** APRS LoRa+ for Android (this app); before, APZLRP (experimental range). */
+    const val APP = "APLJRA"
+    /** APRS LoRa+ tracker firmware (from 5.4.7; up to 5.4.6, APZLRT). The rotor box still uses APZLRR. */
+    const val TRACKER = "APLJRT"
+}
+
 /** An AX.25 address: callsign + SSID; [repeated] is the "has been repeated" (H) bit of a digipeater. */
 data class Ax25Address(val call: String, val ssid: Int = 0, val repeated: Boolean = false) {
     /** Text form as in TNC2: CALL-SSID (without "-0"), with "*" if repeated. */

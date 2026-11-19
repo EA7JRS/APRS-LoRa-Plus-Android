@@ -135,6 +135,6 @@ Código abierto (GPL-3.0). Sin anuncios ni seguimiento.
 
 ## 6. Antes de producción (pendiente en la app)
 - Símbolos APRS: algunos son logotipos de marcas → sustituir o quitar en la versión de Google Play.
-- Destino APRS `APZLRP` (experimental) → pedir uno propio en el registro de tocalls de APRS (aprs.org / hessu `aprs-deviceid`).
+- ~~Destino APRS propio~~: hecho, `APLJRA` asignado por el registro aprs-deviceid el 2026-11-16 (antes `APZLRP`, experimental).
 - Android Auto con plantillas (si se hace): solo en pruebas internas o cerradas.
 - Revisar licencias de lo incluido (`About`): ft8_lib (MIT), wsprd y FST4W (GPL-3), osmdroid (Apache 2.0), fuentes OFL, BouncyCastle (MIT).

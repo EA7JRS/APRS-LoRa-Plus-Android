@@ -8,6 +8,7 @@ package es.ea7jrs.aprslorap
 import es.ea7jrs.aprslorap.core.Aprs
 import es.ea7jrs.aprslorap.core.AprsPacket
 import es.ea7jrs.aprslorap.core.Ax25Frame
+import es.ea7jrs.aprslorap.core.Tocall
 import es.ea7jrs.aprslorap.core.Control
 import es.ea7jrs.aprslorap.core.ControlEvent
 import es.ea7jrs.aprslorap.core.Vessel
@@ -182,7 +183,7 @@ class Controller(
 
     private fun transmitInfo(info: String) {
         if (!Licence.isValid(settings)) { AppState.error.value = "Callsign not validated in RadioID: nothing is transmitted"; return }
-        val frame = Ax25Frame.create(myCall, "APZLRP", settings.pathList, info)
+        val frame = Ax25Frame.create(myCall, Tocall.APP, settings.pathList, info)
         if (frame == null) { AppState.error.value = "Invalid callsign or path in the settings"; return }
         AppState.addLog("TX " + frame.toTnc2())
         txQueue.addLast(Kiss.encode(frame.encode()))
