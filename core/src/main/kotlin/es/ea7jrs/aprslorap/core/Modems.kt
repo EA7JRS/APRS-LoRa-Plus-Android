@@ -14,6 +14,7 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -262,6 +263,27 @@ object Modems {
             val re = DoubleArray(size) { buf[(pos + it) % size] * win[it] }; val im = DoubleArray(size)
             fft(re, im)
             return FloatArray(size / 2) { (10 * kotlin.math.log10(re[it] * re[it] + im[it] * im[it] + 1e-12)).toFloat() }
+        }
+    }
+
+    /**
+     * Complex-IQ spectrum in dB for a panadapter, fft-shifted so bin 0 = −rate/2, the centre = DC (the tuner frequency) and the
+     * last bin = +rate/2. Hann window, last [size] samples. Used by the SDR waterfall of the app receiver.
+     */
+    class IqSpectrum(val size: Int = 1024) {
+        private val reBuf = DoubleArray(size); private val imBuf = DoubleArray(size); private var pos = 0; private var filled = 0
+        private val win = DoubleArray(size) { 0.5 - 0.5 * cos(2 * PI * it / (size - 1)) }
+        val ready get() = filled >= size
+        fun push(re: FloatArray, im: FloatArray, n: Int) {
+            for (i in 0 until n) { reBuf[pos] = re[i].toDouble(); imBuf[pos] = im[i].toDouble(); pos = (pos + 1) % size; if (filled < size) filled++ }
+        }
+        fun db(out: FloatArray = FloatArray(size)): FloatArray {
+            val re = DoubleArray(size) { reBuf[(pos + it) % size] * win[it] }
+            val im = DoubleArray(size) { imBuf[(pos + it) % size] * win[it] }
+            fft(re, im)
+            val h = size / 2
+            for (k in 0 until size) { val s = (k + h) % size; out[k] = (10 * log10(re[s] * re[s] + im[s] * im[s] + 1e-12)).toFloat() }
+            return out
         }
     }
 

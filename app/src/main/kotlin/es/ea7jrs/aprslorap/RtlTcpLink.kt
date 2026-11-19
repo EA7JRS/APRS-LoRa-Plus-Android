@@ -150,6 +150,10 @@ internal class RtlTcpLink(
                     val pcm = ShortArray(16_384)
                     val bytes = ByteArray(32_768)
                     var lastLevel = 0L
+                    val spec = es.ea7jrs.aprslorap.core.Modems.IqSpectrum(1024)      // panadapter: raw input band
+                    val specRow = FloatArray(1024)
+                    var lastSpec = 0L
+                    rx.specTap = { re, im, nn -> spec.push(re, im, nn) }
                     while (running) {
                         while (true) { val c = q.poll() ?: break; out.write(c) }
                         newMode?.let { (m, bw) ->
@@ -184,6 +188,10 @@ internal class RtlTcpLink(
                         }
                         val now = System.currentTimeMillis()
                         if (now - lastLevel > 300) { lastLevel = now; SdrControl.update { it.copy(signalDb = rx.levelDb) } }
+                        if (now - lastSpec > 45 && spec.ready) {            // ~20 rows/s panadapter
+                            lastSpec = now
+                            AppState.sdrSpectrum.value = AppState.SdrSpectrum(spec.db(specRow).copyOf(), tunerHz, Dsp.INPUT_RATE, wantHz)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -191,6 +199,8 @@ internal class RtlTcpLink(
                 SdrControl.update { it.copy(connected = false, status = "No IQ from $host:$port (${e.message}); retrying") }
                 try { Thread.sleep(3000) } catch (_: InterruptedException) { break }
             } finally {
+                rx.specTap = null
+                AppState.sdrSpectrum.value = null
                 try { track?.release() } catch (_: Exception) {}
             }
         }

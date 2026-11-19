@@ -179,6 +179,8 @@ fun SdrTab() {
                 OutlinedButton(onClick = { SdrControl.tune(f.first) }, enabled = st.connected) { Text(f.second, fontSize = 10.sp) }
             }
         }
+        // panadapter (app receiver only): spectrum + waterfall, tap / drag to tune
+        SdrWaterfall(onTune = { settings.sdrLastHz = it; SdrControl.tune(it) })
         if (kind != Sdr.Kind.SPYSERVER) {
             // DV (digital voice) sits with the analog modes; the flavour (DMR, D-STAR, C4FM, M17...) is chosen in its section below.
             val dvActive = dvStatus.startsWith("Decoding")

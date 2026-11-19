@@ -183,6 +183,9 @@ object Dsp {
         }
 
         /** 8-bit unsigned IQ bytes -> audio samples (-1..1) at [audioRate]; returns how many were written into [out]. */
+        /** Raw input IQ (960 kS/s, before the NCO mix), for the panadapter waterfall. */
+        var specTap: ((FloatArray, FloatArray, Int) -> Unit)? = null
+
         fun process(iq: ByteArray, len: Int, out: FloatArray): Int {
             val n = len / 2
             ensure(n)
@@ -190,6 +193,7 @@ object Dsp {
                 bRe[i] = ((iq[2 * i].toInt() and 0xFF) - 127.5f) / 127.5f
                 bIm[i] = ((iq[2 * i + 1].toInt() and 0xFF) - 127.5f) / 127.5f
             }
+            specTap?.invoke(bRe, bIm, n)
             nco.mix(bRe, bIm, n)
             val na = firA.process(bRe, bIm, n, aRe, aIm)                       // 192 kS/s
             if (mode == "WFM") {

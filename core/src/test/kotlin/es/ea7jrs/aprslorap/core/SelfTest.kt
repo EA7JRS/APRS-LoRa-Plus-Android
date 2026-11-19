@@ -1178,6 +1178,17 @@ private fun testModems() {
     val y = FloatArray(9000); val ny = rs.process(x12, 12000, y)
     eq(ny, 8000, "12 -> 8 kHz count"); check(Dsp.goertzel(y.copyOfRange(500, 8000), 7500, 1000.0, 8000.0) > 100 * Dsp.goertzel(y.copyOfRange(500, 8000), 7500, 1700.0, 8000.0), "12 -> 8 kHz keeps the tone")
     eq(Modems.create("RTTY 45/170", 1500.0).label, "RTTY 45/170", "mode factory"); eq(Modems.create("BPSK63", 1000.0).label, "BPSK62", "mode factory PSK63 (62.5 Bd)")
+    // IQ panadapter spectrum: a complex tone at +rate/8 peaks at the fft-shifted bin centre + size/8
+    val iq = Modems.IqSpectrum(1024)
+    val cRe = FloatArray(1024) { Math.cos(2 * Math.PI * (1024 / 8) * it / 1024.0).toFloat() }
+    val cIm = FloatArray(1024) { Math.sin(2 * Math.PI * (1024 / 8) * it / 1024.0).toFloat() }
+    iq.push(cRe, cIm, 1024); check(iq.ready, "iq spectrum filled")
+    val idb = iq.db(); val ipeak = idb.indices.maxByOrNull { idb[it] }!!
+    eq(ipeak, 1024 / 2 + 1024 / 8, "iq peak at +rate/8 (bin 640, fft-shifted)")
+    val cRe2 = FloatArray(1024) { Math.cos(-2 * Math.PI * (1024 / 4) * it / 1024.0).toFloat() }
+    val cIm2 = FloatArray(1024) { Math.sin(-2 * Math.PI * (1024 / 4) * it / 1024.0).toFloat() }
+    iq.push(cRe2, cIm2, 1024); val idb2 = iq.db(); val ipeak2 = idb2.indices.maxByOrNull { idb2[it] }!!
+    eq(ipeak2, 1024 / 2 - 1024 / 4, "iq peak at -rate/4 (bin 256)")
 }
 
 private fun testG3ruh() {

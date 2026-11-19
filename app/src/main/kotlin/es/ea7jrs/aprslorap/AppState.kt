@@ -126,6 +126,9 @@ object AppState {
     val modem = MutableStateFlow(ModemRunner.State())                           // text modes (CW, RTTY, PSK)
     val modemText = MutableStateFlow("")
     val waterfallRow = MutableStateFlow<FloatArray?>(null)
+    /** Panadapter row of the app's RTL-SDR receiver (null = no receiver): dB per bin, centre = tuner, span = input rate. */
+    class SdrSpectrum(val row: FloatArray, val centerHz: Long, val spanHz: Int, val markerHz: Long, val t: Long = System.nanoTime())
+    val sdrSpectrum = MutableStateFlow<SdrSpectrum?>(null)
     val wsjt = MutableStateFlow(WsjtRunner.State())                              // FT8 / FT4
     val wsjtDecodes = MutableStateFlow<List<es.ea7jrs.aprslorap.core.Wsjt.Decode>>(emptyList())
     val extraStatus = MutableStateFlow<Map<String, String>>(emptyMap())          // receiver key -> status
