@@ -283,6 +283,15 @@ private fun RotorBody(i: RotorProto.Info, pos: RotorProto.Position?, canControl:
             if (i.hasEl) String.format(Locale.US, ", el %.0f–%.0f°", i.limits.minEl, i.limits.maxEl) else ""))
         Field("Links", listOfNotNull("WiFi".takeIf { i.wifi }, "BLE".takeIf { i.ble }, "SPP".takeIf { i.spp }, "LoRa APRS".takeIf { i.lora }).joinToString(", "))
         i.hamlib?.let { Field("Hamlib rotctld", it) }
+        i.gps?.let { g ->
+            Field("GPS (gpsd)", when {
+                !g.link -> "no gpsd"
+                g.fix < 2 -> "no fix · ${g.sats}/${g.seen} satellites"
+                else -> "${g.fix}D fix · ${g.sats}/${g.seen} satellites" + (if (g.pps) " · PPS" else " · no PPS")
+            })
+            if (g.lat != null && g.lon != null)
+                Field("Station position", String.format(Locale.US, "%.5f, %.5f", g.lat, g.lon) + (g.altM?.let { String.format(Locale.US, " · %.0f m", it) } ?: ""))
+        }
         OutlinedButton(enabled = canControl, onClick = { RotorLink.command(RotorProto.reboot()) }) { Text("Restart the rotor box") }
 }
 
@@ -320,6 +329,7 @@ private fun RotorCalibration(i: RotorProto.Info, canControl: Boolean) {
     var deg by rememberSaveable { mutableStateOf("") }
     // Raw readings every 2 s while this section is on screen
     LaunchedEffect(Unit) { while (true) { RotorLink.send(RotorProto.raw()); delay(2000) } }
+    if (i.stepper) { RotorStepperCalibration(i, canControl, raw); return }
     Section("Calibration (direct drive)")
     val unit = raw?.unit?.let { when (it) { "mV" -> " mV"; "ads" -> " (ADS1115)"; else -> " (ADC)" } } ?: ""
     Field("Raw reading", "az ${raw?.az?.let { String.format(Locale.US, "%.0f", it) } ?: "—"}" +
@@ -338,6 +348,36 @@ private fun RotorCalibration(i: RotorProto.Info, canControl: Boolean) {
     }
     Text("Take the rotor by hand to one end (e.g. 0°), type it and press Point A; then to the other end (e.g. 450°) and Point B. " +
         "Offset only shifts the reading so that the present position is the degrees typed (north set-up).", fontSize = 11.sp)
+}
+
+/** Raspberry Pi with the Waveshare Stepper Motor HAT: the position is counted in steps; Offset sets it, or the limit switches. */
+@Composable
+private fun RotorStepperCalibration(i: RotorProto.Info, canControl: Boolean, raw: RotorProto.Event.Raw?) {
+    var axis by rememberSaveable { mutableStateOf("az") }
+    var deg by rememberSaveable { mutableStateOf("") }
+    Section("Position (stepper motors)")
+    Field("Steps", "az ${raw?.azSteps ?: "—"}" + (if (i.hasEl) " · el ${raw?.elSteps ?: "—"}" else ""))
+    Field("Position", when {
+        raw?.fault != null -> "limit switch not found (${raw.fault})"
+        raw?.homing == true -> "searching the limit switches…"
+        raw?.known == false -> "not set: use Offset or the limit switches"
+        raw?.known == true -> "set"
+        else -> "—"
+    })
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(axis == "az", { axis = "az" }); Text("Azimuth", Modifier.clickable { axis = "az" })
+        if (i.hasEl) { RadioButton(axis == "el", { axis = "el" }); Text("Elevation", Modifier.clickable { axis = "el" }) }
+    }
+    OutlinedTextField(deg, { deg = it }, label = { Text("Degrees where the antenna points now") }, singleLine = true,
+        modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+    val d = deg.replace(',', '.').toDoubleOrNull()
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(enabled = canControl && d != null, onClick = { RotorLink.command(RotorProto.here(axis, d!!)) }) { Text("Offset") }
+        OutlinedButton(enabled = canControl && raw?.homing != true, onClick = { RotorLink.command(RotorProto.home()) }) { Text("Find limit switches") }
+    }
+    Text("The motors do not report where they are: the box counts the steps and keeps the position when it stops. " +
+        "Point the antenna at a known bearing, type it and press Offset, or let the box find the limit switches " +
+        "(stepper.az.home / stepper.el.home; also at start-up).", fontSize = 11.sp)
 }
 
 @Composable

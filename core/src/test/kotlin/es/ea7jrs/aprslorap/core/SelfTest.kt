@@ -2596,6 +2596,13 @@ private fun testFormulas() {
         p.pos.declinationDeg == 0.9, "rotor pos with trk / bf / dec")
     val i = RotorProto.parse("{\"e\":\"info\",\"api\":1,\"sky\":true,\"caps\":{\"sky\":true}}")
     check(i is RotorProto.Event.InfoEv && i.info.sky, "rotor info sky")
+    // Raspberry Pi with the stepper motor HAT and the GPS HAT
+    val st = RotorProto.parse("{\"e\":\"info\",\"drv\":\"stepper\",\"caps\":{\"cal\":true,\"gps\":true},\"gps\":{\"link\":true,\"fix\":3,\"sats\":9,\"seen\":14,\"pps\":true,\"lat\":36.72,\"lon\":-4.42,\"alt\":12.5}}")
+    check(st is RotorProto.Event.InfoEv && st.info.stepper && st.info.canCalibrate && st.info.gps?.fix == 3 && st.info.gps?.pps == true &&
+        st.info.gps?.lat == 36.72 && st.info.gps?.altM == 12.5, "rotor info stepper + gps")
+    val rs = RotorProto.parse("{\"e\":\"raw\",\"link\":true,\"known\":false,\"homing\":true,\"azSteps\":24000,\"elSteps\":-5,\"fault\":\"HOME AZ\"}")
+    check(rs is RotorProto.Event.Raw && rs.known == false && rs.homing && rs.azSteps == 24000L && rs.elSteps == -5L && rs.fault == "HOME AZ", "rotor raw stepper")
+    eq(RotorProto.home(), "{\"c\":\"home\"}\n", "rotor home")
 }
 
 // Celestial navigation: same reference values as the plotter core (a 2026 nautical almanac, 0.1', and PyEphem)

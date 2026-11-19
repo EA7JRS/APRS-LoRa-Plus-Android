@@ -50,6 +50,8 @@ object RotorProto {
     fun move(m: Move, speedPct: Int = 0) = if (speedPct > 0) line("c" to "move", "d" to m.wire, "s" to speedPct.coerceIn(1, 100)) else line("c" to "move", "d" to m.wire)
     fun calibrate(axis: String, point: String, deg: Double) = line("c" to "cal", "axis" to axis, "pt" to point, "deg" to deg)
     fun here(axis: String, deg: Double) = line("c" to "here", "axis" to axis, "deg" to deg)
+    /** Stepper motors of a Raspberry Pi box: search the limit switches again. */
+    fun home() = line("c" to "home")
     fun configGet() = line("c" to "cfgget")
     fun reboot() = line("c" to "reboot")
     /** Follow the sun or the moon (sun noise, moonbounce); any pos / stop / park / move stops it. */
@@ -124,7 +126,16 @@ object RotorProto {
         val wind: Boolean = false,
         /** The box can follow the sun or the moon (command `track`). */
         val sky: Boolean = false,
-    )
+        /** Own GPS of a Raspberry Pi box (Uputronics GPS/RTC HAT through gpsd; `info.gps`). */
+        val gps: Gps? = null,
+    ) {
+        /** Raspberry Pi with the Waveshare Stepper Motor HAT: position counted in steps (Offset / home switches). */
+        val stepper: Boolean get() = driver == "stepper"
+    }
+
+    /** [fix] 0 none, 2 = 2D, 3 = 3D; [pps] = pulse in the last 3 s. */
+    data class Gps(val link: Boolean, val fix: Int, val sats: Int, val seen: Int, val pps: Boolean,
+                   val lat: Double?, val lon: Double?, val altM: Double?)
 
     /** Wind protection state (object `wind` of the event `pos`). [locked] = parked by wind; [holdS] = seconds left at least. */
     data class Wind(
@@ -165,7 +176,10 @@ object RotorProto {
     sealed class Event {
         data class InfoEv(val info: Info) : Event()
         data class Pos(val pos: Position) : Event()
-        data class Raw(val az: Double?, val el: Double?, val unit: String, val link: Boolean?) : Event()
+        data class Raw(val az: Double?, val el: Double?, val unit: String, val link: Boolean?,
+                       /** Stepper motors: position set (Offset / home switch), searching the switches, steps, fault. */
+                       val known: Boolean? = null, val homing: Boolean = false, val azSteps: Long? = null,
+                       val elSteps: Long? = null, val fault: String? = null) : Event()
         data class ConfigPiece(val index: Int, val count: Int, val data: String) : Event()
         data class Ok(val command: String, val index: Int?, val done: Boolean) : Event()
         data class Err(val command: String, val message: String) : Event()
@@ -189,6 +203,10 @@ object RotorProto {
                     o.bool("cat") ?: caps.bool("cat") ?: false, o.int("rigctld") ?: 0,
                     o.bool("wind") ?: caps.bool("wind") ?: false,
                     o.bool("sky") ?: caps.bool("sky") ?: false,
+                    o.obj("gps")?.let {
+                        Gps(it.bool("link") ?: false, it.int("fix") ?: 0, it.int("sats") ?: 0, it.int("seen") ?: 0,
+                            it.bool("pps") ?: false, it.num("lat"), it.num("lon"), it.num("alt"))
+                    },
                 ))
             }
             "pos" -> {
@@ -203,7 +221,8 @@ object RotorProto {
                     o.obj("trk")?.let { Track(it.str("t") ?: "", it.num("az") ?: 0.0, it.num("el") ?: 0.0, it.bool("below") ?: false) },
                     o.obj("hdg")?.num("dec")))
             }
-            "raw" -> Event.Raw(o.num("az"), o.num("el"), o.str("unit") ?: "", o.bool("link"))
+            "raw" -> Event.Raw(o.num("az"), o.num("el"), o.str("unit") ?: "", o.bool("link"), o.bool("known"),
+                o.bool("homing") ?: false, o.long("azSteps"), o.long("elSteps"), o.str("fault"))
             "cfg" -> Event.ConfigPiece(o.int("i") ?: return null, o.int("n") ?: return null, o.str("d") ?: "")
             "ok" -> Event.Ok(o.str("c") ?: "", o.int("i"), o.bool("done") ?: false)
             "err" -> Event.Err(o.str("c") ?: "", o.str("m") ?: "")
