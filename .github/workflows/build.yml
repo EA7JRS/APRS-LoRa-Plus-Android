@@ -4,7 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release ya creada a la que adjuntar el APK (p. ej. v5.4.7). Vacio = solo compilar"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -51,6 +61,16 @@ jobs:
         with:
           name: aprs-lora-plus-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+      # APK attached to the release: when a release is published, or by hand with its tag (Manuel - EA7JRS)
+      - name: APK to the release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          V=$(grep -o 'versionName = "[^"]*' app/build.gradle.kts | sed 's/.*"//')
+          cp "$(ls app/build/outputs/apk/debug/*.apk | head -1)" "aprs-lora-plus-$V-debug.apk"
+          gh release upload "$TAG" "aprs-lora-plus-$V-debug.apk" --clobber
       # Google Play bundle: signed with the upload key from the repository secrets (ALP_UPLOAD_KEYSTORE = the .jks in base64,
       # ALP_UPLOAD_STORE_PASSWORD, ALP_UPLOAD_KEY_ALIAS, ALP_UPLOAD_KEY_PASSWORD). Without them this step is skipped.
       # -Palp.play=true leaves out the digital voice decoder (mbelib: possible DVSI patents).
