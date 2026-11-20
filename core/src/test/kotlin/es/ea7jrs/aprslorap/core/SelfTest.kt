@@ -2188,7 +2188,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -2667,6 +2667,43 @@ private fun testLatitude() {
     val tv = Celnav.meridianPassageJd(jdNoon, -6.28, vegaGha)
     near(Math.IEEEremainder(vegaGha(tv) - 6.28, 360.0), 0.0, 1e-4, "lat: Vega meridian passage")
     check(abs(tv - jdNoon) <= 0.51, "lat: nearest passage")
+}
+
+private fun testRadiotel() {
+    // same cases as testRadiotel of the plotter
+    val R = Radiotel
+    check(R.natureCount(Radiotel.Kind.MAYDAY) == 11, "radiotel: 11 distress natures")
+    check(R.natureFromDsc(100) == 0 && R.natureFromDsc(110) == 10 && R.natureFromDsc(111) == -1, "radiotel: DSC natures")
+    check(R.natureName(Radiotel.Kind.MAYDAY, R.natureFromDsc(105), true) == "SINKING", "radiotel: 105 sinking")
+    check(R.natureName(Radiotel.Kind.MAYDAY, R.natureFromDsc(110), false) == "HOMBRE AL AGUA", "radiotel: 110 MOB")
+    check(R.phonetic("EA7jrs", false) == "ECHO ALFA SIETE JULIETT ROMEO SIERRA", "radiotel: phonetic ES")
+    check(R.phonetic("EB-9", true) == "ECHO BRAVO NINE", "radiotel: phonetic EN")
+    check(R.digits("224 1", true) == "TWO TWO FOUR ONE", "radiotel: digits")
+    check(R.position(36.53, -6.28333, false) == "36 GRADOS 31,8 MINUTOS NORTE, 006 GRADOS 17,0 MINUTOS OESTE", "radiotel: position ES")
+    var i = Radiotel.Input(name = "Mar Azul", callsign = "EA1234", mmsi = "224123456", lat = 36.53, lon = -6.28333, utcMin = 14 * 60 + 5,
+        nature = 1, persons = 3, description = "velero de 12 m, casco blanco")
+    var m = R.message(i)
+    check(m.startsWith("MAYDAY, MAYDAY, MAYDAY\n"), "radiotel: MAYDAY call")
+    check("AQUÍ MAR AZUL, MAR AZUL, MAR AZUL\n" in m, "radiotel: name three times")
+    check("DISTINTIVO ECHO ALFA UNO DOS TRES CUATRO, MMSI DOS DOS CUATRO" in m, "radiotel: identity")
+    check("A LAS 1405 UTC" in m && "VÍA DE AGUA\n" in m && "3 PERSONAS A BORDO\n" in m, "radiotel: time, nature, persons")
+    check("VELERO DE 12 M, CASCO BLANCO\n" in m && m.endsWith("CAMBIO\n"), "radiotel: description and over")
+    i = i.copy(english = true, kind = Radiotel.Kind.PAN_PAN, nature = 2, persons = 1)
+    m = R.message(i)
+    check(m.startsWith("PAN PAN PAN PAN PAN PAN\nALL STATIONS ALL STATIONS ALL STATIONS\nTHIS IS MAR AZUL MAR AZUL MAR AZUL\n"), "radiotel: PAN PAN")
+    check("I REQUIRE MEDICAL ADVICE\n1 PERSON ON BOARD\n" in m && m.endsWith("OVER\n"), "radiotel: PAN PAN body")
+    i = i.copy(kind = Radiotel.Kind.SECURITE, nature = 1, extra = "container awash")
+    m = R.message(i)
+    check(m.startsWith("SÉCURITÉ SÉCURITÉ") && "DRIFTING OBJECT\nCONTAINER AWASH\nIN POSITION 36 DEGREES" in m, "radiotel: SECURITE")
+    check("PERSON" !in m && m.endsWith("OUT\n"), "radiotel: SECURITE ends OUT")
+    i = i.copy(kind = Radiotel.Kind.MAYDAY_RELAY, english = false, nature = 5, extra = "", relayMmsi = "224999888", relayLat = 36.1, relayLon = -6.5, relayPersons = 4)
+    m = R.message(i)
+    check(m.startsWith("MAYDAY RELAY, MAYDAY RELAY, MAYDAY RELAY\nA TODAS LAS ESTACIONES"), "radiotel: relay call")
+    check("DE BUQUE DESCONOCIDO, MMSI DOS DOS CUATRO NUEVE" in m, "radiotel: relay vessel")
+    check("36 GRADOS 06,0 MINUTOS NORTE, 006 GRADOS 30,0 MINUTOS OESTE\nHUNDIMIENTO\n4 PERSONAS A BORDO\n" in m && "3 PERSONAS" !in m, "radiotel: relay body")
+    m = R.message(Radiotel.Input())
+    check("[NOMBRE DEL BARCO]" in m && "[SITUACIÓN]" in m && "DISTINTIVO" !in m && "PERSONAS" !in m, "radiotel: gaps")
+    check(R.TYPE_ES.size == Vessel.TYPES.size, "radiotel: Spanish ship types")
 }
 
 private fun testBearingFix() {
