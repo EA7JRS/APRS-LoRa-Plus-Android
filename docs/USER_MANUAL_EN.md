@@ -1,6 +1,6 @@
 # APRS LoRa+ for Android — user manual
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.4.6** (the same number as the tracker, the rotor box, the
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.4.7** (the same number as the tracker, the rotor box, the
 Display and the plotter).
 
 The app is the companion of the **APRS LoRa+** tracker: it shows everything the tracker hears and measures, and controls
