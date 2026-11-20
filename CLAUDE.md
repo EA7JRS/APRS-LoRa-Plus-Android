@@ -294,3 +294,5 @@ Documento de diseño (Claude Docs): https://claude.ai/artifact/HAoogW2ycFTjYfH3j
   `kotlinc core/src/main/kotlin core/src/test/kotlin -include-runtime -d core-test.jar && java -cp core-test.jar es.ea7jrs.aprslorap.core.SelfTestKt`
 - La app Android solo se puede compilar donde haya Android SDK (GitHub Actions o Android Studio). En Android Studio, antes: `native/dsd/build.sh`, `native/ft8/build.sh`, `native/wspr/build.sh` y `native/fst4w/build.sh` con `arm64-v8a native/<x>/out/arm64-v8a` (necesitan el NDK); sin eso la app compila pero no tiene voz digital, FT8/FT4, WSPR ni FST4W. Para probar el decodificador en el PC: `native/dsd/build.sh host <dir>`.
 - No publicar nada ni crear repositorios sin que lo pida Manuel.
+
+- **APK en la release (2026-11-20)**: `build.yml` adjunta el APK de depuración (`aprs-lora-plus-<versión>-debug.apk`) a la release al publicarla, o a mano (`workflow_dispatch` con `tag`). La v5.4.7 ya lo lleva. **Probado por Manuel con la T-Beam Supreme**: tiempo espacial completo (SFI, SSN, Bz, viento solar) y tiempo de internet al tracker.
