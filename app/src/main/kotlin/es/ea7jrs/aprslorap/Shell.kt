@@ -63,7 +63,7 @@ enum class Tool(val title: String) {
     TRACKER("Tracker"), SENSORS("Sensors"), HEARD("Heard by the tracker"), SAT("Satellites"), ROTOR("Rotor box"), SDR("SDR receivers"),
     MODES("Digital modes"), AIS("AIS ships"), LOG("Log & QSL"), SIGID("Signal ID"), REMOTE("Remote screen"), CONFIG("Tracker configuration"),
     DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"), ADSB("Aircraft (ADS-B)"), BEACONS("Beacons heard (SDR)"),
-    VESSEL("My vessel (AIS)"), ASTRO("Celestial navigation"),
+    VESSEL("My vessel (AIS)"), ASTRO("Celestial navigation"), WEFAX("Weather fax & HF prediction"),
 }
 
 /** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "IBP", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
@@ -157,6 +157,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
         FKey("SPOTS", "SPOTS", if (spotOn) "ON" else "PSK · WSPR", if (spotOn) 1 else 0) { nav.tool(Tool.MODES) },
         FKey("AIS", "AIS", if (ais.isEmpty()) "ships" else "${ais.size} ships", if (ais.isNotEmpty()) 1 else 0) { nav.tool(Tool.AIS) },
         FKey("ALERTS", "ALERTS", if (oa.isEmpty()) "official" else "${oa.size} in force", if ((oa.maxOfOrNull { it.level } ?: 0) >= 2) 1 else 0) { nav.tool(Tool.ALERTS) },
+        FKey("WEFAX", "WEFAX", "charts · VOACAP") { nav.tool(Tool.WEFAX) },
         FKey("RXPLUS", "RX+", "${extra.size} receivers") { nav.tool(Tool.CONNECT) },
         FKey("REMOTE", "REMOTE", "screen") { nav.tool(Tool.REMOTE) },
         FKey("CONFIG", "CONFIG", "tracker") { nav.tool(Tool.CONFIG) },
@@ -176,7 +177,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 val FMENU_PAGES = listOf(
     "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
     "RADIO" to listOf("DX", "RBN", "IBP", "SAT", "ROTOR", "CAT", "SDR", "MODES", "CWKEY", "BEACONS", "AIS", "ADSB"),
-    "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS", "SPOTS", "ASTRO"),
+    "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS", "SPOTS", "ASTRO", "WEFAX"),
 )
 
 /** The app after the welcome screen: radio-style screens, touch keys, [F] menu and side menu. */
@@ -410,7 +411,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "Spotting" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Aircraft (ADS-B)" to Tool.ADSB, "Beacons (SDR)" to Tool.BEACONS, "Official alerts" to Tool.ALERTS, "Compass · GPS" to null, "About" to Tool.ABOUT,
+                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Aircraft (ADS-B)" to Tool.ADSB, "Beacons (SDR)" to Tool.BEACONS, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null, "About" to Tool.ABOUT,
             )
             for (row in grid.chunked(2)) {
                 Row {
@@ -537,6 +538,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.CONNECT -> ConnectTab()
                 Tool.ABOUT -> AboutTab()
                 Tool.ALERTS -> AlertsTab()
+                Tool.WEFAX -> WefaxTab()
                 Tool.CAT -> CatTab()
                 Tool.ADSB -> AdsbTab()
                 Tool.BEACONS -> BeaconsTab { nav.go("MAP") }

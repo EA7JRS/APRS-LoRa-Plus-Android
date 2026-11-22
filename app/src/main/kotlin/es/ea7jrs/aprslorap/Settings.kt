@@ -612,6 +612,13 @@ class Settings(ctx: Context) {
     var mapOpacity: String
         get() = p.getString("map_opacity", "")!!
         set(v) { p.edit().putString("map_opacity", v).apply() }
+    /** EA7JRS/Wefax on the local network: the computer that runs it and its port. */
+    var wefaxHost: String
+        get() = p.getString("wefax_host", "")!!
+        set(v) { p.edit().putString("wefax_host", v).apply() }
+    var wefaxPort: Int
+        get() = p.getInt("wefax_port", 8081)
+        set(v) { p.edit().putInt("wefax_port", v).apply() }
     /** The AEMET OpenData key for the Spanish national radar image of the map. */
     var aemetKey: String
         get() = p.getString("aemet_key", "")!!
