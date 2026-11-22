@@ -222,7 +222,7 @@ object Wefax {
     /** Why Wefax cannot predict, for the user. */
     fun whyText(why: String): String = when (why) {
         "voacap not installed" -> "VOACAP is not installed on the Wefax computer"
-        "no sunspot number" -> "Wefax has no sunspot number: set it in its Receiver tab"
+        "no sunspot number" -> "Wefax has no sunspot number yet: it reads it from NOAA once a day, or set it in its Receiver tab"
         "no position" -> "Wefax has no position"
         else -> why
     }
