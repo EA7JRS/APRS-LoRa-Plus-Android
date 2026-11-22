@@ -2928,6 +2928,45 @@ private fun testNavtex() {
     check(nrx.joinToString("") { it.substring(it.indexOf(",0.0,") + 5, it.indexOf('*')) }.contains("005-21.2W^2C KEEP CLEAR"), "navtex nrx escapes the comma")
     check(nrx.all { val b = it.substring(1, it.indexOf('*')); it.endsWith(String.format("*%02X", Nmea.checksum(b))) }, "navtex nrx checksums")
     check(pos.size == 3 && kotlin.math.abs(pos[1].first - (36 + 7.5 / 60)) < 1e-9 && kotlin.math.abs(pos[1].second + (5 + 21.2 / 60)) < 1e-9, "navtex positions: $pos")
+
+    // receiver rules (IMO MSC.508(105), NAVTEX Manual 2023): messages written for the test
+    fun msg(id: String, text: String, cut: Boolean = false, ms: Long = t0) = Navtex.Message(id[0], id[1], id.substring(2).toInt(), text, false, cut, ms)
+    val clean = msg("GA12", "LIGHT UNLIT. TEST MESSAGE, NOT A REAL ONE. " + "X".repeat(57))
+    val dirty = msg("GA12", "L*GHT UNL*T. TEST M*SS*GE, NOT A REAL ONE. " + "X".repeat(57))
+    check(clean.text.length == 100 && clean.bad == 0 && clean.satisfactory && dirty.bad == 4 && !dirty.satisfactory, "navtex 4 % rule: ${dirty.bad} bad of ${dirty.text.length}")
+    check(msg("GA12", "L*GHT UNL*T. TEST M*SSAGE, NOT A REAL ONE. " + "X".repeat(57)).satisfactory, "navtex 3 % is satisfactory")
+    check(!msg("GA12", "LIGHT UNLIT", cut = true).satisfactory && kotlin.math.abs(dirty.errorRate - 4.0) < 1e-9, "navtex cut is not satisfactory; error rate")
+    check(Navtex.betterCopy(clean, dirty) && !Navtex.betterCopy(dirty, clean) && Navtex.betterCopy(dirty, msg("GA12", "LIGHT UNLIT. " + "X".repeat(300), cut = true)), "navtex better copy")
+    check(!Navtex.betterCopy(msg("GA12", "SHORT", cut = true), msg("GA12", "MUCH LONGER TEXT", cut = true)), "navtex among cut copies the longer stays")
+    check(Navtex.verdict(clean, null, 0, t0) == Navtex.Verdict.NEW, "navtex first reception is new")
+    check(Navtex.verdict(clean, clean, t0, t0 + 4 * 3_600_000L) == Navtex.Verdict.REPEAT, "navtex repeat within 72 h is not shown again")
+    check(Navtex.verdict(clean, clean, t0, t0 + 73 * 3_600_000L) == Navtex.Verdict.NEW, "navtex after 72 h it is a new message")
+    check(Navtex.verdict(clean, dirty, t0, t0 + 4 * 3_600_000L) == Navtex.Verdict.BETTER && Navtex.verdict(dirty, clean, t0, t0 + 4 * 3_600_000L) == Navtex.Verdict.REPEAT, "navtex better copy replaces, worse does not")
+    check(Navtex.verdict(msg("GD00", "TEST. SECOND."), msg("GD00", "TEST. FIRST."), t0, t0 + 3_600_000L) == Navtex.Verdict.BETTER && msg("GD00", "X").alwaysShown, "navtex B3B4 = 00 is always shown")
+    // slots: G owns 0100, 0500, 0900, 1300... t0 is 12:00 UTC
+    check(Navtex.inOwnSlot('G', t0 + 68 * 60_000L) == true && Navtex.inOwnSlot('G', t0 + 72 * 60_000L) == true && Navtex.inOwnSlot('G', t0 + 100 * 60_000L) == false, "navtex own slot of G")
+    check(Navtex.inOwnSlot('A', t0 + 3 * 60_000L) == true && Navtex.inOwnSlot('X', t0 - 5 * 60_000L) == true && Navtex.inOwnSlot('Z', t0) == null, "navtex own slot of A, X, Z")
+    // the asterisk only inside a message
+    val gotA = ArrayList<Navtex.Message>()
+    val asm = Navtex.Assembler({ gotA.add(it) }, { t0 })
+    check(!asm.bad(), "navtex no asterisk before a header")
+    for (ch in "ZCZC GA07\nWRECK IN ") asm.push(ch)
+    check(asm.bad(), "navtex asterisk inside a message")
+    for (ch in "6-07N.\nNNNN\n") asm.push(ch)
+    check(gotA.size == 1 && gotA[0].text == "WRECK IN *6-07N." && gotA[0].bad == 1, "navtex bad character kept as an asterisk: ${gotA.map { it.text }}")
+    // NRX with the real error rate, and the form of IEC 61097-6 (its own example: checksum 09)
+    check(Navtex.nrx(dirty, 518.0)[0].contains(",4.0,"), "navtex nrx carries the error rate: ${Navtex.nrx(dirty, 518.0)[0]}")
+    check(Nmea.sentence("CRNRX,007,001,00,IE69,1,135600,27,06,2001,241,3,A,==========================").trimEnd().endsWith("*09"), "nrx example of IEC 61097-6")
+    val iecMsg = Navtex.Message('I', 'E', 69, "==========================\nISSUED ON SATURDAY 06 JANUARY 2001.\nSHOWERY WINDS, STRONGEST IN N*RTH.", false, false, t0 + 300_000L)
+    val iec = Navtex.nrxIec(iecMsg, 490.0, 107)
+    check(iec.size == 3 && iec[0].startsWith("\$CRNRX,003,001,07,IE69,1,120500,15,11,2026,99,1,A,==========================") && iec[1].startsWith("\$CRNRX,003,002,07,,,,,,,,,,"), "navtex nrx iec: $iec")
+    check(iec.all { it.length <= 82 && it.endsWith(String.format("*%02X", Nmea.checksum(it.substring(1, it.indexOf('*'))))) }, "navtex nrx iec length and checksums")
+    check(iec.joinToString("") { it.substring(0, it.indexOf('*')).split(",").drop(13).joinToString(",") } ==
+        "==========================^0D^0AISSUED ON SATURDAY 06 JANUARY 2001.^0D^0ASHOWERY WINDS^2C STRONGEST IN N^2ARTH.", "navtex nrx iec carries the whole text")
+    check(Navtex.nrxIec(msg("GA05", "CUT SH*RT", cut = true), 4209.5, 3)[0].startsWith("\$CRNRX,001,001,03,GA05,3,120000,15,11,2026,9,1,V,CUT SH^2ART*"), "navtex nrx iec: index 3, status V")
+    val alr = Navtex.alr(t0 + 5_000L, active = true, acknowledged = false)
+    check(alr.startsWith("\$CRALR,120005.00,003,A,V,NAVTEX: Search and rescue information*") && alr.length <= 82, "navtex alr: $alr")
+    check(Navtex.export(listOf(clean to 518.0, msg("GB20", "GALE", ms = t0 - 60_000L) to 4209.5)).startsWith("==== GB20  4209.5 kHz  received 2026-11-15 11:59 UTC  complete, 4 characters, 0 bad ====\r\nZCZC GB20\r\nGALE\r\n"), "navtex export")
 }
 
 private fun testNavaids() {

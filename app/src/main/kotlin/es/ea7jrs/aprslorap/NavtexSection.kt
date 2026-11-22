@@ -5,6 +5,7 @@
  */
 package es.ea7jrs.aprslorap
 
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,8 @@ fun NavtexSection() {
     val msgs by NavtexHub.messages.collectAsState()
     var khz by remember { mutableStateOf(settings.navtexKhz) }
     var alarm by remember { mutableStateOf(settings.navtexAlarm) }
+    var iec by remember { mutableStateOf(settings.navtexNrxIec) }
+    var note by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf<Char?>(null) }
     var open by remember { mutableStateOf<String?>(null) }
     val now = rememberNow(30_000)
@@ -59,6 +62,17 @@ fun NavtexSection() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Alarm on search and rescue (D)", fontSize = 13.sp, modifier = Modifier.weight(1f))
             Switch(alarm, { alarm = it; settings.navtexAlarm = it })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("NRX to the plotter in the IEC 61097-6 form (off: Furuno form)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Switch(iec, { iec = it; settings.navtexNrxIec = it })
+        }
+        // a search and rescue message waits to be acknowledged: only by hand
+        val pending = msgs.filter { it.alarm }
+        if (pending.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("ALARM · search and rescue not acknowledged: " + pending.joinToString(", ") { it.msg.id }, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                color = Alp.Red, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { NavtexHub.acknowledge() }) { Text("ACKNOWLEDGE") }
         }
 
         // stations within reach and their next slots (letter × 10 min, every 4 hours)
@@ -78,8 +92,13 @@ fun NavtexSection() {
         // messages
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("Messages (${msgs.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            if (msgs.isNotEmpty()) TextButton(onClick = {
+                try { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, NavtexHub.export()), "NAVTEX")) }
+                catch (_: Exception) { note = "No app to share the text with." }
+            }) { Text("Share") }
             if (msgs.isNotEmpty()) TextButton(onClick = { NavtexHub.clear() }) { Text("Clear") }
         }
+        if (note.isNotEmpty()) Text(note, fontSize = 11.sp, color = Alp.Amber)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Chip("ALL", subject == null, height = 30.dp) { subject = null }
             for (c in listOf('A', 'B', 'D', 'E', 'L')) Chip(c.toString(), subject == c, height = 30.dp) { subject = if (subject == c) null else c }
@@ -92,9 +111,23 @@ fun NavtexSection() {
             Column(Modifier.fillMaxWidth().clickable { open = if (isOpen) null else key }.padding(vertical = 4.dp)) {
                 Text(String.format(Locale.US, "%s  %s  %s", if (e.msg.lostHeader) "????" else e.msg.id, day.format(Date(e.msg.timeMs)), e.stationName),
                     fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (e.msg.urgent) Alp.Red else Alp.Text)
-                Text(e.msg.subjectName + (if (e.msg.lostTrailer) " · incomplete" else "") + (if (e.positions.isNotEmpty()) " · ${e.positions.size} position(s)" else ""),
-                    fontSize = 11.sp, color = Alp.Muted)
+                Text(e.msg.subjectName + (if (e.kept) " · kept" else "") + (if (e.msg.lostTrailer) " · incomplete" else if (!e.msg.lostHeader && !e.msg.satisfactory) " · with errors" else "") +
+                    (if (e.positions.isNotEmpty()) " · ${e.positions.size} position(s)" else ""), fontSize = 11.sp, color = Alp.Muted)
                 Text(if (isOpen) e.msg.text else e.msg.text.lineSequence().take(2).joinToString(" "), fontSize = 12.sp, fontFamily = TechMono)
+                if (isOpen) {
+                    val facts = ArrayList<String>()
+                    if (e.msg.bad > 0) facts.add(String.format(Locale.US, "%d character(s) not received (the asterisks): %.1f %%", e.msg.bad, e.msg.errorRate))
+                    if (!e.msg.lostHeader && !e.msg.lostTrailer && !e.msg.satisfactory) facts.add("4 % of errors or more: a better repeat will replace this copy")
+                    if (e.heardMs - e.msg.timeMs > 600_000L) facts.add("still being broadcast, last heard " + day.format(Date(e.heardMs)))
+                    if (e.inSlot == false) facts.add("outside the time slot of letter ${e.msg.station}: maybe a distant station")
+                    if (facts.isNotEmpty()) Text(facts.joinToString(" · "), fontSize = 11.sp, color = Alp.Muted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(onClick = { note = if (NavtexHub.keep(e, !e.kept)) "" else "${NavtexHub.MAX_KEPT} messages are kept already: stop keeping one."; open = null }) {
+                            Text(if (e.kept) "STOP KEEPING" else "KEEP")
+                        }
+                        OutlinedButton(onClick = { NavtexHub.delete(e); open = null }) { Text("DELETE") }
+                    }
+                }
                 if (isOpen && e.positions.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val p = e.positions.first()
                     val d = Own.to(p.first, p.second)
@@ -105,7 +138,8 @@ fun NavtexSection() {
             }
             HorizontalDivider()
         }
-        Text("Station letters and positions: fldigi's NAVTEX station list (may be out of date). NAVTEX is no substitute for the official receiver on board.",
+        Text("Station letters and positions: fldigi's NAVTEX station list (may be out of date). NAVTEX is no substitute for the official receiver on board. " +
+            "Rules of IMO MSC.508(105) and the NAVTEX Manual: a repeat is not shown again for 72 hours, and a deleted message is remembered that long.",
             fontSize = 10.sp, color = Alp.Muted)
     }
 }

@@ -105,6 +105,60 @@ object Navtex {
         val subjectName get() = subjectName(subject)
         /** Distress / SAR (D) or a search and rescue word: the alert window should open. */
         val urgent get() = subject == 'D'
+        /** Characters that could not be received: the decoder writes an asterisk for each (IMO MSC.508(105), 5.7). */
+        val bad get() = text.count { it == '*' }
+        /** Character error rate, per cent. */
+        val errorRate get() = if (text.isEmpty()) 0.0 else 100.0 * bad / text.length
+        /** Satisfactorily received: whole, and with a character error rate below 4 % (IMO MSC.508(105), 6.2.3). */
+        val satisfactory get() = !lostHeader && !lostTrailer && text.isNotEmpty() && bad * 100 < 4 * text.length
+        /** B3B4 = 00: always shown, whatever was received before (ITU-R M.540-2; NAVTEX Manual, 5.4.3). */
+        val alwaysShown get() = !lostHeader && number == 0
+    }
+
+    // ------------------------------------------------------------------ what a NAVTEX receiver does with a message it already has
+    //
+    // IMO MSC.508(105), 6.2 and the NAVTEX Manual (2023), 6.2 and 7.5: the identity B1B2B3B4 of a satisfactorily received message
+    // is remembered for 60 to 72 hours, and a repeat of the broadcast within that time is not shown again; after that time it is
+    // a new message. A message with B3B4 = 00 is always shown. On top of that, as the Navtex program (EA7JRS/Navtex) does: a
+    // better copy replaces a worse one, and what the user tagged to keep is never replaced by a later message with the same number.
+
+    /** How long a message identity is remembered, ms. */
+    const val IDENTITY_MS = 72 * 3_600_000L
+
+    enum class Verdict { NEW, REPEAT, BETTER }
+
+    /** 2 satisfactory, 1 whole with too many errors, 0 cut short. */
+    private fun quality(m: Message) = if (m.satisfactory) 2 else if (!m.lostTrailer && !m.lostHeader) 1 else 0
+
+    /** Is [new] worth more than [old]? Whole beats cut; among whole copies the lower error rate; among cut ones, the more good text. */
+    fun betterCopy(new: Message, old: Message): Boolean {
+        val qn = quality(new); val qo = quality(old)
+        if (qn != qo) return qn > qo
+        if (qn == 0) return new.text.length - new.bad > old.text.length - old.bad
+        return new.bad.toLong() * old.text.length < old.bad.toLong() * new.text.length
+    }
+
+    /**
+     * What to do with [new] when [old] is the stored copy with the same identity on the same frequency, first received at
+     * [oldFirstMs]: NEW (store it as another message), REPEAT (keep the stored copy, note that it was heard again) or BETTER
+     * (replace the stored copy).
+     */
+    fun verdict(new: Message, old: Message?, oldFirstMs: Long, nowMs: Long): Verdict {
+        if (old == null || new.lostHeader || old.lostHeader) return Verdict.NEW
+        if (nowMs - oldFirstMs >= IDENTITY_MS) return Verdict.NEW           // the number has been used again for another message
+        if (new.alwaysShown) return Verdict.BETTER
+        if (old.satisfactory) return Verdict.REPEAT
+        return if (betterCopy(new, old)) Verdict.BETTER else Verdict.REPEAT
+    }
+
+    /**
+     * Did a message of station [id], stored at [timeMs] (when it ended), arrive within the ten minutes of its letter? A broadcast
+     * may overrun a little: up to 13 minutes after the start of the slot count. Null when the letter has no slot.
+     */
+    fun inOwnSlot(id: Char, timeMs: Long): Boolean? {
+        val first = firstSlotMin(id) ?: return null
+        val min = ((timeMs / 60_000L) % 240).toInt()
+        return ((min - first + 240) % 240) <= 13
     }
 
     fun subjectName(s: Char): String = when (s) {
@@ -140,6 +194,13 @@ object Navtex {
 
         /** Ten minutes without characters ends a message without its trailer. */
         fun tick() { if (buf.isNotBlank() && clock() - lastMs > 600_000) flush(!header, true) }
+
+        /** A character that could not be received: an asterisk, but only inside a message (between phasing and header it is just noise). */
+        fun bad(): Boolean {
+            if (!header) return false
+            buf.append('*'); lastMs = clock()
+            return true
+        }
 
         private fun flush(lostHeader: Boolean, lostTrailer: Boolean) {
             if (buf.isNotBlank()) emit(buf.toString(), lostHeader, lostTrailer)
@@ -270,7 +331,9 @@ object Navtex {
             }
             if (state == 2 && cursor < bits.size - 7) {
                 if (alphaPhase) {
-                    errors -= bytes(cursor)
+                    val got = bytes(cursor)
+                    if (got == -2 && assembler.bad()) onText("*")          // not even the repeated copy could be read
+                    errors -= got
                     if (errors > 5) state = 0
                     if (errors < 0) errors = 0
                 }
@@ -459,8 +522,9 @@ object Navtex {
         val code = if (m.lostHeader) "??00" else m.id
         val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = m.timeMs }
         val f = if (khz > 4000) "4209" else khz.toInt().toString()
-        val head = String.format(java.util.Locale.US, "CRNRX,%s,%%d,%%d,%s,%02d,%02d,%04d,%02d%02d%02d,0.0,", code, f, c.get(java.util.Calendar.DAY_OF_MONTH),
-            c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND))
+        val head = String.format(java.util.Locale.US, "CRNRX,%s,%%d,%%d,%s,%02d,%02d,%04d,%02d%02d%02d,%.1f,", code, f, c.get(java.util.Calendar.DAY_OF_MONTH),
+            c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND),
+            m.errorRate)
         val room = 76 - head.length                                       // 82 = "$" + head (its two "%d" up to 3 digits each) + text + "*hh"
         val pieces = ArrayList<String>()
         for (line in m.text.split('\n')) {
@@ -477,6 +541,63 @@ object Navtex {
         }
         val total = pieces.size.coerceIn(1, 999)
         return pieces.take(999).mapIndexed { i, p -> Nmea.sentence(String.format(java.util.Locale.US, head, i + 1, total) + p).trimEnd() }
+    }
+
+    /**
+     * The message as NRX sentences in the form of IEC 61097-6, annex C:
+     *   $CRNRX,sentences,sentence,id,GA05,2,hhmmss,dd,mm,yyyy,characters,bad characters,A,text
+     *   $CRNRX,sentences,sentence,id,,,,,,,,,,more text
+     * the text runs on from one sentence to the next, its line ends as ^0D^0A (each counts as two characters); the frequency
+     * is an index (1 = 490 kHz, 2 = 518 kHz, 3 = 4209.5 kHz); status A when the message reached its NNNN, V when it did not;
+     * [seq] (00-99) tells messages apart. No sentence passes 82 characters.
+     */
+    fun nrxIec(m: Message, khz: Double, seq: Int): List<String> {
+        val code = if (m.lostHeader) "??00" else m.id
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = m.timeMs }
+        val index = if (khz > 4000) 3 else if (khz < 500) 1 else 2
+        val body = StringBuilder(); var chars = 0
+        for (ch in m.text) {
+            if (ch == '\r') continue
+            if (ch == '\n') { body.append("^0D^0A"); chars += 2; continue }
+            chars++; body.append(escapeNmea(ch.toString()))
+        }
+        val id = String.format(java.util.Locale.US, "%02d", Math.floorMod(seq, 100))
+        val first = String.format(java.util.Locale.US, ",%s,%s,%d,%02d%02d%02d,%02d,%02d,%04d,%d,%d,%s,", id, code, index, c.get(java.util.Calendar.HOUR_OF_DAY),
+            c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND), c.get(java.util.Calendar.DAY_OF_MONTH), c.get(java.util.Calendar.MONTH) + 1,
+            c.get(java.util.Calendar.YEAR), chars, m.bad, if (m.lostTrailer || m.lostHeader) "V" else "A")
+        val next = ",$id,,,,,,,,,,"
+        val pieces = ArrayList<String>()
+        var rest = body.toString()
+        do {
+            val room = 82 - 17 - (if (pieces.isEmpty()) first else next).length       // 82 = "$CRNRX,nnn,nnn" + fields + text + "*hh"
+            var n = minOf(room, rest.length)
+            if (n < rest.length) { val caret = rest.lastIndexOf('^', n - 1); if (caret >= n - 2) n = caret }      // never inside ^hh
+            pieces.add(rest.substring(0, n)); rest = rest.substring(n)
+        } while (rest.isNotEmpty() && pieces.size < 999)
+        return pieces.mapIndexed { i, p ->
+            Nmea.sentence(String.format(java.util.Locale.US, "CRNRX,%03d,%03d", pieces.size, i + 1) + (if (i == 0) first else next) + p).trimEnd()
+        }
+    }
+
+    /**
+     * The search and rescue alarm for other equipment (IEC 61097-6, 4.3.9.2 and table 1: alarm 003), to be repeated every 30 s
+     * until it is acknowledged: $CRALR,hhmmss.00,003,A,V,NAVTEX: Search and rescue information
+     */
+    fun alr(timeMs: Long, active: Boolean, acknowledged: Boolean): String {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = timeMs }
+        return Nmea.sentence(String.format(java.util.Locale.US, "CRALR,%02d%02d%02d.00,003,%s,%s,NAVTEX: Search and rescue information", c.get(java.util.Calendar.HOUR_OF_DAY),
+            c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND), if (active) "A" else "V", if (acknowledged) "A" else "V")).trimEnd()
+    }
+
+    /** All the stored messages as text, oldest first, to save or share. */
+    fun export(list: List<Pair<Message, Double>>): String {
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        return list.sortedBy { it.first.timeMs }.joinToString("\r\n") { (m, khz) ->
+            val freq = if (khz > 4000) "4209.5" else khz.toInt().toString()
+            "==== ${if (m.lostHeader) "????" else m.id}  $freq kHz  received ${f.format(java.util.Date(m.timeMs))} UTC  " +
+                (if (m.lostTrailer || m.lostHeader) "cut short" else "complete") + ", ${m.text.length} characters, ${m.bad} bad ====\r\n" +
+                (if (m.lostHeader) "" else "ZCZC ${m.id}\r\n") + m.text.replace("\n", "\r\n") + "\r\n"
+        }
     }
 
     private fun escapeNmea(s: String): String {

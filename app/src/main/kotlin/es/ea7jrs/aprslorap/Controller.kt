@@ -680,6 +680,7 @@ class Controller(
 
     private fun tick() {
         if (engine.tick().isNotEmpty()) publish()
+        NavtexHub.tick()
         val nowWx = System.currentTimeMillis()
         if (controlOn && nowWx - netWxCheckMs > 30_000) { netWxCheckMs = nowWx; AppState.appContext?.let { NetWeatherFetcher.maybeFetch(it, settings) } }
         if (nowWx - officialCheckMs > 60_000) { officialCheckMs = nowWx; AppState.appContext?.let { OfficialAlertsFetcher.maybeFetch(it, settings); AviationFetcher.maybeFetch(it, settings) } }

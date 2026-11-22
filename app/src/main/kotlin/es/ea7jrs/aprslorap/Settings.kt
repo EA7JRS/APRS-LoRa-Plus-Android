@@ -705,4 +705,8 @@ class Settings(ctx: Context) {
     var navtexAlarm: Boolean
         get() = p.getBoolean("navtex_alarm", true)
         set(v) { p.edit().putBoolean("navtex_alarm", v).apply() }
+    /** NRX sentences in the form of IEC 61097-6 instead of the Furuno one the plotter reads. */
+    var navtexNrxIec: Boolean
+        get() = p.getBoolean("navtex_nrx_iec", false)
+        set(v) { p.edit().putBoolean("navtex_nrx_iec", v).apply() }
 }
