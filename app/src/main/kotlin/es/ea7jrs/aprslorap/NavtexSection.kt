@@ -50,6 +50,15 @@ fun NavtexSection() {
     var netHost by remember { mutableStateOf(settings.navtexNetHost) }
     var netPort by remember { mutableStateOf(settings.navtexNetPort.toString()) }
     val netStatus by NavtexNet.status.collectAsState()
+    val netMasks by NavtexNet.masks.collectAsState()
+    val ownChanged by NavtexHub.ownMaskChanged.collectAsState()
+    var bam by remember { mutableStateOf(settings.navtexBam) }
+    var ownSt by remember(ownChanged) { mutableStateOf(settings.navtexStations) }
+    var ownSu by remember(ownChanged) { mutableStateOf(settings.navtexSubjects) }
+    val rxMask = netMasks[Navtex.freqIndex(khz)]
+    var rxSt by remember(rxMask) { mutableStateOf(rxMask?.let { Navtex.maskToLetters(it.stations) } ?: "") }
+    var rxSu by remember(rxMask) { mutableStateOf(rxMask?.let { Navtex.maskToLetters(it.subjects) } ?: "") }
+    fun letters(s: String) = s.uppercase().filter { it in 'A'..'Z' }.toSortedSet().joinToString("")
     var subject by remember { mutableStateOf<Char?>(null) }
     var open by remember { mutableStateOf<String?>(null) }
     val now = rememberNow(30_000)
@@ -72,6 +81,19 @@ fun NavtexSection() {
             Text("NRX to the plotter in the IEC 61097-6 form (off: Furuno form)", fontSize = 13.sp, modifier = Modifier.weight(1f))
             Switch(iec, { iec = it; settings.navtexNrxIec = it })
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Bridge alert management sentences too (ALF, ALC, HBT; accepts ACN)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Switch(bam, { bam = it; settings.navtexBam = it })
+        }
+        // what this phone's decoder stores (the masks other equipment reads and sets with NRM)
+        Text("Stored by this phone's decoder", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(ownSt, { ownSt = letters(it); settings.navtexStations = if (ownSt.length == 26) "" else ownSt },
+                label = { Text("Stations B1 (empty = all)") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(ownSu, { ownSu = letters(it); settings.navtexSubjects = if (ownSu.length == 26) "" else ownSu },
+                label = { Text("Subjects B2 (empty = all)") }, singleLine = true, modifier = Modifier.weight(1f))
+        }
+        Text("Subjects A, B, D and L (navigational and meteorological warnings, search and rescue) are always stored.", fontSize = 11.sp, color = Alp.Muted)
         // messages from a receiver on the network (the Navtex program), besides the ones decoded here
         Text("Receiver on the network (NRX sentences)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -92,6 +114,20 @@ fun NavtexSection() {
                 else "The receiver sends to this phone's address and port (Navtex program: nrx.udp). One way: the alarm is not acknowledged on the receiver.",
                 fontSize = 11.sp, color = Alp.Muted)
             Text("Receive only; the receiver's NMEA output has no password: local network only.", fontSize = 11.sp, color = Alp.Muted)
+            if (netMode == NavtexNet.TCP) {
+                // what the receiver stores on the frequency chosen above (NRM / CRQ of IEC 61097-6)
+                Text(if (rxMask == null) "Receiver filters on $khz kHz: not answered yet" else "Receiver filters on $khz kHz", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(rxSt, { rxSt = letters(it) }, label = { Text("Stations B1") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(rxSu, { rxSu = letters(it) }, label = { Text("Subjects B2") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(onClick = { note = if (NavtexNet.askMasks()) "" else "No connection to the receiver." }) { Text("READ") }
+                    OutlinedButton(onClick = {
+                        note = if (NavtexNet.setMask(Navtex.Mask(1, khz, Navtex.lettersToMask(rxSt), Navtex.lettersToMask(rxSu)))) "" else "No connection to the receiver."
+                    }) { Text("SEND") }
+                }
+            }
         }
         // a search and rescue message waits to be acknowledged: only by hand
         val pending = msgs.filter { it.alarm }
@@ -122,7 +158,6 @@ fun NavtexSection() {
                 try { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, NavtexHub.export()), "NAVTEX")) }
                 catch (_: Exception) { note = "No app to share the text with." }
             }) { Text("Share") }
-            if (msgs.isNotEmpty()) TextButton(onClick = { NavtexHub.clear() }) { Text("Clear") }
         }
         if (note.isNotEmpty()) Text(note, fontSize = 11.sp, color = Alp.Amber)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -151,7 +186,6 @@ fun NavtexSection() {
                         OutlinedButton(onClick = { note = if (NavtexHub.keep(e, !e.kept)) "" else "${NavtexHub.MAX_KEPT} messages are kept already: stop keeping one."; open = null }) {
                             Text(if (e.kept) "STOP KEEPING" else "KEEP")
                         }
-                        OutlinedButton(onClick = { NavtexHub.delete(e); open = null }) { Text("DELETE") }
                     }
                 }
                 if (isOpen && e.positions.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -165,7 +199,8 @@ fun NavtexSection() {
             HorizontalDivider()
         }
         Text("Station letters and positions: fldigi's NAVTEX station list (may be out of date). NAVTEX is no substitute for the official receiver on board. " +
-            "Rules of IMO MSC.508(105) and the NAVTEX Manual: a repeat is not shown again for 72 hours, and a deleted message is remembered that long.",
+            "Rules of IMO MSC.508(105) and the NAVTEX Manual: a repeat is not shown again for 72 hours; messages cannot be deleted by hand, " +
+            "the oldest one not kept goes when the memory is full.",
             fontSize = 10.sp, color = Alp.Muted)
     }
 }

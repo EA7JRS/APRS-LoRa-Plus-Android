@@ -27,6 +27,8 @@ object NavtexNet {
     const val UDP = 2
 
     val status = MutableStateFlow("Off")
+    /** The receiver's masks (NRM), by frequency index 1 = 490, 2 = 518, 3 = 4209.5 kHz, as it last answered. TCP only. */
+    val masks = MutableStateFlow<Map<Int, Navtex.Mask>>(emptyMap())
     private var link: Link? = null
 
     @Synchronized
@@ -47,10 +49,19 @@ object NavtexNet {
     }
 
     @Synchronized
-    fun stop() { link?.stop(); link = null; status.value = "Off" }
+    fun stop() { link?.stop(); link = null; status.value = "Off"; masks.value = emptyMap() }
 
-    /** The alarm was acknowledged on the phone: the receiver is told (TCP only). */
-    fun acknowledge() { link?.send(Navtex.ackSentence() + "\r\n") }
+    /**
+     * The alarm was acknowledged on the phone: the receiver is told (TCP only), with ACN when it speaks bridge alert
+     * management (an ALF sentence in the last two minutes), else with ACK.
+     */
+    fun acknowledge() { link?.let { l -> l.send((if (l.alfRecent()) Navtex.acnSentence(l.alfInstance) else Navtex.ackSentence()) + "\r\n") } }
+
+    /** Asks the receiver for its masks again (TCP only). False when there is no connection. */
+    fun askMasks(): Boolean = link?.send(Navtex.nrmQuery() + "\r\n") ?: false
+
+    /** Changes what the receiver stores on one frequency; it answers with what is left (A, B, D and L always). */
+    fun setMask(m: Navtex.Mask): Boolean = link?.send(Navtex.nrmSentence(m.copy(function = 1)) + "\r\n") ?: false
 
     private class Link(val mode: Int, val host: String, val port: Int) {
         @Volatile private var running = false
@@ -73,9 +84,15 @@ object NavtexNet {
             try { udp?.close() } catch (_: Exception) {}
         }
 
-        fun send(text: String) {
-            val o = out ?: return
-            Thread({ try { synchronized(o) { o.write(text.toByteArray(Charsets.US_ASCII)); o.flush() } } catch (_: Exception) {} }, "navtex-ack").start()
+        @Volatile private var alfMs = 0L
+        @Volatile var alfInstance = 1
+            private set
+        fun alfRecent() = System.currentTimeMillis() - alfMs < 120_000L
+
+        fun send(text: String): Boolean {
+            val o = out ?: return false
+            Thread({ try { synchronized(o) { o.write(text.toByteArray(Charsets.US_ASCII)); o.flush() } } catch (_: Exception) {} }, "navtex-out").start()
+            return true
         }
 
         private fun onLine(line: String) {
@@ -86,6 +103,14 @@ object NavtexNet {
                 if (!alr.active || alr.acknowledged) NavtexHub.acknowledgeRemote(olderThanMs = 35_000L, tellReceiver = false)
                 return
             }
+            val alf = Navtex.parseAlf(line)
+            if (alf != null) {                                          // bridge alert management: the same news as ALR
+                alfMs = System.currentTimeMillis(); alfInstance = alf.instance
+                if (!alf.unacknowledged) NavtexHub.acknowledgeRemote(olderThanMs = 35_000L, tellReceiver = false)
+                return
+            }
+            val nrm = Navtex.parseNrm(line)
+            if (nrm != null) { if (nrm.function == 1) masks.value = masks.value + (Navtex.freqIndex(nrm.khz) to nrm); return }
             val m = try { asm.feed(line, System.currentTimeMillis()) } catch (_: Exception) { null } ?: return
             count++
             NavtexHub.onMessage(m.msg, if (m.khz > 0) m.khz else 518.0)
@@ -113,6 +138,7 @@ object NavtexNet {
                     s.keepAlive = true
                     out = s.getOutputStream()
                     status.value = where()
+                    send(Navtex.nrmQuery() + "\r\n")                    // its masks, if it understands the question
                     val input = s.getInputStream()
                     val buf = StringBuilder()
                     while (running) {
@@ -124,6 +150,7 @@ object NavtexNet {
                     if (running) status.value = "No connection to $host:$port (${e.message ?: e.javaClass.simpleName}); trying again"
                 }
                 out = null
+                masks.value = emptyMap()
                 try { socket?.close() } catch (_: Exception) {}
                 if (running) try { Thread.sleep(10_000) } catch (_: InterruptedException) {}
             }

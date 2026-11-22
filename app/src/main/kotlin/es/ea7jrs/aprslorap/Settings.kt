@@ -705,6 +705,17 @@ class Settings(ctx: Context) {
     var navtexAlarm: Boolean
         get() = p.getBoolean("navtex_alarm", true)
         set(v) { p.edit().putBoolean("navtex_alarm", v).apply() }
+    /** Bridge alert management sentences (ALF, ALC, HBT) on the NMEA server, besides ALR. */
+    var navtexBam: Boolean
+        get() = p.getBoolean("navtex_bam", false)
+        set(v) { p.edit().putBoolean("navtex_bam", v).apply() }
+    /** Station letters (B1) and subject letters (B2) the phone's own NAVTEX decoder stores; empty = all. */
+    var navtexStations: String
+        get() = p.getString("navtex_stations", "") ?: ""
+        set(v) { p.edit().putString("navtex_stations", v).apply() }
+    var navtexSubjects: String
+        get() = p.getString("navtex_subjects", "") ?: ""
+        set(v) { p.edit().putString("navtex_subjects", v).apply() }
     /** NAVTEX from a receiver on the network (the Navtex program): 0 off, 1 TCP client, 2 UDP listener. */
     var navtexNetMode: Int
         get() = p.getInt("navtex_net_mode", 0)

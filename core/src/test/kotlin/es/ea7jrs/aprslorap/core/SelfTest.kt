@@ -3001,6 +3001,47 @@ private fun testNavtex() {
             Navtex.parseAlr("\$CRALR,140230.00,003,A,V,x*00") == null, "alr in: rejects")
         check(Navtex.ackSentence() == "\$IIACK,003*56" && Navtex.isAlarmAck(Navtex.ackSentence()), "ack sentence")
     }
+    run {   // bridge alert management, the receiver's masks and the station by its slot
+        check(Navtex.alf(t0 + 5_000L, 'V', 2) == Nmea.sentence("CRALF,1,1,0,120005.00,B,W,V,,3,1,2,0,NAVTEX SAR").trimEnd() && Navtex.alf(t0, 'V', 2).length <= 82, "alf out")
+        check(Navtex.alc(true, 2).startsWith("\$CRALC,01,01,00,1,,3,1,2*5E") && Navtex.alc(false, 2).startsWith("\$CRALC,01,01,00,0*"), "alc out")
+        check(Navtex.hbt(30, 11).startsWith("\$CRHBT,30,A,1*10") && Navtex.arc(t0, 3, 1, 'S').startsWith("\$CRARC,120000.00,,3,1,S*"), "hbt and arc out")
+        val a1 = Navtex.parseAcn("\$IIACN,140500.00,,3,1,A,C*62")
+        check(a1 != null && a1.identifier == 3 && a1.instance == 1 && a1.command == 'A', "acn in: acknowledge")
+        val a2 = Navtex.parseAcn("\$IIACN,,,0,,Q,C*6E")
+        check(a2 != null && a2.identifier == 0 && a2.instance == 0 && a2.command == 'Q', "acn in: repeat all")
+        check(Navtex.parseAcn("\$IIACN,140500.00,,3,1,A,C*00") == null && Navtex.parseAcn("\$IIACN,140500.00,FEC,3,1,A,C*22") == null &&
+            Navtex.parseAcn("\$IIACN,140500.00,,3,1,X,C*7B") == null && Navtex.parseAcn("IIACN,,,3,1,A,C") == null, "acn in: rejects")
+        check(Navtex.parseAcn(Navtex.acnSentence())?.command == 'A' && Navtex.acnSentence() == Nmea.sentence("IIACN,,,3,1,A,C").trimEnd(), "acn out")
+        val f1 = Navtex.parseAlf("\$CRALF,1,1,0,122537.00,B,W,V,,3,1,2,0,NAVTEX SAR*5B")     // as Navtex 1.7.0 writes it
+        check(f1 != null && f1.state == 'V' && f1.instance == 1 && f1.unacknowledged, "alf in: not acknowledged")
+        val f2 = Navtex.parseAlf("\$CRALF,1,1,0,122607.00,B,W,N,,3,1,3,0,NAVTEX SAR*42")
+        check(f2 != null && !f2.unacknowledged && Navtex.parseAlf(Navtex.alf(t0, 'V', 1))?.state == 'V', "alf in: normal; our own")
+        check(Navtex.parseAlf("\$CRALF,1,1,0,122607.00,B,W,N,,3,1,3,0,NAVTEX SAR*00") == null && Navtex.parseAlf(Nmea.sentence("CRALF,1,1,0,1.00,B,W,V,FEC,3,1,3,0,X")) == null &&
+            Navtex.parseAlf(Nmea.sentence("CRALF,1,1,0,1.00,B,W,V,,7,1,3,0,X")) == null && Navtex.parseAlf(Nmea.sentence("GPALF,1,1,0,1.00,B,W,V,,3,1,3,0,X")) == null, "alf in: rejects")
+        check(Navtex.lettersToMask("ABDL") == 0x80B && Navtex.maskToLetters(0x80B) == "ABDL" && Navtex.maskToLetters(Navtex.ALL_LETTERS).length == 26, "letters and masks")
+        val n1 = Navtex.parseNrm("\$CRNRM,1,1,03FFFFFF,0000083F*3E")
+        check(n1 != null && n1.function == 1 && n1.khz == 490.0 && n1.stations == Navtex.ALL_LETTERS && n1.subjects == 0x83F, "nrm in")
+        check(Navtex.parseNrm(Nmea.sentence("CRNRM,1,2,FC000041,0000000B"))?.stations == 0x41 && Navtex.parseNrm("\$CRNRM,1,3,03FFFFFF,0000083F*3C")?.khz == 4209.5, "nrm in: reserved bits, 4209.5")
+        check(Navtex.parseNrm("\$CRNRM,1,1,03FFFFFF,0000083F*00") == null && Navtex.parseNrm(Nmea.sentence("CRNRM,1,4,03FFFFFF,0000083F")) == null &&
+            Navtex.parseNrm(Nmea.sentence("CRNRM,1,1,3FFFFFF,0000083F")) == null && Navtex.parseNrm(Nmea.sentence("CRNRM,1,1,03FFFFFG,0000083F")) == null, "nrm in: rejects")
+        val gx = Navtex.Mask(1, 518.0, Navtex.lettersToMask("GX"), Navtex.lettersToMask("E"))
+        check(Navtex.nrmSentence(gx) == Nmea.sentence("IINRM,1,2,00800040,0000081B").trimEnd() && Navtex.nrmSentence(gx, "CR").startsWith("\$CRNRM,1,2,00800040,0000081B*34"), "nrm out: A, B, D and L always")
+        check(gx.accepts('G', 'E') && gx.accepts('X', 'D') && gx.accepts('G', 'A') && !gx.accepts('G', 'F') && !gx.accepts('T', 'A') && gx.accepts('?', '?'), "mask: what is stored")
+        check(Navtex.nrmQuery() == "\$IICRQ,NRM*" + String.format("%02X", Nmea.checksum("IICRQ,NRM")) && Navtex.isNrmQuery(Navtex.nrmQuery()) && !Navtex.isNrmQuery("\$IICRQ,NRM*00") &&
+            !Navtex.isNrmQuery(Navtex.ackSentence()), "nrm query")
+        // the station by its slot: G at 01:00, 05:00... every 4 h; X at 03:50...
+        val list = listOf(
+            Navtex.Station("Spain", 518.0, 'G', "", "Tarifa", 36.0, -5.6, "III", "EN"), Navtex.Station("UK", 518.0, 'G', "", "Cullercoats", 55.0, -1.4, "I", "EN"),
+            Navtex.Station("Spain", 518.0, 'X', "", "Valencia", 39.5, -0.4, "III", "EN"), Navtex.Station("Spain", 490.0, 'T', "", "Tarifa", 36.0, -5.6, "III", "ES"))
+        val day = t0 - t0 % 86_400_000L
+        val inG = day + 5 * 3_600_000L + 6 * 60_000L                    // 05:06 UTC: the slot of G
+        check(Navtex.stationBySlot(list, 518.0, inG, 36.5, -6.3)?.name == "Tarifa", "station by slot: the nearest G")
+        check(Navtex.stationBySlot(list, 518.0, inG, 54.0, -1.0)?.name == "Cullercoats", "station by slot: from the North Sea")
+        check(Navtex.stationBySlot(list, 518.0, inG, null, null) == null && Navtex.stationBySlot(list, 518.0, day + 3 * 3_600_000L + 55 * 60_000L, null, null)?.name == "Valencia",
+            "station by slot: without a position only when one fits")
+        check(Navtex.stationBySlot(list, 518.0, day + 2 * 3_600_000L, 36.5, -6.3) == null && Navtex.stationBySlot(list, 490.0, inG, 36.5, -6.3) == null &&
+            Navtex.stationBySlot(list, 518.0, inG, -30.0, 150.0) == null, "station by slot: nobody's slot, another frequency, too far")
+    }
     check(Navtex.isAlarmAck("\$IIACK,003*56") && Navtex.isAlarmAck(Nmea.sentence("ECACK,003")) && Navtex.isAlarmAck(" \$IIACK,3*56\r\n"), "navtex ack: accepted")
     check(!Navtex.isAlarmAck("\$IIACK,003*00") && !Navtex.isAlarmAck(Nmea.sentence("IIACK,001")) && !Navtex.isAlarmAck("IIACK,003") &&
         !Navtex.isAlarmAck(alr) && !Navtex.isAlarmAck(Nmea.sentence("IIACKX,003")), "navtex ack: rejected")

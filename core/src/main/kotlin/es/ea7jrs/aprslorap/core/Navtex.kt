@@ -449,6 +449,18 @@ object Navtex {
         return c.minByOrNull { Geo.distanceKm(lat, lon, it.lat, it.lon) }
     }
 
+    /**
+     * The station a message without its header probably came from: the ones on [khz] whose ten-minute slot the message ended
+     * in (see [inOwnSlot]), the nearest first when the position is known. Null when none fits or, without a position, when
+     * more than one does. The slots are the ones of the letter (NAVTEX Manual, 5.2.5): a few stations keep other times.
+     */
+    fun stationBySlot(stations: List<Station>, khz: Double, timeMs: Long, lat: Double?, lon: Double?, maxKm: Double = 2500.0): Station? {
+        val c = stations.filter { abs(it.khz - khz) < 1.0 && inOwnSlot(it.id, timeMs) == true }
+        if (c.isEmpty()) return null
+        if (lat == null || lon == null) return c.singleOrNull()
+        return c.map { it to Geo.distanceKm(lat, lon, it.lat, it.lon) }.filter { it.second <= maxKm }.minByOrNull { it.second }?.first
+    }
+
     /** Minutes after midnight UTC of the first slot of a station letter (A = 00:00, B = 00:10 ... X = 03:50; every 4 hours). */
     fun firstSlotMin(id: Char): Int? = (id.uppercaseChar() - 'A').takeIf { it in 0..23 }?.let { it * 10 }
 
@@ -611,6 +623,103 @@ object Navtex {
         val f = nmeaFields(line, "ALR") ?: return null
         if (f.talker != "CR" || f.fields.size < 4 || f.fields[1].trim().toIntOrNull() != 3) return null
         return Alr(f.fields[2] == "A", f.fields[3] == "A")
+    }
+
+    // ------------------------------------------------------------------ bridge alert management
+    //
+    // IMO MSC.302(87) with the sentences of IEC 61162-1 ed. 5 that IEC 62923 uses, as the Navtex program (EA7JRS/Navtex 1.7.0)
+    // sends them. Formats from the manuals of equipment that uses them (Furuno GS-100, JRC JFE-400, Icom GM600), not from the
+    // standards. The one alert: search and rescue information received, identifier 3 (the number IEC 61097-6 gives the alarm
+    // in ALR; not confirmed for bridge alert management), instance 1, category B, priority warning, no manufacturer code.
+
+    private fun hhmmss(timeMs: Long): String {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = timeMs }
+        return String.format(java.util.Locale.US, "%02d%02d%02d.00", c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND))
+    }
+
+    /** "$CRALF,1,1,0,hhmmss.00,B,W,V,,3,1,revision,0,NAVTEX SAR": [state] V active and not acknowledged, N normal. */
+    fun alf(timeMs: Long, state: Char, revision: Int): String =
+        Nmea.sentence("CRALF,1,1,0,${hhmmss(timeMs)},B,W,$state,,3,1,${revision.coerceIn(1, 99)},0,NAVTEX SAR").trimEnd()
+
+    /** The cyclic list of active alerts: "$CRALC,01,01,00,1,,3,1,revision", or with 0 entries. */
+    fun alc(active: Boolean, revision: Int): String =
+        Nmea.sentence(if (active) "CRALC,01,01,00,1,,3,1,${revision.coerceIn(1, 99)}" else "CRALC,01,01,00,0").trimEnd()
+
+    /** Heartbeat: "$CRHBT,30,A,n". */
+    fun hbt(intervalS: Int, seq: Int): String = Nmea.sentence("CRHBT,$intervalS,A,${Math.floorMod(seq, 10)}").trimEnd()
+
+    /** A command that is not carried out (silence, responsibility transfer): "$CRARC,hhmmss.00,,3,1,S". */
+    fun arc(timeMs: Long, identifier: Int, instance: Int, command: Char): String =
+        Nmea.sentence("CRARC,${hhmmss(timeMs)},,$identifier,$instance,$command").trimEnd()
+
+    /** An alert command from the bridge: [command] A acknowledge, Q repeat, S silence, O transfer; [identifier] 0 = all alerts. */
+    data class Acn(val identifier: Int, val instance: Int, val command: Char)
+
+    /** Reads "$--ACN,time,manufacturer,identifier,instance,command,C" (checksum needed; no manufacturer code: one of ours). */
+    fun parseAcn(line: String): Acn? {
+        val l = line.trim()
+        if (!Nmea.valid(l)) return null
+        val f = (nmeaFields(l, "ACN") ?: return null).fields
+        if (f.size != 6 || f[1].isNotEmpty() || f[4].length != 1 || f[4][0] !in "AQOS" || f[5] != "C") return null
+        val id = f[2].toIntOrNull() ?: return null
+        val inst = if (f[3].isEmpty()) 0 else f[3].toIntOrNull() ?: return null
+        if (id < 0 || inst < 0) return null
+        return Acn(id, inst, f[4][0])
+    }
+
+    /** The receiver's alert, from its ALF sentence: [state] V, S (not acknowledged), A, N, U, O. */
+    data class Alf(val state: Char, val instance: Int) { val unacknowledged get() = state == 'V' || state == 'S' }
+
+    /** Reads the ALF of a NAVTEX receiver (talker CR) for alert 3 without manufacturer code; null for anything else. */
+    fun parseAlf(line: String): Alf? {
+        val f = nmeaFields(line, "ALF") ?: return null
+        val x = f.fields
+        if (f.talker != "CR" || x.size < 12 || x[1] != "1" || x[7].isNotEmpty() || x[8].toIntOrNull() != 3 || x[6].length != 1 || x[6][0] !in "VSANUO") return null
+        return Alf(x[6][0], x[9].toIntOrNull() ?: 1)
+    }
+
+    /** Acknowledges the alert on the receiver: "$IIACN,,,3,1,A,C". */
+    fun acnSentence(instance: Int = 1): String = Nmea.sentence("IIACN,,,3,${instance.coerceAtLeast(1)},A,C").trimEnd()
+
+    // ------------------------------------------------------------------ the receiver's masks (NRM, IEC 61097-6 annex C.2)
+    //
+    // "$--NRM,function,frequency,stations,subjects": function 1 = what is stored; frequency 1 = 490, 2 = 518, 3 = 4209.5 kHz;
+    // the masks are 32 bits in hex, bit 0 = letter A. Subjects A, B, D and L cannot be excluded (IEC 61097-6, 4.3.7).
+
+    const val ALL_LETTERS = 0x03FFFFFF
+    val FIXED_SUBJECTS = lettersToMask("ABDL")
+
+    fun lettersToMask(letters: String): Int = letters.fold(0) { m, c -> if (c in 'A'..'Z') m or (1 shl (c - 'A')) else m }
+    fun maskToLetters(mask: Int): String = ('A'..'Z').filter { mask and (1 shl (it - 'A')) != 0 }.joinToString("")
+
+    data class Mask(val function: Int, val khz: Double, val stations: Int, val subjects: Int) {
+        /** Is a message of this station and subject stored? Subjects A, B, D and L always are. */
+        fun accepts(station: Char, subject: Char): Boolean {
+            val st = station.uppercaseChar(); val su = subject.uppercaseChar()
+            if (st !in 'A'..'Z' || su !in 'A'..'Z') return true          // unknown letters are not filtered out
+            return stations and (1 shl (st - 'A')) != 0 && (subjects or FIXED_SUBJECTS) and (1 shl (su - 'A')) != 0
+        }
+    }
+
+    fun freqIndex(khz: Double) = if (khz > 4000) 3 else if (khz < 500) 1 else 2
+
+    fun parseNrm(line: String): Mask? {
+        val f = (nmeaFields(line, "NRM") ?: return null).fields
+        if (f.size != 4 || f[0].length != 1 || f[0][0] !in '0'..'3' || f[1].length != 1 || f[1][0] !in '1'..'3' || f[2].length != 8 || f[3].length != 8) return null
+        val a = f[2].toLongOrNull(16) ?: return null
+        val t = f[3].toLongOrNull(16) ?: return null
+        return Mask(f[0][0] - '0', when (f[1][0]) { '1' -> 490.0; '2' -> 518.0; else -> 4209.5 }, (a and ALL_LETTERS.toLong()).toInt(), (t and ALL_LETTERS.toLong()).toInt())
+    }
+
+    fun nrmSentence(m: Mask, talker: String = "II"): String = Nmea.sentence(String.format(java.util.Locale.US, "%sNRM,%d,%d,%08X,%08X", talker, m.function,
+        freqIndex(m.khz), m.stations and ALL_LETTERS, (m.subjects or FIXED_SUBJECTS) and ALL_LETTERS)).trimEnd()
+
+    /** Asks the receiver for its masks: "$IICRQ,NRM". */
+    fun nrmQuery(): String = Nmea.sentence("IICRQ,NRM").trimEnd()
+
+    fun isNrmQuery(line: String): Boolean {
+        val l = line.trim()
+        return l.length == 13 && Nmea.valid(l) && l.startsWith("CRQ,NRM", 3)
     }
 
     private class Fields(val talker: String, val fields: List<String>)

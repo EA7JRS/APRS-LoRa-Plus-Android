@@ -94,7 +94,7 @@ class TrackerService : Service() {
         if (settings.nmeaServer) nmeaServer = NmeaServer(settings.nmeaPort) { AppState.nmeaStatus.value = it }.also { it.start() }
         else AppState.nmeaStatus.value = "Off"
         AppState.nmeaOut = nmeaServer
-        nmeaServer?.onLine = { line -> if (es.ea7jrs.aprslorap.core.Navtex.isAlarmAck(line)) NavtexHub.acknowledgeRemote() }
+        nmeaServer?.onLine = { line -> NavtexHub.onClientLine(line) }
         if (settings.mockLocation) mock = MockLocation(this) { AppState.mockStatus.value = it }.takeIf { it.start() }
         else AppState.mockStatus.value = "Off"
         AppState.appContext = applicationContext
