@@ -114,6 +114,17 @@ object NavtexHub {
         AppState.nmeaOut?.send(Navtex.alr(System.currentTimeMillis(), active = false, acknowledged = true))
     }
 
+    /**
+     * The alarm was acknowledged on other equipment (an ACK sentence from the plotter through the NMEA server): the same as
+     * closing the alert window here.
+     */
+    fun acknowledgeRemote() {
+        val keys = synchronized(this) { all.filter { it.alarm && !it.hidden }.map { alertOf(it).key } }
+        if (keys.isEmpty()) return
+        for (k in keys) AlertCenter.close(k)                            // closes the window and calls acknowledge()
+        acknowledge()
+    }
+
     /** Tags a message to be kept, or removes the tag. False when a quarter of the memory is already tagged. */
     fun keep(e: Entry, on: Boolean): Boolean {
         synchronized(this) {

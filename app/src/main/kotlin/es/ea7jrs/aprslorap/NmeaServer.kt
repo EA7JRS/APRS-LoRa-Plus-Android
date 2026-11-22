@@ -15,9 +15,13 @@ import java.util.concurrent.Executors
 /**
  * NMEA 0183 over TCP for other apps on the phone or on the same network (OpenCPN, Navionics, SeaPilot...): they connect to
  * the phone's IP (or 127.0.0.1) on [port] and receive every sentence: the tracker's own GNSS, MDA/XDR and the APRS stations
- * as AIS targets (!AIVDM). Read only: what clients write is ignored.
+ * as AIS targets (!AIVDM). What a client writes goes, line by line, to [onLine] (the plotter acknowledges the NAVTEX search and
+ * rescue alarm with an ACK sentence); nothing a client writes is ever passed on to the tracker or transmitted.
  */
 class NmeaServer(private val port: Int, private val onStatus: (String) -> Unit) {
+    /** A line written by a client (at most 120 characters, without its line end). Called on that client's reading thread. */
+    @Volatile var onLine: ((String) -> Unit)? = null
+
     private class Client(val socket: Socket, val out: OutputStream)
 
     private val clients = CopyOnWriteArrayList<Client>()
@@ -42,12 +46,33 @@ class NmeaServer(private val port: Int, private val onStatus: (String) -> Unit) 
                 val c = s.accept()
                 c.tcpNoDelay = true
                 c.soTimeout = 0
-                clients.add(Client(c, c.getOutputStream()))
+                val client = Client(c, c.getOutputStream())
+                clients.add(client)
                 status()
+                Thread({ readLoop(client) }, "nmea-client").also { it.isDaemon = true; it.start() }
             }
         } catch (e: Exception) {
             if (running) onStatus("Error on port $port: ${e.message}")
         }
+    }
+
+    /** Reads what one client writes, a line at a time; when it hangs up, the client is dropped. */
+    private fun readLoop(c: Client) {
+        try {
+            val input = c.socket.getInputStream()
+            val line = StringBuilder()
+            var skip = false                                            // a line that is too long is not a sentence: ignored whole
+            while (running) {
+                val b = input.read()
+                if (b < 0) break
+                if (b == '\n'.code || b == '\r'.code) {
+                    if (!skip && line.isNotEmpty()) try { onLine?.invoke(line.toString()) } catch (_: Exception) {}
+                    line.setLength(0); skip = false
+                } else if (line.length >= 120) skip = true
+                else if (!skip) line.append(b.toChar())
+            }
+        } catch (_: Exception) {}
+        if (clients.remove(c)) { try { c.socket.close() } catch (_: Exception) {}; if (running) status() }
     }
 
     private fun status() = onStatus("Port $port, ${clients.size} client(s)")

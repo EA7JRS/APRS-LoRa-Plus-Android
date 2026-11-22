@@ -589,6 +589,17 @@ object Navtex {
             c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND), if (active) "A" else "V", if (acknowledged) "A" else "V")).trimEnd()
     }
 
+    /**
+     * Is [line] the acknowledgement of the search and rescue alarm from other equipment ("$--ACK,003*hh", IEC 61097-6: the
+     * alarm can be acknowledged from the bridge alert system)? Any talker, the checksum has to be right.
+     */
+    fun isAlarmAck(line: String): Boolean {
+        val l = line.trim()
+        if (l.length > 40 || !Nmea.valid(l)) return false
+        val f = l.substring(1, l.lastIndexOf('*')).split(',')
+        return f.size >= 2 && f[0].length == 5 && f[0].endsWith("ACK") && f[1].trim().toIntOrNull() == 3
+    }
+
     /** All the stored messages as text, oldest first, to save or share. */
     fun export(list: List<Pair<Message, Double>>): String {
         val f = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }

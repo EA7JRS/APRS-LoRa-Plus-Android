@@ -2966,6 +2966,9 @@ private fun testNavtex() {
     check(Navtex.nrxIec(msg("GA05", "CUT SH*RT", cut = true), 4209.5, 3)[0].startsWith("\$CRNRX,001,001,03,GA05,3,120000,15,11,2026,9,1,V,CUT SH^2ART*"), "navtex nrx iec: index 3, status V")
     val alr = Navtex.alr(t0 + 5_000L, active = true, acknowledged = false)
     check(alr.startsWith("\$CRALR,120005.00,003,A,V,NAVTEX: Search and rescue information*") && alr.length <= 82, "navtex alr: $alr")
+    check(Navtex.isAlarmAck("\$IIACK,003*56") && Navtex.isAlarmAck(Nmea.sentence("ECACK,003")) && Navtex.isAlarmAck(" \$IIACK,3*56\r\n"), "navtex ack: accepted")
+    check(!Navtex.isAlarmAck("\$IIACK,003*00") && !Navtex.isAlarmAck(Nmea.sentence("IIACK,001")) && !Navtex.isAlarmAck("IIACK,003") &&
+        !Navtex.isAlarmAck(alr) && !Navtex.isAlarmAck(Nmea.sentence("IIACKX,003")), "navtex ack: rejected")
     check(Navtex.export(listOf(clean to 518.0, msg("GB20", "GALE", ms = t0 - 60_000L) to 4209.5)).startsWith("==== GB20  4209.5 kHz  received 2026-11-15 11:59 UTC  complete, 4 characters, 0 bad ====\r\nZCZC GB20\r\nGALE\r\n"), "navtex export")
 }
 
