@@ -600,6 +600,138 @@ object Navtex {
         return f.size >= 2 && f[0].length == 5 && f[0].endsWith("ACK") && f[1].trim().toIntOrNull() == 3
     }
 
+    /** The sentence that acknowledges the search and rescue alarm on the receiver: "$IIACK,003*56". */
+    fun ackSentence(): String = Nmea.sentence("IIACK,003").trimEnd()
+
+    /** State of the receiver's alarm 003, from its ALR sentence. */
+    data class Alr(val active: Boolean, val acknowledged: Boolean)
+
+    /** Reads "$CRALR,hhmmss.00,003,A|V,A|V,text" (only alarm 003 of a NAVTEX receiver, talker CR); null for anything else. */
+    fun parseAlr(line: String): Alr? {
+        val f = nmeaFields(line, "ALR") ?: return null
+        if (f.talker != "CR" || f.fields.size < 4 || f.fields[1].trim().toIntOrNull() != 3) return null
+        return Alr(f.fields[2] == "A", f.fields[3] == "A")
+    }
+
+    private class Fields(val talker: String, val fields: List<String>)
+
+    /** Splits a sentence of the given [type] ("NRX", "ALR"), with or without "$" and checksum; a wrong checksum gives null. */
+    private fun nmeaFields(line: String, type: String): Fields? {
+        var s = line.trim()
+        val star = s.lastIndexOf('*')
+        if (star >= 0 && star + 3 == s.length) {
+            val body = if (s.startsWith("$") || s.startsWith("!")) s.substring(1, star) else s.substring(0, star)
+            val cs = s.substring(star + 1).toIntOrNull(16) ?: return null
+            if (Nmea.checksum(body) != cs) return null
+            s = s.substring(0, star)
+        }
+        if (s.startsWith("$") || s.startsWith("!")) s = s.substring(1)
+        val comma = s.indexOf(',')
+        if (comma != 5 || !s.startsWith(type, 2)) return null
+        return Fields(s.substring(0, 2), s.substring(comma + 1).split(','))
+    }
+
+    /** A message that came already decoded in NRX sentences, with the frequency its receiver gave (0 = not given). */
+    data class NetMessage(val msg: Message, val khz: Double)
+
+    /**
+     * Puts NAVTEX messages together from the NRX sentences of a receiver on the network (the Navtex program, a Furuno...), the
+     * way the plotter does. Two forms: Furuno ("$CRNRX,GA05,line,lines,518,dd,mm,yyyy,hhmmss,error,text": one line of the message
+     * per sentence; a piece that ends in a space is continued by the next) and IEC 61097-6 annex C ("$CRNRX,total,number,
+     * sequence,GA05,frequency index,hhmmss,dd,mm,yyyy,characters,bad,A|V,body" with ^hh escapes). Not thread safe.
+     */
+    class NrxAssembler {
+        private class Part(val key: String) { var total = 0; var lines = arrayOfNulls<String>(0); var code = ""; var khz = 0.0; var timeMs = 0L; var complete = true }
+        private val parts = ArrayList<Part>()
+
+        private fun part(key: String): Part {
+            parts.firstOrNull { it.key == key }?.let { return it }
+            if (parts.size >= 4) parts.removeAt(0)                        // messages left half way
+            return Part(key).also { parts.add(it) }
+        }
+
+        private fun isCode(s: String) = s.length == 4 && (s[0].isLetterOrDigit() || s[0] == '?') && (s[1].isLetter() || s[1] == '?') && s[2].isDigit() && s[3].isDigit()
+
+        private fun unescape(s: String): String {
+            val o = StringBuilder()
+            var i = 0
+            while (i < s.length) {
+                val v = if (s[i] == '^' && i + 2 < s.length) s.substring(i + 1, i + 3).toIntOrNull(16) else null
+                if (v != null) { if (v != 13) o.append(v.toChar()); i += 3 } else { o.append(s[i]); i++ }
+            }
+            return o.toString()
+        }
+
+        private fun khzOf(f: String) = when (f) { "1", "490" -> 490.0; "2", "518" -> 518.0; "3", "4209", "4209.5" -> 4209.5; else -> 0.0 }
+
+        private fun timeOf(d: String, mo: String, y: String, t: String, nowMs: Long): Long {
+            if (d.isEmpty() || mo.isEmpty() || y.isEmpty() || t.length < 6) return nowMs
+            var yy = y.toIntOrNull() ?: return nowMs
+            val mm = mo.toIntOrNull() ?: return nowMs
+            val dd = d.toIntOrNull() ?: return nowMs
+            val h = t.substring(0, 2).toIntOrNull() ?: return nowMs
+            val mi = t.substring(2, 4).toIntOrNull() ?: return nowMs
+            val se = t.substring(4, 6).toIntOrNull() ?: return nowMs
+            if (yy < 100) yy += 2000
+            if (yy < 2000 || mm !in 1..12 || dd !in 1..31 || h > 23 || mi > 59 || se > 60) return nowMs
+            val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+            c.clear(); c.set(yy, mm - 1, dd, h, mi, se)
+            return c.timeInMillis
+        }
+
+        private fun finish(p: Part, text: String): NetMessage {
+            parts.remove(p)
+            val lost = p.code.contains('?')
+            var t = text
+            while (t.endsWith("\n") || t.endsWith(" ")) t = t.dropLast(1)
+            while (t.startsWith("\n") || t.startsWith(" ")) t = t.drop(1)
+            return NetMessage(Message(if (lost) '?' else p.code[0], if (lost) '?' else p.code[1], if (lost) 0 else p.code.substring(2).toInt(), t, lost,
+                !p.complete, p.timeMs), p.khz)
+        }
+
+        /** One sentence; the message when this sentence completes one. [nowMs] dates a message whose sentences carry no date. */
+        fun feed(sentence: String, nowMs: Long): NetMessage? {
+            val f = (nmeaFields(sentence, "NRX") ?: return null).fields
+            if (f.size >= 10 && isCode(f[0])) {                           // Furuno
+                val text = f.subList(9, f.size).joinToString(",")
+                val line = f[1].toIntOrNull() ?: return null
+                val total = f[2].toIntOrNull() ?: return null
+                if (line < 1 || total < 1 || line > total || total > 999) return null
+                val p = part("F" + f[0] + f[3])
+                if (line == 1 || p.total == 0) {
+                    p.total = total; p.lines = arrayOfNulls(total); p.code = f[0]; p.khz = khzOf(f[3]); p.timeMs = timeOf(f[4], f[5], f[6], f[7], nowMs); p.complete = true
+                }
+                if (line <= p.lines.size) p.lines[line - 1] = unescape(text)
+                if (line != p.total) return null
+                val o = StringBuilder()
+                for (l in p.lines) {
+                    if (l == null) { p.complete = false; continue }
+                    if (o.isNotEmpty() && !o.endsWith(" ")) o.append('\n')   // a piece that ends in a space goes on in the same line
+                    o.append(l)
+                }
+                return finish(p, o.toString())
+            }
+            if (f.size >= 13) {                                           // IEC 61097-6
+                val total = f[0].toIntOrNull() ?: return null
+                val num = f[1].toIntOrNull() ?: return null
+                if (num < 1 || total < 1 || num > total || total > 999) return null
+                val body = f.subList(12, f.size).joinToString(",")
+                val p = part("I" + f[2])
+                if (num == 1 || p.total == 0) {
+                    if (!isCode(f[3])) return null
+                    p.total = total; p.lines = arrayOfNulls(total); p.code = f[3]; p.khz = khzOf(f[4]); p.timeMs = timeOf(f[6], f[7], f[8], f[5], nowMs); p.complete = f[11] != "V"
+                }
+                if (num > p.lines.size) return null
+                p.lines[num - 1] = body
+                if (num != p.total) return null
+                val o = StringBuilder()
+                for (l in p.lines) { if (l == null) { p.complete = false; continue }; o.append(l) }
+                return finish(p, unescape(o.toString()))
+            }
+            return null
+        }
+    }
+
     /** All the stored messages as text, oldest first, to save or share. */
     fun export(list: List<Pair<Message, Double>>): String {
         val f = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }

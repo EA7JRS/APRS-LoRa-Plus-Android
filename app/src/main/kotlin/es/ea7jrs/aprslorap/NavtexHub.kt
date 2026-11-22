@@ -62,10 +62,11 @@ object NavtexHub {
         save()
     }
 
-    fun onMessage(m: Navtex.Message) {
+    /** A message from the phone's own decoder (on the frequency chosen in Modes) or, with [fromKhz], from a receiver on the network. */
+    fun onMessage(m: Navtex.Message, fromKhz: Double? = null) {
         val c = ctx ?: return
         val settings = Settings(c)
-        val khz = settings.navtexKhz
+        val khz = fromKhz ?: settings.navtexKhz
         val me = Own.position()
         var e = Entry(m, khz, if (m.lostHeader) null else Navtex.findStation(stations, m.station, khz, me?.first, me?.second), Navtex.positions(m.text),
             alarm = m.urgent)
@@ -105,24 +106,29 @@ object NavtexHub {
     }
 
     /** The operator has seen the search and rescue messages: the alarm stops (it is only reset by hand). */
-    fun acknowledge() {
+    fun acknowledge(tellReceiver: Boolean = true) {
         synchronized(this) {
             if (all.none { it.alarm }) return
             all = all.map { if (it.alarm) it.copy(alarm = false) else it }
             publish()
         }
         AppState.nmeaOut?.send(Navtex.alr(System.currentTimeMillis(), active = false, acknowledged = true))
+        if (tellReceiver) NavtexNet.acknowledge()                       // and on the receiver the message came from, if it is connected
     }
 
     /**
      * The alarm was acknowledged on other equipment (an ACK sentence from the plotter through the NMEA server): the same as
      * closing the alert window here.
      */
-    fun acknowledgeRemote() {
-        val keys = synchronized(this) { all.filter { it.alarm && !it.hidden }.map { alertOf(it).key } }
+    fun acknowledgeRemote(olderThanMs: Long = 0L, tellReceiver: Boolean = true) {
+        val now = System.currentTimeMillis()
+        val keys = synchronized(this) {
+            if (all.any { it.alarm && !it.hidden && now - it.heardMs < olderThanMs }) return      // a new alarm: the news is older than it
+            all.filter { it.alarm && !it.hidden }.map { alertOf(it).key }
+        }
         if (keys.isEmpty()) return
-        for (k in keys) AlertCenter.close(k)                            // closes the window and calls acknowledge()
-        acknowledge()
+        acknowledge(tellReceiver)
+        for (k in keys) AlertCenter.close(k)                            // closes the window (its own acknowledge finds nothing left)
     }
 
     /** Tags a message to be kept, or removes the tag. False when a quarter of the memory is already tagged. */

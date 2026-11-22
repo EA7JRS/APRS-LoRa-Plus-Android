@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +46,10 @@ fun NavtexSection() {
     var alarm by remember { mutableStateOf(settings.navtexAlarm) }
     var iec by remember { mutableStateOf(settings.navtexNrxIec) }
     var note by remember { mutableStateOf("") }
+    var netMode by remember { mutableStateOf(settings.navtexNetMode) }
+    var netHost by remember { mutableStateOf(settings.navtexNetHost) }
+    var netPort by remember { mutableStateOf(settings.navtexNetPort.toString()) }
+    val netStatus by NavtexNet.status.collectAsState()
     var subject by remember { mutableStateOf<Char?>(null) }
     var open by remember { mutableStateOf<String?>(null) }
     val now = rememberNow(30_000)
@@ -66,6 +71,27 @@ fun NavtexSection() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("NRX to the plotter in the IEC 61097-6 form (off: Furuno form)", fontSize = 13.sp, modifier = Modifier.weight(1f))
             Switch(iec, { iec = it; settings.navtexNrxIec = it })
+        }
+        // messages from a receiver on the network (the Navtex program), besides the ones decoded here
+        Text("Receiver on the network (NRX sentences)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            for ((v, name) in listOf(NavtexNet.OFF to "OFF", NavtexNet.TCP to "TCP", NavtexNet.UDP to "UDP")) Chip(name, netMode == v) {
+                netMode = v; settings.navtexNetMode = v; NavtexNet.apply(settings)
+            }
+        }
+        if (netMode != NavtexNet.OFF) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (netMode == NavtexNet.TCP) OutlinedTextField(netHost, { netHost = it.trim().take(64); settings.navtexNetHost = netHost },
+                    label = { Text("Receiver address") }, singleLine = true, modifier = Modifier.weight(2f))
+                OutlinedTextField(netPort, { netPort = it.filter { c -> c.isDigit() }.take(5); netPort.toIntOrNull()?.let { p -> settings.navtexNetPort = p } },
+                    label = { Text(if (netMode == NavtexNet.TCP) "Port" else "UDP port to listen on") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { NavtexNet.stop(); NavtexNet.apply(settings) }) { Text("APPLY") }
+            }
+            Text(netStatus, fontSize = 12.sp, color = if (netStatus.startsWith("Connected") || netStatus.startsWith("Listening")) Alp.Green else Alp.Amber)
+            Text(if (netMode == NavtexNet.TCP) "The phone connects to the receiver's NMEA port (Navtex program: its nrx.tcp port). Acknowledging the alarm here acknowledges it there too."
+                else "The receiver sends to this phone's address and port (Navtex program: nrx.udp). One way: the alarm is not acknowledged on the receiver.",
+                fontSize = 11.sp, color = Alp.Muted)
+            Text("Receive only; the receiver's NMEA output has no password: local network only.", fontSize = 11.sp, color = Alp.Muted)
         }
         // a search and rescue message waits to be acknowledged: only by hand
         val pending = msgs.filter { it.alarm }

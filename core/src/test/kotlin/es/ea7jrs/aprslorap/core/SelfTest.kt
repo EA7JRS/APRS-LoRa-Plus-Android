@@ -2966,6 +2966,41 @@ private fun testNavtex() {
     check(Navtex.nrxIec(msg("GA05", "CUT SH*RT", cut = true), 4209.5, 3)[0].startsWith("\$CRNRX,001,001,03,GA05,3,120000,15,11,2026,9,1,V,CUT SH^2ART*"), "navtex nrx iec: index 3, status V")
     val alr = Navtex.alr(t0 + 5_000L, active = true, acknowledged = false)
     check(alr.startsWith("\$CRALR,120005.00,003,A,V,NAVTEX: Search and rescue information*") && alr.length <= 82, "navtex alr: $alr")
+    run {   // NRX from a receiver on the network (the same cases as the plotter's reader), and back through our own writers
+        val asm = Navtex.NrxAssembler()
+        val now = t0 + 99_000L
+        check(asm.feed(Nmea.sentence("CRNRX,GA05,1,3,518,15,11,2026,120500,1.5,TARIFA NAVTEX"), now) == null, "nrx in: line 1")
+        check(asm.feed(Nmea.sentence("CRNRX,GA05,2,3,518,15,11,2026,120500,1.5,WRECK IN 36-07.5N 005-21.2W"), now) == null, "nrx in: line 2")
+        check(asm.feed("\$CRNRX,GA05,3,3,518,15,11,2026,120500,1.5,KEEP CLEAR*00", now) == null, "nrx in: bad checksum")
+        val a1 = asm.feed(Nmea.sentence("CRNRX,GA05,3,3,518,15,11,2026,120500,1.5,KEEP CLEAR"), now)
+        check(a1 != null && a1.msg.id == "GA05" && a1.khz == 518.0 && !a1.msg.lostTrailer && !a1.msg.lostHeader &&
+            a1.msg.text == "TARIFA NAVTEX\nWRECK IN 36-07.5N 005-21.2W\nKEEP CLEAR", "nrx in: furuno message")
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = a1!!.msg.timeMs }
+        check(cal.get(java.util.Calendar.YEAR) == 2026 && cal.get(java.util.Calendar.MONTH) == 10 && cal.get(java.util.Calendar.DAY_OF_MONTH) == 15 &&
+            cal.get(java.util.Calendar.HOUR_OF_DAY) == 12 && cal.get(java.util.Calendar.MINUTE) == 5, "nrx in: time")
+        check(asm.feed("CRNRX,2,1,7,XD12,2,083000.00,15,11,2026,40,0,A,MAYDAY RELAY^0D^0AYACHT SINKING", now) == null, "nrx in: iec 1")
+        val a2 = asm.feed("CRNRX,2,2,7,,,,,,,,,, 3810N 00012W^0D^0ANNNN", now)
+        check(a2 != null && a2.msg.id == "XD12" && a2.msg.urgent && a2.khz == 518.0 && a2.msg.text == "MAYDAY RELAY\nYACHT SINKING 3810N 00012W\nNNNN", "nrx in: iec message")
+        val src = msg("GA05", "GALE WARNING, FORCE 8*\nA LONG LINE THAT HAS TO BE SPLIT IN TWO SENTENCES BECAUSE IT DOES NOT FIT IN ONE OF THEM AT ALL\nEND")
+        var back: Navtex.NetMessage? = null
+        for (l in Navtex.nrx(src, 490.0)) back = asm.feed(l, now)
+        check(back != null && back!!.msg.text == src.text && back!!.msg.id == "GA05" && back!!.khz == 490.0 && back!!.msg.bad == 1 &&
+            back!!.msg.timeMs / 1000 == src.timeMs / 1000, "nrx in: our Furuno form comes back the same")
+        back = null
+        for (l in Navtex.nrxIec(src, 4209.5, 41)) back = asm.feed(l, now)
+        check(back != null && back!!.msg.text == src.text && back!!.khz == 4209.5 && !back!!.msg.lostTrailer, "nrx in: our IEC form comes back the same")
+        back = null
+        for (l in Navtex.nrxIec(msg("GA05", "CUT SH*RT", cut = true), 518.0, 42)) back = asm.feed(l, now)
+        check(back != null && back!!.msg.lostTrailer && back!!.msg.text == "CUT SH*RT", "nrx in: status V = cut short")
+        check(asm.feed("\$GPRMC,1,2,3", now) == null && asm.feed("", now) == null && asm.feed("\$CRNRX,GA05,9,3,518,,,,,,x", now) == null, "nrx in: rejects")
+        val al = Navtex.parseAlr(alr)
+        check(al != null && al.active && !al.acknowledged, "alr in: active")
+        val al2 = Navtex.parseAlr("\$CRALR,140230.00,003,V,A,NAVTEX: Search and rescue information")
+        check(al2 != null && !al2.active && al2.acknowledged, "alr in: acknowledged")
+        check(Navtex.parseAlr("\$CRALR,140230.00,001,A,V,x") == null && Navtex.parseAlr("\$GPALR,140230.00,003,A,V,x") == null &&
+            Navtex.parseAlr("\$CRALR,140230.00,003,A,V,x*00") == null, "alr in: rejects")
+        check(Navtex.ackSentence() == "\$IIACK,003*56" && Navtex.isAlarmAck(Navtex.ackSentence()), "ack sentence")
+    }
     check(Navtex.isAlarmAck("\$IIACK,003*56") && Navtex.isAlarmAck(Nmea.sentence("ECACK,003")) && Navtex.isAlarmAck(" \$IIACK,3*56\r\n"), "navtex ack: accepted")
     check(!Navtex.isAlarmAck("\$IIACK,003*00") && !Navtex.isAlarmAck(Nmea.sentence("IIACK,001")) && !Navtex.isAlarmAck("IIACK,003") &&
         !Navtex.isAlarmAck(alr) && !Navtex.isAlarmAck(Nmea.sentence("IIACKX,003")), "navtex ack: rejected")
