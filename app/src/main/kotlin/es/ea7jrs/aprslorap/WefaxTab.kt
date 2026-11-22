@@ -93,6 +93,7 @@ fun WefaxTab() {
     val shown = open
     if (shown != null) { ChartViewer(settings, shown) { open = null }; return }
 
+    val circuitFirst = rememberSaveable { AppState.circuitAsk.value != null }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             OutlinedTextField(host, { host = it.trim() }, Modifier.weight(1f), singleLine = true, label = { Text("Wefax computer (name or IP)") })
@@ -106,6 +107,7 @@ fun WefaxTab() {
         }
         if (msg.isNotBlank()) Text(msg, fontSize = 13.sp, color = Alp.Amber)
 
+        if (circuitFirst) CircuitCard(settings)          // asked from the DX cluster or the logbook: the answer first
         status?.let { StatusCard(it, stations) }
         if (status?.receiving == true) LiveChart(settings)
 
@@ -115,7 +117,7 @@ fun WefaxTab() {
         Text(if (charts.isEmpty()) "No charts received yet" else "${charts.size} charts", fontSize = 16.sp, fontWeight = FontWeight.Medium)
         for (c in charts.take(60)) ChartRow(settings, c, list) { open = c }
 
-        CircuitCard(settings)
+        if (!circuitFirst) CircuitCard(settings)
         Text("Charts, schedule and predictions come from EA7JRS/Wefax on your network; the app changes nothing there. Predictions are VOACAP's " +
              "(NTIA / ITS): the median of the month to where the Wefax receiver is, with assumed antennas and noise. They do not see today's storm or blackout. " +
              "Schedules: NOAA / National Weather Service, transcribed automatically.", fontSize = 11.sp, color = Alp.Muted)
@@ -234,6 +236,26 @@ private fun CircuitCard(settings: Settings) {
     var watts by rememberSaveable { mutableStateOf("100") }
     var result by remember { mutableStateOf<Wefax.Circuit?>(null) }
     var note by remember { mutableStateOf("") }
+    fun predict() {
+        val text = where.trim()
+        val latLon = Regex("(-?\\d{1,2}(?:\\.\\d+)?)\\s*[,; ]\\s*(-?\\d{1,3}(?:\\.\\d+)?)").matchEntire(text)?.let { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
+            ?: (try { RotorFollow.locatorToLatLon(text) } catch (e: Exception) { null })
+            ?: DxLink.cty?.lookup(text.uppercase(Locale.ROOT))?.let { it.lat to it.lon }
+        val f = mhz.replace(',', '.').toDoubleOrNull()
+        val khz = if (f != null) listOf(f * 1000.0) else Wefax.HAM_KHZ
+        val kw = (watts.toDoubleOrNull() ?: 100.0) / 1000.0
+        result = null
+        if (latLon == null) { note = "I do not know where that is: write a callsign, a locator (IM66uq) or a position (36.53, -6.29)"; return }
+        if (Wefax.circuitPath(latLon.first, latLon.second, khz, kw) == null) { note = "VOACAP works from 2 to 30 MHz"; return }
+        note = "Asking Wefax…"
+        scope.launch {
+            val c = WefaxLink.circuit(settings, latLon.first, latLon.second, khz, kw)
+            result = c
+            note = when { c == null -> "Wefax does not answer"; !c.ok -> Wefax.whyText(c.why); else -> "" }
+        }
+    }
+    val ask by AppState.circuitAsk.collectAsState()
+    LaunchedEffect(ask) { ask?.let { where = it.where; mhz = it.mhz; AppState.circuitAsk.value = null; predict() } }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Alp.Panel).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("HF circuit (VOACAP)", fontSize = 14.sp, fontWeight = FontWeight.Medium)
         Text("From a station to the Wefax receiver: when a band is likely to be open this month. Leave the frequency empty for all the HF amateur bands.", fontSize = 12.sp, color = Alp.Muted)
@@ -241,24 +263,7 @@ private fun CircuitCard(settings: Settings) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(mhz, { mhz = it }, Modifier.weight(1f), singleLine = true, label = { Text("MHz (2 to 30)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
             OutlinedTextField(watts, { watts = it.filter(Char::isDigit).take(6) }, Modifier.weight(1f), singleLine = true, label = { Text("Their power, W") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            Button(onClick = {
-                val text = where.trim()
-                val latLon = Regex("(-?\\d{1,2}(?:\\.\\d+)?)\\s*[,; ]\\s*(-?\\d{1,3}(?:\\.\\d+)?)").matchEntire(text)?.let { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
-                    ?: (try { RotorFollow.locatorToLatLon(text) } catch (e: Exception) { null })
-                    ?: DxLink.cty?.lookup(text.uppercase(Locale.ROOT))?.let { it.lat to it.lon }
-                val f = mhz.replace(',', '.').toDoubleOrNull()
-                val khz = if (f != null) listOf(f * 1000.0) else Wefax.HAM_KHZ
-                val kw = (watts.toDoubleOrNull() ?: 100.0) / 1000.0
-                result = null
-                if (latLon == null) { note = "I do not know where that is: write a callsign, a locator (IM66uq) or a position (36.53, -6.29)"; return@Button }
-                if (Wefax.circuitPath(latLon.first, latLon.second, khz, kw) == null) { note = "VOACAP works from 2 to 30 MHz"; return@Button }
-                note = "Asking Wefax…"
-                scope.launch {
-                    val c = WefaxLink.circuit(settings, latLon.first, latLon.second, khz, kw)
-                    result = c
-                    note = when { c == null -> "Wefax does not answer"; !c.ok -> Wefax.whyText(c.why); else -> "" }
-                }
-            }) { Text("Predict") }
+            Button(onClick = { predict() }) { Text("Predict") }
         }
         if (note.isNotBlank()) Text(note, fontSize = 12.sp, color = Alp.Amber)
         val c = result; val h = c?.hours

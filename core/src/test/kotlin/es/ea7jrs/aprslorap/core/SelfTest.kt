@@ -3087,6 +3087,12 @@ private fun testWefax() {
     check(Wefax.parseResponse("HTTP/1.0 404 Not Found\r\n\r\nno".toByteArray())?.status == 404, "wefax: not found")
     check(Wefax.parseResponse("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nabc".toByteArray()) == null, "wefax: a cut answer is no answer")
     check(Wefax.parseResponse("garbage".toByteArray()) == null, "wefax: not HTTP")
+    // a circuit asked from the DX cluster or the logbook
+    eq(Wefax.ask("3b8abc", null, 18075.0), Wefax.Ask("3B8ABC", "18.075"), "wefax: a spot asks with its callsign and frequency")
+    eq(Wefax.ask("EA7JRS", "IM76hr", 7030.0), Wefax.Ask("IM76hr", "7.030"), "wefax: a locator is better than the callsign")
+    eq(Wefax.ask("EA7JRS", "nowhere", 144300.0), Wefax.Ask("EA7JRS", ""), "wefax: no locator and VHF: the callsign, all the bands")
+    eq(Wefax.ask("OH6BG", "", null), Wefax.Ask("OH6BG", ""), "wefax: no frequency: all the bands")
+    check(Wefax.ask(" ", null, 14000.0) == null, "wefax: nothing to ask for")
     // dates
     eq(Wefax.isoMs("1970-01-01T00:00:00Z"), 0L, "wefax: the epoch")
     eq(Wefax.isoMs("2026-11-22T04:30:00Z"), 1795321800000L, "wefax: 22 November 2026, 04:30 UTC")

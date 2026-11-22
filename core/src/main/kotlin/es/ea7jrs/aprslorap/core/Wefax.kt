@@ -248,4 +248,19 @@ object Wefax {
 
     /** The amateur band frequency (kHz) nearest to one, to ask for a circuit when only the band is known. */
     val HAM_KHZ = listOf(3650.0, 5360.0, 7100.0, 10120.0, 14150.0, 18100.0, 21200.0, 24930.0, 28500.0)
+
+    /** What another screen (DX cluster, logbook) asks the circuit form to predict: where the station is and, when it is short wave, on what frequency. */
+    data class Ask(val where: String, val mhz: String)
+
+    /**
+     * The request for a station: its locator when it is a real one (more exact than the country of its callsign), else the
+     * callsign; the frequency only from 2 to 30 MHz, where VOACAP works (else all the bands). Null with nothing to look for.
+     */
+    fun ask(call: String, locator: String?, khz: Double?): Ask? {
+        val loc = locator?.trim().orEmpty()
+        val where = if (RotorFollow.locatorToLatLon(loc) != null) loc else call.trim().uppercase(java.util.Locale.ROOT)
+        if (where.isEmpty()) return null
+        val f = khz?.takeIf { it in 2000.0..30000.0 }
+        return Ask(where, f?.let { String.format(java.util.Locale.ROOT, "%.3f", it / 1000.0) } ?: "")
+    }
 }

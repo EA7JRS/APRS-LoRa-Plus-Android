@@ -529,7 +529,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.SDR -> SdrTab()
                 Tool.MODES -> DigimodesTab()
                 Tool.AIS -> AisTab()
-                Tool.LOG -> LogTab()
+                Tool.LOG -> LogTab { nav.tool(Tool.WEFAX) }
                 Tool.SIGID -> SigIdTab()
                 Tool.REMOTE -> RemoteTab()
                 Tool.CONFIG -> ConfigTab()

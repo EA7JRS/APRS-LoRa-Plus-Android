@@ -47,7 +47,7 @@ import java.util.Locale
 
 /** Log tab: contacts by hand or from CW, ADIF in (qFT8) and out, QSL services (QRZ.com, LoTW, eQSL, WRL). */
 @Composable
-fun LogTab() {
+fun LogTab(onCircuit: () -> Unit = {}) {
     val ctx = LocalContext.current
     val s = remember { Settings(ctx) }
     val log by AppState.qsoLog.collectAsState()
@@ -78,7 +78,7 @@ fun LogTab() {
                 "Letters: Q = QRZ, L = LoTW, E = eQSL, W = WRL; small = sent, capital = confirmed.", fontSize = 11.sp)
         }
         if (services) item { ServicesSection(s) }
-        editing?.let { q -> item(key = "edit") { QsoForm(s, q, onDone = { editing = null }) } }
+        editing?.let { q -> item(key = "edit") { QsoForm(s, q, onCircuit, onDone = { editing = null }) } }
         items(log, key = { it.id.ifEmpty { it.call + it.date + it.time } }) { q ->
             Column(Modifier.fillMaxWidth().clickable { editing = q }.padding(vertical = 4.dp)) {
                 Text(String.format(Locale.US, "%s %s  %-10s %s %s  %s/%s", q.date.drop(2), q.time.take(4), q.call, q.freqMHz.ifEmpty { q.band },
@@ -103,7 +103,7 @@ private fun newQso(s: Settings): Qso =
     Qso.create(LogStore.newId(), "", System.currentTimeMillis(), 0, "CW", "", "599", "599", s.callsign, Spotter.locator(), txPwr = s.logPower)
 
 @Composable
-private fun QsoForm(s: Settings, q0: Qso, onDone: () -> Unit) {
+private fun QsoForm(s: Settings, q0: Qso, onCircuit: () -> Unit, onDone: () -> Unit) {
     val isNew = AppState.qsoLog.value.none { it.id == q0.id }
     var call by remember(q0) { mutableStateOf(q0.call) }
     var date by remember(q0) { mutableStateOf(q0.date) }
@@ -158,6 +158,10 @@ private fun QsoForm(s: Settings, q0: Qso, onDone: () -> Unit) {
             }) { Text("Tracker CW") }
             OutlinedButton(onClick = { AppState.sdr.value.freqHz?.let { freq = String.format(Locale.US, "%.6f", it / 1e6) } }) { Text("Receiver freq") }
             Spotter.micDialHz()?.let { d -> OutlinedButton(onClick = { freq = String.format(Locale.US, "%.6f", d / 1e6) }) { Text("Radio dial") } }
+            // the VOACAP prediction of the Wefax computer for this station (its locator if written, else its callsign)
+            OutlinedButton(enabled = call.isNotBlank() || grid.isNotBlank(), onClick = {
+                es.ea7jrs.aprslorap.core.Wefax.ask(call, grid, freq.replace(',', '.').toDoubleOrNull()?.let { it * 1000.0 })?.let { AppState.circuitAsk.value = it; onCircuit() }
+            }) { Text("HF path") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(onClick = {
