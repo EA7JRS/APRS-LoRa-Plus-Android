@@ -1,6 +1,6 @@
 # APRS LoRa+ para Android — manual de usuario
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Versión **5.4.8** (la app Android ya lleva su propia versión; el resto del ecosistema va por la 5.4.7). Antes coincidía con el tracker, la caja del rotor, la
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Versión **5.4.9** (la app Android ya lleva su propia versión; el resto del ecosistema va por la 5.4.7). Antes coincidía con el tracker, la caja del rotor, la
 Display y el plotter).
 
 La app es la compañera del tracker **APRS LoRa+**: enseña todo lo que el tracker oye y mide, y maneja todas sus funciones.
@@ -161,7 +161,7 @@ MAPRS o un tracker con el perfil náutico AIS.
 
 Los mensajes y las alertas llegan como notificaciones de conversación: el coche los lee en voz alta y contestas con la voz.
 
-## 14. Novedades del 23-11-2026
+## 14. Novedades de la 5.4.9
 
 - **Ficha de estación:** tarjeta *LAST PACKET* con la línea tal como llegó (en colores), cada campo explicado y el recorrido (emisor, digipeaters, iGate, tu tracker con dBm y SNR); tarjeta *TELEMETRY* (informes `T#` con los nombres, unidades y ecuaciones que la estación anuncia; bits como luces) y el estado `>` con su antigüedad. Velocidad y rumbo con «~» cuando se calculan de dos posiciones; las estaciones meteorológicas no muestran velocidad ni rumbo (ese campo es el viento).
 - **Mapa:** huella de las estaciones que se mueven (últimas 3 h), trazado del recorrido de la trama de la estación elegida (estación → digipeater o iGate → tu tracker) y los coches en movimiento dibujados girados al rumbo.

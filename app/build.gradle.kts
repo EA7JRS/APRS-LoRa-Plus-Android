@@ -12,8 +12,8 @@ android {
         applicationId = "es.ea7jrs.aprslorap"
         minSdk = 26
         targetSdk = 36
-        versionCode = 50408
-        versionName = "5.4.8"
+        versionCode = 50409
+        versionName = "5.4.9"
         // Google Play build (-Palp.play=true): features whose terms do not allow a paid app are hidden (BuildConfig.PLAY)
         buildConfigField("boolean", "PLAY", if (project.findProperty("alp.play") == "true") "true" else "false")
     }

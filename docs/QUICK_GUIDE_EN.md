@@ -1,6 +1,6 @@
 # APRS LoRa+ for Android — quick guide
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.4.8**. Full manual: [USER_MANUAL_EN.md](USER_MANUAL_EN.md).
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.4.9**. Full manual: [USER_MANUAL_EN.md](USER_MANUAL_EN.md).
 
 1. **Install** the APK (or the Google Play version once it is published).
 2. **Welcome**: callsign + DMR ID / CCS7 → *Validate and enter*. Without it, *Listen only*.
@@ -26,4 +26,4 @@ Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.4.8**. Full ma
 - If you change the tracker PIN: *Connect* > *Forget pairing* and link again.
 - The tracker takes one control device at a time (app, Display or plotter).
 
-**New on 2026-11-23** (packet explained, telemetry, trails on the map, beacons from the phone, Configuration check): section 14 of the [manual](USER_MANUAL_EN.md).
+**New in 5.4.9** (packet explained, telemetry, trails on the map, beacons from the phone, Configuration check): section 14 of the [manual](USER_MANUAL_EN.md).
