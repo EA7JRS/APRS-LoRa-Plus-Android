@@ -73,6 +73,7 @@ data class TrackerInfo(
     val satMaxBytes: Int = Control.SAT_DATA_MAX, // satellite file the tracker can store (the app filters sats_all.txt by groups to fit)
     val hasSatFav: Boolean = false,             // favorites and categories ("satfav", "satcat")
     val hasSatFm: Boolean = false,              // T-TWR: the FM VFO follows the satellite ("satrx" / "sattx" also in FM mode, "sattx pos")
+    val hasRemoteKeys: Boolean = false,         // "screen" with k: the device's button (next / previous / back), firmware after 5.4.8
     val hasWxNet: Boolean = false,              // weather from the internet for the TELEMETRY page ("wxnet")
     val hasAis: Boolean = false,                // AIS receiver: "ais" / "aislist" events, "aisin", "aisset"
     val lastReset: String = "",                 // abnormal last reset of the tracker ("CRASH", "WDT", "LOW VOLTAGE"...); empty = normal
@@ -464,6 +465,7 @@ object Control {
             caps.int("satMax") ?: SAT_DATA_MAX,
             caps.bool("satFav") ?: false,
             caps.bool("satFm") ?: false,
+            caps.bool("rkeys") ?: false,
             caps.bool("wxnet") ?: false,
             caps.bool("ais") ?: false,
             o.str("rst") ?: "",

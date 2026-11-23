@@ -175,11 +175,16 @@ fun RemoteTab() {
                 for (row in s.rows) Text(row.ifEmpty { " " }, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
                 if (!s.displayOn) Text("(display off)", fontSize = 12.sp)
             }
+            // With a firmware that has it, ◀ ▶ are the tracker's own button: the views of a page first, then the pages, skipping those
+            // this mode does not have. Older firmware: page number ± 1 (it stops at a page the mode does not have; no views).
+            val keys = AppState.trackerInfo.collectAsState().value?.hasRemoteKeys == true
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { c?.control("screen", "p" to maxOf(0, (screen?.current ?: 1) - 1)) }) { Text("◀") }
-                OutlinedButton(onClick = { c?.control("screen", "p" to (screen?.current ?: 0) + 1) }) { Text("▶") }
+                OutlinedButton(onClick = { if (keys) c?.control("screen", "k" to -1) else c?.control("screen", "p" to maxOf(0, (screen?.current ?: 1) - 1)) }) { Text("◀") }
+                OutlinedButton(onClick = { if (keys) c?.control("screen", "k" to 1) else c?.control("screen", "p" to (screen?.current ?: 0) + 1) }) { Text("▶") }
+                if (keys) OutlinedButton(onClick = { c?.control("screen", "k" to 0) }) { Text("Back") }
                 OutlinedButton(onClick = { c?.control("screen", "p" to 0) }) { Text("First") }
             }
+            if (!keys) Text("This firmware moves by page number only: update the tracker to browse the views of each page too.", fontSize = 11.sp)
             Text("The mirror shows the text of the last page drawn; graphics (compass, maps) are not mirrored.", fontSize = 11.sp)
         }
         for (p in pages) {

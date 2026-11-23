@@ -122,7 +122,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
         out.add(StationView(
             h.call, h.symbol.getOrNull(0), h.symbol.getOrNull(1), h.lat, h.lon, at, h.posAgeS?.let { heardAtMs - it * 1000 },
             w?.rest ?: h.comment ?: "", h.path ?: "", h.packets, h.rssi, h.snr,
-            if (w != null) null else heardCourse(h), if (w != null) null else heardSpeed(h), h.altitudeM?.toDouble(), h.device, h.status,
+            if (w != null || h.wx != null) null else heardCourse(h), if (w != null || h.wx != null) null else heardSpeed(h), h.altitudeM?.toDouble(), h.device, h.status,
             wx = w?.wx, wxMs = if (w != null) at else null, wxPressD3h = HeardTrends.d3h(h.call, at, w?.wx?.pressureHpa),
         ).let { if (sym == null) it.copy(table = null, code = null) else it })
     }
@@ -296,9 +296,12 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                             modifier = Modifier.padding(bottom = 6.dp))
                     }
                     // a course only means something while it moves; "~" = worked out from its last two positions
+                    // not for a weather station: in a weather report APRS uses the course / speed field for the wind (WEATHER card)
                     val est = if (s.motionDerived) "~ " else ""
-                    InfoRow("SPEED", if (s.speedKmh == null) "—" else est + Fmt.speed(s.speedKmh))
-                    InfoRow("COURSE", s.courseDeg?.takeIf { (s.speedKmh ?: 0.0) >= 1.0 }?.let { est + Fmt.deg(it.toDouble()) } ?: "—")
+                    if (!s.isWx) {
+                        InfoRow("SPEED", if (s.speedKmh == null) "—" else est + Fmt.speed(s.speedKmh))
+                        InfoRow("COURSE", s.courseDeg?.takeIf { (s.speedKmh ?: 0.0) >= 1.0 }?.let { est + Fmt.deg(it.toDouble()) } ?: "—")
+                    }
                     InfoRow("ALTITUDE", s.altitudeM?.let { String.format(Locale.US, "%.0f m", it) } ?: "—")
                     InfoRow("LAT", s.lat?.let { Fmt.latLon(it, true) } ?: "—")
                     InfoRow("LON", s.lon?.let { Fmt.latLon(it, false) } ?: "—")
