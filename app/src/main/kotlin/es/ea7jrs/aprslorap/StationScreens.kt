@@ -63,6 +63,11 @@ import es.ea7jrs.aprslorap.core.Station
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+// The tracker's heard list says speed 0 and course 0 when the packet carried neither (its library has no "unknown"): only a
+// station it says is moving has a speed and a course worth showing
+private fun heardSpeed(h: es.ea7jrs.aprslorap.core.HeardStation?): Double? = h?.speedKmh?.takeIf { it > 0 }?.toDouble()
+private fun heardCourse(h: es.ea7jrs.aprslorap.core.HeardStation?): Int? = h?.course?.takeIf { (h.speedKmh ?: 0) > 0 }
+
 /** A station as the screens show it: what the phone decoded, completed with what the tracker's heard list says of it. */
 data class StationView(
     val call: String, val table: Char?, val code: Char?, val lat: Double?, val lon: Double?, val lastMs: Long, val positionMs: Long?,
@@ -70,6 +75,7 @@ data class StationView(
     val altitudeM: Double?, val device: String?, val status: String?,
     val wx: AprsWx? = null, val wxMs: Long? = null, val owner: String? = null, val micE: String? = null,
     val wxPressD3h: Double? = null,     // change of the pressure over 3 h, once the station has been heard for an hour
+    val motionDerived: Boolean = false, // course and speed worked out from two positions, not sent by the station
 ) {
     val symbol: AprsSymbols.Symbol? get() = AprsSymbols.of(table, code)
     val kind: String get() = AprsSymbols.describe(table, code)
@@ -102,9 +108,9 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             s.call, s.symbolTable, s.symbolCode, s.lat ?: h?.lat, s.lon ?: h?.lon, s.lastHeardMs, s.lastPositionMs,
             AprsExtra.cleanComment(s.comment).ifEmpty { if (wxStation) "" else h?.comment ?: "" }, s.lastPath.ifEmpty { h?.path ?: "" }, s.packets,
             h?.rssi, h?.snr,
-            s.courseDeg ?: if (wxStation) null else h?.course, s.speedKmh ?: if (wxStation) null else h?.speedKmh?.toDouble(),
+            s.courseDeg ?: heardCourse(h).takeIf { !wxStation && s.speedKmh == null }, s.speedKmh ?: heardSpeed(h).takeIf { !wxStation },
             s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, h?.status,
-            wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE, wxPressD3h = s.wxPressD3h,
+            wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE, wxPressD3h = s.wxPressD3h, motionDerived = s.motionDerived,
         ))
     }
     val known = stations.map { it.call }.toSet()
@@ -116,7 +122,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
         out.add(StationView(
             h.call, h.symbol.getOrNull(0), h.symbol.getOrNull(1), h.lat, h.lon, at, h.posAgeS?.let { heardAtMs - it * 1000 },
             w?.rest ?: h.comment ?: "", h.path ?: "", h.packets, h.rssi, h.snr,
-            if (w != null) null else h.course, if (w != null) null else h.speedKmh?.toDouble(), h.altitudeM?.toDouble(), h.device, h.status,
+            if (w != null) null else heardCourse(h), if (w != null) null else heardSpeed(h), h.altitudeM?.toDouble(), h.device, h.status,
             wx = w?.wx, wxMs = if (w != null) at else null, wxPressD3h = HeardTrends.d3h(h.call, at, w?.wx?.pressureHpa),
         ).let { if (sym == null) it.copy(table = null, code = null) else it })
     }
@@ -289,8 +295,10 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                             extra = listOfNotNull("${s.rssi} dBm", s.snr?.let { String.format(Locale.US, "SNR %.1f", it) }).joinToString(" · "),
                             modifier = Modifier.padding(bottom = 6.dp))
                     }
-                    InfoRow("SPEED", Fmt.speed(s.speedKmh))
-                    InfoRow("COURSE", s.courseDeg?.let { Fmt.deg(it.toDouble()) } ?: "—")
+                    // a course only means something while it moves; "~" = worked out from its last two positions
+                    val est = if (s.motionDerived) "~ " else ""
+                    InfoRow("SPEED", if (s.speedKmh == null) "—" else est + Fmt.speed(s.speedKmh))
+                    InfoRow("COURSE", s.courseDeg?.takeIf { (s.speedKmh ?: 0.0) >= 1.0 }?.let { est + Fmt.deg(it.toDouble()) } ?: "—")
                     InfoRow("ALTITUDE", s.altitudeM?.let { String.format(Locale.US, "%.0f m", it) } ?: "—")
                     InfoRow("LAT", s.lat?.let { Fmt.latLon(it, true) } ?: "—")
                     InfoRow("LON", s.lon?.let { Fmt.latLon(it, false) } ?: "—")

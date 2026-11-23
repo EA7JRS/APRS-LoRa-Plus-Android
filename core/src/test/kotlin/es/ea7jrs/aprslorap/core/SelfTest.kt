@@ -204,6 +204,16 @@ private fun testIGate() {
 }
 
 private fun testGeoStations() {
+    // course and speed of a station that sends none, from two positions (2026-11-23)
+    eq(Motion.between(null, null, null, 36.5, -6.2, 60_000), null, "motion: no previous position")
+    eq(Motion.between(36.5, -6.2, 0, 36.5, -6.2, 5_000), null, "motion: too soon")
+    eq(Motion.between(36.5, -6.2, 0, 36.6, -6.2, 3_600_000), null, "motion: too long ago")
+    eq(Motion.between(36.5, -6.2, 0, 36.5001, -6.2, 60_000), null to 0.0, "motion: it has not moved 40 m")
+    val mv = Motion.between(36.5, -6.2, 0, 36.509, -6.2, 60_000)!!          // 1 km north in a minute
+    check(mv.first == 0 && Math.abs(mv.second - 60.0) < 0.5, "motion: 1 km north in 60 s = 60 km/h, course 0")
+    val me = Motion.between(36.5, -6.2, 0, 36.5, -6.19, 120_000)!!
+    check(me.first == 90 && Math.abs(me.second - 26.8) < 0.5, "motion: east")
+    eq(Motion.between(36.5, -6.2, 0, 40.0, -6.2, 60_000), null, "motion: an impossible jump")
     near(Geo.distanceKm(40.4168, -3.7038, 41.3874, 2.1686), 505.0, 5.0, "Madrid-Barcelona")
     near(Geo.bearingDeg(0.0, 0.0, 1.0, 0.0), 0.0, 1e-6, "bearing north")
     near(Geo.bearingDeg(0.0, 0.0, 0.0, 1.0), 90.0, 1e-6, "bearing east")
