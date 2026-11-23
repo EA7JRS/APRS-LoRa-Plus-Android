@@ -183,6 +183,9 @@ fun DxClusterScreen(nav: Navigator) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 Chip("SP " + (path?.shortDeg?.let { "$it°" } ?: "—"), !lp, color = Alp.Amber, height = 30.dp) { lp = false }
                 Chip("LP " + (path?.longDeg?.let { "$it°" } ?: "—"), lp, color = Alp.Amber, height = 30.dp) { lp = true }
+                if (sel != null) Chip("HF PATH", false, color = Alp.Cyan, height = 30.dp) {
+                    sel?.let { sp -> es.ea7jrs.aprslorap.core.Wefax.ask(sp.dx, null, sp.freqKhz)?.let { AppState.circuitAsk.value = it; nav.tool(Tool.WEFAX) } }
+                }
                 Spacer(Modifier.weight(1f))
                 Toggle("SDR", sdrOn) { sdrOn = !sdrOn }
                 Toggle("CAT", catOn) { catOn = !catOn }

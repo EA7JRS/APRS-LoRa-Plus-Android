@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3481,4 +3481,71 @@ private fun testEphem() {
     near(Ephem.normalGravity(0.0, 0.0), 9.780325, 1e-6, "gravity at the equator"); near(Ephem.normalGravity(90.0, 0.0), 9.832185, 1e-6, "gravity at the pole")
     near(Ephem.earthRadiusAtM(0.0), 6378137.0, 0.5, "equatorial radius"); near(Ephem.earthRadiusAtM(90.0), 6356752.3, 0.5, "polar radius")
     eq(Ephem.jdToMs(Celnav.julianDay(1794441600000L)), 1794441600000L, "julian day and back")
+}
+
+private fun testWefax() {
+    // the little HTTP that is needed
+    check(Wefax.validHost("192.168.1.20") && Wefax.validHost("sdr.local") && !Wefax.validHost("a b") && !Wefax.validHost("x/../y") && !Wefax.validHost(""), "wefax: a host is a name or an address")
+    eq(String(Wefax.request("sdr", 8081, "/api/charts?limit=5"), Charsets.ISO_8859_1).substringBefore("\r\n"), "GET /api/charts?limit=5 HTTP/1.0", "wefax: the request line")
+    val raw = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}".toByteArray()
+    val r = Wefax.parseResponse(raw)
+    check(r != null && r.ok && r.text == "{}" && r.contentType == "application/json", "wefax: an answer with its length")
+    check(Wefax.parseResponse("HTTP/1.0 404 Not Found\r\n\r\nno".toByteArray())?.status == 404, "wefax: not found")
+    check(Wefax.parseResponse("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nabc".toByteArray()) == null, "wefax: a cut answer is no answer")
+    check(Wefax.parseResponse("garbage".toByteArray()) == null, "wefax: not HTTP")
+    // a circuit asked from the DX cluster or the logbook
+    eq(Wefax.ask("3b8abc", null, 18075.0), Wefax.Ask("3B8ABC", "18.075"), "wefax: a spot asks with its callsign and frequency")
+    eq(Wefax.ask("EA7JRS", "IM76hr", 7030.0), Wefax.Ask("IM76hr", "7.030"), "wefax: a locator is better than the callsign")
+    eq(Wefax.ask("EA7JRS", "nowhere", 144300.0), Wefax.Ask("EA7JRS", ""), "wefax: no locator and VHF: the callsign, all the bands")
+    eq(Wefax.ask("OH6BG", "", null), Wefax.Ask("OH6BG", ""), "wefax: no frequency: all the bands")
+    check(Wefax.ask(" ", null, 14000.0) == null, "wefax: nothing to ask for")
+    // dates
+    eq(Wefax.isoMs("1970-01-01T00:00:00Z"), 0L, "wefax: the epoch")
+    eq(Wefax.isoMs("2026-11-22T04:30:00Z"), 1795321800000L, "wefax: 22 November 2026, 04:30 UTC")
+    eq(Wefax.isoMs("2024-02-29T12:00:00Z"), 1709208000000L, "wefax: a leap day")
+    check(Wefax.isoMs("2026-13-01T00:00:00Z") == null && Wefax.isoMs("yesterday") == null, "wefax: not a date")
+    // charts, as /api/charts gives them
+    val charts = Wefax.parseCharts("""[{"id":7,"received":"2026-11-22T04:30:00Z","station":"DDH","title":"Surface Analysis","khz":7880,"ioc":576,"lpm":120,"width":1810,"height":1200,"ended":"stop","offset_hz":-12.5,"clock_ppm":3,"phased":true,"keep":false},{"id":6,"received":"x","station":"","title":"","khz":8040,"ioc":576,"lpm":120,"width":1810,"height":300,"ended":"lost","offset_hz":0,"clock_ppm":0,"phased":false,"keep":true},{"bad":1}]""")
+    eq(charts.size, 2, "wefax: two charts, the odd entry left out")
+    check(charts[0].id == 7L && charts[0].receivedMs == 1795321800000L && charts[0].complete && charts[0].khz == 7880.0 && !charts[1].complete && charts[1].keep && !charts[1].phased, "wefax: the fields of a chart")
+    eq(Wefax.chartPath(7), "/chart/7.png", "wefax: where a chart is")
+    check(Wefax.parseCharts("not json").isEmpty() && Wefax.parseCharts("{}").isEmpty(), "wefax: no list, no charts")
+    // status
+    val now = 1795321800000L
+    val st = Wefax.parseStatus("""{"state":{"value":"receiving a chart","at":1795321790},"alive":{"value":"1","at":1795321795},"decoder":{"value":"chart","at":1},"lines":{"value":"412","at":1},"tuned_khz":{"value":"7880","at":1},"next_start":{"value":"2026-11-22T05:12:00Z","at":1},"next_station":{"value":"DDH","at":1},"next_khz":{"value":"3855","at":1},"next_why":{"value":"v","at":1},"next_rel":{"value":"0.97","at":1}}""", now)
+    check(st != null && st.alive && st.receiving && st.lines == 412 && st.tunedKhz == 7880.0 && st.nextKhz == 3855.0 && st.nextWhy == "v" && st.nextReliability == 0.97, "wefax: what the receiver is doing")
+    eq(st!!.nextStartMs, 1795324320000L, "wefax: when the next broadcast begins")
+    check(Wefax.parseStatus("""{"state":{"value":"listening","at":1},"alive":{"value":"1","at":1795321000},"next_rel":{"value":"-1","at":1}}""", now)?.let { !it.alive && !it.receiving && it.nextReliability == null && it.tunedKhz == null } == true, "wefax: silent for more than 30 s is not alive")
+    eq(Wefax.stateText("no receiver"), "No SDR device", "wefax: the state in words"); eq(Wefax.stateText("something new"), "something new", "wefax: an unknown state as it comes")
+    // stations and schedule
+    val list = Wefax.parseStations("""{"source":"NOAA","note":"n","stations":[{"id":"AAA","name":"Alpha","country":"X","deviation":425,"lat":53.67,"lon":9.8,"kw":10,"freqs":[{"khz":3855,"call":"A3"},{"khz":7880,"call":"A7","from":"0600","to":"2000"},{"khz":2618.5,"call":"A2","from":"2200","to":"0500"}],"broadcasts":[{"utc":"0512","title":"Forecast","lpm":120,"ioc":576},{"utc":"0430","title":"Analysis","lpm":120,"ioc":576},{"utc":"2350","title":"Late","lpm":60,"ioc":288},{"utc":"9999","title":"bad"}]},{"id":"BBB","name":"Beta","freqs":[{"khz":8040}],"broadcasts":[{"utc":"0440","title":"Other"}]}]}""")
+    check(list != null && list.stations.size == 2 && list.byId("AAA")!!.broadcasts.map { it.utc } == listOf("0430", "0512", "2350") && list.byId("AAA")!!.deviation == 425 && list.byId("BBB")!!.deviation == 400 && list.byId("BBB")!!.lat == null, "wefax: the stations, their broadcasts in order")
+    val fr = list!!.byId("AAA")!!.freqs
+    check(fr[0].onAir(0) && fr[1].onAir(600) && !fr[1].onAir(300) && fr[2].onAir(23 * 60) && fr[2].onAir(60) && !fr[2].onAir(720), "wefax: frequencies that are on the air part of the day, also across midnight")
+    val day = now - now % 86_400_000L
+    val up = Wefax.upcoming(list, "AAA,BBB", "AAA:0512", day + 4 * 3_600_000L, 2)
+    eq(up.map { it.station.id + it.broadcast.utc }, listOf("AAA0430", "BBB0440", "AAA0512"), "wefax: the next two hours of both stations, in order")
+    check(up[0].endMs - up[0].startMs == 30 * 60_000L && up[2].skipped && !up[0].skipped && up[1].endMs - up[1].startMs == 30 * 60_000L, "wefax: 30 minutes at most; the one not wanted is marked")
+    check(Wefax.upcoming(list, "", "", now).isEmpty() && Wefax.upcoming(list, "AAA", "", day + 23 * 3_600_000L + 55 * 60_000L, 6).map { it.broadcast.utc } == listOf("2350", "0430", "0512"), "wefax: nothing followed, nothing; across midnight")
+    check(Wefax.parseStations("[]") == null, "wefax: not a station list")
+    // the VOACAP table
+    fun row(f: (Int) -> Double) = (0 until 24).joinToString(",", "[", "]") { f(it).toString() }
+    val table = Wefax.parseTable("""{"made":1,"year":2026,"month":11,"ssn":80,"lat":36.53,"lon":-6.29,"stations":{"AAA":{"khz":[3855,7880],"rel":[${row { if (it < 7) 0.9 else 0.0 }},${row { 0.5 }}],"snr":[${row { 50.0 }},${row { 60.0 }}]},"BAD":{"khz":[1],"rel":[[1,2]]}}}""")
+    check(table != null && table.valid(2026, 11) && !table.valid(2026, 12) && table.stations.keys == setOf("AAA") && table.ssn == 80.0, "wefax: the table of the month, a broken station left out")
+    val h = table!!.stations["AAA"]!!
+    check(h.reliability(3855.0, 3) == 0.9 && h.reliability(7880.0, 12) == 0.5 && h.reliability(9999.0, 3) == null && h.signal(7880.0, 0) == 60.0, "wefax: reliability and signal of a frequency at an hour")
+    check(h.best(listOf(3855.0, 7880.0), 3) == 3855.0 && h.best(listOf(3855.0, 7880.0), 12) == 7880.0 && h.best(listOf(9999.0), 3) == null, "wefax: the most reliable frequency of those on the air")
+    val tie = Wefax.Hours(listOf(1.0, 2.0), listOf(List(24) { 0.9 }, List(24) { 0.9 }), listOf(List(24) { 40.0 }, List(24) { 55.0 }))
+    eq(tie.best(listOf(1.0, 2.0), 0), 2.0, "wefax: between equals, the stronger signal")
+    check(Wefax.parseTable("{}") == null, "wefax: no table")
+    // a circuit
+    eq(Wefax.circuitPath(35.33, 25.12, listOf(14150.0, 7100.0), 0.1), "/api/voacap?lat=35.33&lon=25.12&khz=14150.0,7100.0&kw=0.100", "wefax: the question for a circuit")
+    check(Wefax.circuitPath(35.0, 25.0, listOf(518.0), 1.0) == null && Wefax.circuitPath(95.0, 0.0, listOf(7100.0), 1.0) == null && Wefax.circuitPath(0.0, 0.0, emptyList(), 1.0) == null, "wefax: no circuit below 2 MHz or with impossible numbers")
+    val c = Wefax.parseCircuit("""{"ok":true,"year":2026,"month":11,"ssn":80,"km":2818.7,"khz":[4209.5],"rel":[${row { if (it in 17..23 || it < 6) 0.9 else 0.0 }}],"snr":[${row { 50.0 }}]}""")
+    check(c != null && c.ok && c.km == 2818.7 && c.hours!!.reliability(4209.5, 20) == 0.9, "wefax: the answer for a circuit")
+    eq(Wefax.goodHours(c!!.hours!!.rel[0]), "17-06", "wefax: the good hours, across midnight in one piece")
+    eq(Wefax.goodHours(List(24) { if (it in 7..9 || it in 16..17) 0.8 else 0.1 }), "07-10, 16-18", "wefax: two runs of good hours")
+    eq(Wefax.goodHours(List(24) { 1.0 }), "all day", "wefax: all day"); eq(Wefax.goodHours(List(24) { 0.0 }), "", "wefax: never")
+    val no = Wefax.parseCircuit("""{"ok":false,"why":"no sunspot number"}""")
+    check(no != null && !no.ok && no.hours == null && Wefax.whyText(no.why).contains("sunspot"), "wefax: why there is no prediction")
 }

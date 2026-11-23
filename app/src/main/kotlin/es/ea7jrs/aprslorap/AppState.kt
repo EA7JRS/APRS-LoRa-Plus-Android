@@ -135,6 +135,7 @@ object AppState {
     val qsoLog = MutableStateFlow<List<es.ea7jrs.aprslorap.core.Qso>>(emptyList())    // the logbook (Log tab), newest first
     val logStatus = MutableStateFlow("")
     val logDraft = MutableStateFlow<es.ea7jrs.aprslorap.core.Qso?>(null)              // contact to open in the Log form (from the DX cluster)
+    val circuitAsk = MutableStateFlow<es.ea7jrs.aprslorap.core.Wefax.Ask?>(null)       // HF circuit to predict in the Wefax tool (from the DX cluster or the logbook)
     val lotwCert = MutableStateFlow<LogStore.Lotw12?>(null)                       // TrustedQSL certificate loaded
     val spotter = MutableStateFlow(Spotter.State())                               // PSK Reporter, WSPRnet, WSJT-X UDP, skimmer port
     val cwRxOn = MutableStateFlow(false)                                          // tracker's CW listening on RF
