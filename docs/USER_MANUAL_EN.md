@@ -104,7 +104,7 @@ with a locator; *Track sun / moon*. **Radio (CAT)** of the box with S-meter, spl
 | **DX** (DX cluster) | Telnet node (EA4URE by default), filters by source (human, RBN CW / digital, mine), band, mode and activity (POTA, SOTA, IOTA, WWFF, DME); country flags; TUNE to the SDR and the CAT; ROTOR short / long path; SPOT; LOG |
 | **RBN** | World map of Reverse Beacon Network spots through the cluster, VHF / UHF alerts |
 | **IBP** | The 18 NCDXF / IARU beacons, the 5 on the air now with their great circle, heard grid, TUNE and ROTOR |
-| **SDR** | SDR++ and gqrx (rigctl), SDRconnect (also its audio), SpyServer, and the app's own RTL-SDR receiver (USB OTG) with WFM / NFM / AM / SSB / CW, Doppler, recording; digital voice (DMR, D-STAR, YSF, P25, NXDN, dPMR, M17); APRS 9600 (G3RUH); VOR list; 406 MHz beacons |
+| **SDR** | SDR++ and gqrx (rigctl), SDRconnect (also its audio), SpyServer, and the app's own RTL-SDR receiver (USB OTG) with WFM / NFM / AM / SSB / CW, a **panadapter** (spectrum + waterfall of the whole band, tap or drag to tune), Doppler, recording; **digital voice** on a **DV** button next to the modes (the flavour DMR, D-STAR, YSF, P25, NXDN, dPMR, M17 is picked below); APRS 9600 (G3RUH); VOR list; 406 MHz beacons. The receiver level is shown in dBFS (relative, uncalibrated), with a manual 40 % gain by default so it does not overload |
 | **MODES** | PSK31…250, RTTY, CW, FT8, FT4, WSPR, FST4W, NAVTEX and DSC (VHF channel 70, MF / HF), from the app receiver or the microphone |
 | **SPOTS** | PSK Reporter, WSPRnet, WSJT-X UDP (GridTracker, JTAlert…) and a CW Skimmer–style telnet port |
 | **LOG** | Logbook (ADIF), import / export, QRZ.com, LoTW (signed in the app with your .p12), eQSL and World Radio League |
