@@ -37,6 +37,12 @@ sealed class AprsPacket {
         val isGroup: Boolean get() = AprsConventions.isGroupAddressee(addressee)
     }
 
+    /** Status report (">text"; a DDHHMMz time in front is left out of [text]). */
+    data class Status(val text: String) : AprsPacket()
+
+    /** Telemetry report ("T#seq,a1..a5,bbbbbbbb"). */
+    data class Telemetry(val reading: TelemetryReading, val comment: String) : AprsPacket()
+
     data class Other(val raw: String) : AprsPacket()
 }
 
@@ -52,6 +58,8 @@ object Aprs {
             '!', '=' -> parsePosition(info.substring(1)) ?: AprsPacket.Other(info)
             '/', '@' -> if (info.length > 8) parsePosition(info.substring(8)) ?: AprsPacket.Other(info) else AprsPacket.Other(info)   // 7-char timestamp
             ':' -> parseMessage(info) ?: AprsPacket.Other(info)
+            '>' -> AprsPacket.Status(info.substring(1).let { if (it.length >= 7 && it[6] == 'z' && it.take(6).all { c -> c.isDigit() }) it.substring(7) else it }.trim())
+            'T' -> Telemetry.parse(info)?.let { AprsPacket.Telemetry(it.first, it.second) } ?: AprsPacket.Other(info)
             '`', '\'', '\u001c', '\u001d' -> parseMicE(destination, info) ?: AprsPacket.Other(info)
             ';' -> parseObject(info) ?: AprsPacket.Other(info)
             ')' -> parseItem(info) ?: AprsPacket.Other(info)

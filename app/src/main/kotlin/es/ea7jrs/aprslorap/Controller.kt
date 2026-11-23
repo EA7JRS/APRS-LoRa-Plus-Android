@@ -125,8 +125,35 @@ class Controller(
 
     val loginLine: String get() = iGate.loginLine()
 
+    // stations (with their trails) and conversations are kept between sessions: read here, written every minute when
+    // something changed and when the link stops; the messages go by callsign (another callsign starts with none)
+    private val stateDir: java.io.File? = AppState.appContext?.filesDir
+    private val stationsFile get() = stateDir?.let { java.io.File(it, "aprs_stations.json") }
+    private val messagesFile get() = stateDir?.let { java.io.File(it, "aprs_messages_" + myCall.uppercase().filter { c -> c.isLetterOrDigit() || c == '-' } + ".json") }
+    @Volatile private var stateDirty = false
+    private var stateSavedMs = System.currentTimeMillis()
+
+    private fun loadState() {
+        val st = try { stationsFile?.takeIf { it.isFile }?.readText()?.let { table.restore(it, System.currentTimeMillis()) } ?: 0 } catch (_: Exception) { 0 }
+        val ms = try { messagesFile?.takeIf { it.isFile }?.readText()?.let { engine.restore(it) } ?: 0 } catch (_: Exception) { 0 }
+        if (st > 0 || ms > 0) { AppState.addLog("Restored $st stations and $ms messages of the last session"); publishNow() }
+    }
+
+    private fun saveState() {
+        if (!stateDirty) return
+        stateDirty = false
+        stateSavedMs = System.currentTimeMillis()
+        fun write(f: java.io.File?, text: String) {
+            if (f == null) return
+            try { val tmp = java.io.File(f.path + ".tmp"); tmp.writeText(text); if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) } } catch (_: Exception) {}
+        }
+        write(stationsFile, table.export())
+        write(messagesFile, engine.export())
+    }
+
     init {
         if (trackerAcks) AppState.addLog("Same callsign as the tracker: the tracker sends the ACKs")
+        exec.execute { safe { loadState() } }
         exec.scheduleWithFixedDelay({ safe { tick() } }, 250, 250, TimeUnit.MILLISECONDS)
     }
 
@@ -680,6 +707,7 @@ class Controller(
 
     private fun tick() {
         if (engine.tick().isNotEmpty()) publish()
+        if (stateDirty && System.currentTimeMillis() - stateSavedMs > 60_000) saveState()
         val nowWx = System.currentTimeMillis()
         if (controlOn && nowWx - netWxCheckMs > 30_000) { netWxCheckMs = nowWx; AppState.appContext?.let { NetWeatherFetcher.maybeFetch(it, settings) } }
         if (nowWx - officialCheckMs > 60_000) { officialCheckMs = nowWx; AppState.appContext?.let { OfficialAlertsFetcher.maybeFetch(it, settings); AviationFetcher.maybeFetch(it, settings) } }
@@ -709,7 +737,9 @@ class Controller(
         }
     }
 
-    private fun publish() {
+    private fun publish() { stateDirty = true; publishNow() }
+
+    private fun publishNow() {
         val all = engine.all()
         AppState.messages.value = all
         notifier.onMessages(all)          // state of what we sent, in the open conversation notifications (Android Auto)
@@ -717,6 +747,7 @@ class Controller(
     }
 
     fun stop() {
+        try { exec.submit { safe { saveState() } }.get(2, TimeUnit.SECONDS) } catch (_: Exception) {}
         exec.shutdownNow()
     }
 }

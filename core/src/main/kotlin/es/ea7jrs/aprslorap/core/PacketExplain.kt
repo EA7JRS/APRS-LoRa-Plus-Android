@@ -119,10 +119,18 @@ object PacketExplain {
             }
             is AprsPacket.Message -> {
                 out += Field("To", p.addressee.trim(), if (p.isGroup) AprsConventions.groupName(p.addressee) + ": never acknowledged" else "")
+                if (Telemetry.isDefinition(p.text)) out += Field("Telemetry", p.text.take(4), "says what the channels of ${p.addressee.trim()} are")
                 out += Field(if (p.isAck) "Acknowledges" else if (p.isRej) "Rejects" else "Text", if (p.isAck || p.isRej) "message " + (p.msgNo ?: "") else p.text)
                 if (!p.isAck && !p.isRej) out += Field("Number", p.msgNo ?: "none", if (p.msgNo == null) "no acknowledgement asked" else "asks for an acknowledgement")
             }
             is AprsPacket.Weather -> { out += Field("Weather", p.wx.summary(0)); if (p.comment.isNotEmpty()) out += Field("Comment", p.comment) }
+            is AprsPacket.Status -> out += Field("Status", p.text)
+            is AprsPacket.Telemetry -> {
+                out += Field("Sequence", p.reading.seq)
+                out += Field("Analog", p.reading.analog.joinToString(" · ") { String.format(Locale.US, "%.3f", it).trimEnd('0').trimEnd('.') }, "raw values: the station's EQNS turn them into units")
+                if (p.reading.digital.isNotEmpty()) out += Field("Bits", p.reading.digital)
+                if (p.comment.isNotEmpty()) out += Field("Comment", p.comment)
+            }
             is AprsPacket.Other -> if (info.length > 1) out += Field("Content", info.drop(1))
         }
         return out

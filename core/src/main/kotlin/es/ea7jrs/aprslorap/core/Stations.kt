@@ -28,6 +28,10 @@ data class Station(
     val wx: AprsWx? = null, val wxMs: Long? = null,
     /** Change of the station's pressure over 3 h (hPa), once it has been heard for at least an hour. */
     val wxPressD3h: Double? = null,
+    /** Last status text (">...") and when. */
+    val status: String? = null, val statusMs: Long? = null,
+    /** Last telemetry report and what the station says its channels are. */
+    val telemetry: TelemetryReading? = null, val telemetryDefs: TelemetryDefs? = null,
     /** Object or item: the station that sends it. */
     val owner: String? = null,
     /** Mic-E status ("En route", "Emergency"...). */
@@ -38,6 +42,7 @@ data class Station(
 class StationTable(private val maxStations: Int = 500) {
     private val map = LinkedHashMap<String, Station>()
     private val trends = HashMap<String, WxCalc.PressureTrend>()
+    private val defs = HashMap<String, TelemetryDefs>()            // channel definitions, by the station they describe
 
     /**
      * Updates the table with a frame. Third-party frames (from APRS-IS through an iGate) count for the station inside;
@@ -52,6 +57,14 @@ class StationTable(private val maxStations: Int = 500) {
         val old = map[call]
         val path = f.path.joinToString(",") { it.toString() }
         val wx = pos?.wx ?: report?.wx
+        val status = p as? AprsPacket.Status
+        val tele = p as? AprsPacket.Telemetry
+        // PARM. / UNIT. / EQNS. / BITS.: a message, usually to itself, that names the telemetry channels of its addressee
+        (p as? AprsPacket.Message)?.takeIf { Telemetry.isDefinition(it.text) }?.let { m ->
+            val who = m.addressee.trim().uppercase()
+            if (defs.size > 200 && !defs.containsKey(who)) defs.clear()
+            Telemetry.merge(defs[who], m.text)?.let { d -> defs[who] = d; if (who != call) map[who]?.let { map[who] = it.copy(telemetryDefs = d) } }
+        }
         if (trends.size > 64 && !trends.containsKey(call)) trends.clear()          // bounded: start again rather than grow
         // Course and speed: those of the packet; if it carries none (APRS LoRa+ and CA2RXU trackers put the altitude in the compressed
         // "cs" bytes), from the previous position: at least 10 s and 40 m apart, at most 30 min; closer than that = not moving
@@ -80,6 +93,8 @@ class StationTable(private val maxStations: Int = 500) {
             altitudeM = pos?.altitudeM ?: old?.altitudeM,
             wx = wx ?: old?.wx, wxMs = if (wx != null) nowMs else old?.wxMs,
             wxPressD3h = wx?.pressureHpa?.let { hpa -> trends.getOrPut(call) { WxCalc.PressureTrend() }.also { it.add(nowMs / 1000, hpa) }.delta3h(nowMs / 1000) } ?: old?.wxPressD3h,
+            status = status?.text?.ifEmpty { null } ?: old?.status, statusMs = if (status != null) nowMs else old?.statusMs,
+            telemetry = tele?.reading?.copy(timeMs = nowMs) ?: old?.telemetry, telemetryDefs = defs[call] ?: old?.telemetryDefs,
             owner = if (pos?.objectName != null) f.source.text() else old?.owner,
             micE = pos?.micE ?: old?.micE.takeIf { pos == null },
         )
@@ -91,6 +106,57 @@ class StationTable(private val maxStations: Int = 500) {
     }
 
     fun get(call: String): Station? = map[call.uppercase()]
+
+    /**
+     * The table as text, to keep it between sessions: what cannot be worked out again (position, trail, counters, the last
+     * frame as TNC2, status, telemetry). The weather comes back from the last frame when it is read.
+     */
+    fun export(): String = Json.encode(mapOf("v" to 1, "stations" to map.values.map { s ->
+        val m = LinkedHashMap<String, Any?>()
+        m["c"] = s.call; m["la"] = s.lat; m["lo"] = s.lon; m["st"] = s.symbolTable?.toString(); m["sc"] = s.symbolCode?.toString()
+        m["cm"] = s.comment; m["h"] = s.lastHeardMs; m["p"] = s.lastPositionMs; m["n"] = s.packets; m["pa"] = s.lastPath
+        m["co"] = s.courseDeg; m["sp"] = s.speedKmh; m["al"] = s.altitudeM; m["md"] = s.motionDerived
+        m["f"] = s.lastFrame?.toTnc2(); m["tr"] = s.trail.map { listOf(it.lat, it.lon, it.timeMs) }
+        m["ow"] = s.owner; m["mi"] = s.micE; m["ss"] = s.status; m["sm"] = s.statusMs
+        s.telemetry?.let { t -> m["t"] = mapOf("s" to t.seq, "a" to t.analog, "d" to t.digital, "m" to t.timeMs) }
+        s.telemetryDefs?.let { d -> m["td"] = mapOf("p" to d.parm, "u" to d.unit, "e" to d.eqns, "b" to d.bits, "t" to d.title) }
+        m.filterValues { it != null }
+    }))
+
+    /** Reads what [export] wrote; stations last heard more than [maxAgeMs] ago are left out. Returns how many came back. */
+    fun restore(text: String, nowMs: Long, maxAgeMs: Long = 24 * 3600_000L): Int {
+        val root = try { Json.parseObject(text) } catch (_: Exception) { null } ?: return 0
+        var n = 0
+        for (m in root.objList("stations").sortedBy { it.long("h") ?: 0 }) {
+            val call = m.str("c") ?: continue
+            val heard = m.long("h") ?: continue
+            if (nowMs - heard > maxAgeMs || heard > nowMs + 600_000L || map.containsKey(call)) continue
+            val frame = m.str("f")?.let { Tnc2.parse(it) }
+            val parsed = frame?.let { Aprs.unwrapThirdParty(it) }?.let { Aprs.parse(it.infoText, it.destination.call) }
+            val wx = (parsed as? AprsPacket.Position)?.wx ?: (parsed as? AprsPacket.Weather)?.wx
+            val td = m.obj("td")?.let { d ->
+                TelemetryDefs(d.strList("p"), d.strList("u"), (d["e"] as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() } ?: emptyList(), d.str("b") ?: "", d.str("t") ?: "")
+            }
+            td?.let { defs[call] = it }
+            map[call] = Station(
+                call = call, lat = m.num("la"), lon = m.num("lo"), symbolTable = m.str("st")?.firstOrNull(), symbolCode = m.str("sc")?.firstOrNull(),
+                comment = m.str("cm") ?: "", lastHeardMs = heard, lastPositionMs = m.long("p"), packets = m.int("n") ?: 1, lastPath = m.str("pa") ?: "",
+                courseDeg = m.int("co"), speedKmh = m.num("sp"), altitudeM = m.num("al"), motionDerived = m.bool("md") ?: false,
+                lastFrame = frame,
+                trail = ((m["tr"] as? List<*>) ?: emptyList<Any?>()).mapNotNull { pt ->
+                    val l = (pt as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() } ?: return@mapNotNull null
+                    if (l.size == 3 && nowMs - l[2].toLong() <= Motion.TRAIL_MS) TrackPoint(l[0], l[1], l[2].toLong()) else null
+                },
+                wx = wx, wxMs = if (wx != null) heard else null,
+                status = m.str("ss"), statusMs = m.long("sm"),
+                telemetry = m.obj("t")?.let { t -> TelemetryReading(t.str("s") ?: "", (t["a"] as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() } ?: emptyList(), t.str("d") ?: "", t.long("m") ?: heard) },
+                telemetryDefs = td, owner = m.str("ow"), micE = m.str("mi"),
+            )
+            n++
+        }
+        while (map.size > maxStations) map.remove(map.keys.first())
+        return n
+    }
 
     /** Most recently heard first. */
     fun recent(): List<Station> = map.values.reversed()

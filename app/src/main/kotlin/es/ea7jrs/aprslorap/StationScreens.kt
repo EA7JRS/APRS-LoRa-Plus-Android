@@ -111,7 +111,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             AprsExtra.cleanComment(s.comment).ifEmpty { if (wxStation) "" else h?.comment ?: "" }, s.lastPath.ifEmpty { h?.path ?: "" }, s.packets,
             h?.rssi, h?.snr,
             s.courseDeg ?: heardCourse(h).takeIf { !wxStation && s.speedKmh == null }, s.speedKmh ?: heardSpeed(h).takeIf { !wxStation },
-            s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, h?.status,
+            s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, s.status ?: h?.status,
             wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE, wxPressD3h = s.wxPressD3h, motionDerived = s.motionDerived,
             lastFrame = s.lastFrame, trail = s.trail,
         ))

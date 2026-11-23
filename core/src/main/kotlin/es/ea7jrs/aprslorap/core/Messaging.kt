@@ -66,6 +66,28 @@ class MessageEngine(
     fun all(): List<ChatMessage> = messages.toList()
     fun conversation(peer: String): List<ChatMessage> = messages.filter { it.peer == peer.uppercase() }
 
+    /** The conversations as text, to keep them between sessions (the last [max] messages). */
+    fun export(max: Int = 500): String = Json.encode(mapOf("v" to 1, "no" to nextNo, "messages" to messages.takeLast(max).map { m ->
+        mapOf("p" to m.peer, "x" to m.text, "o" to m.outgoing, "n" to m.msgNo, "s" to m.status.name, "t" to m.timeMs, "a" to m.attempts).filterValues { it != null }
+    }))
+
+    /**
+     * Reads what [export] wrote, in front of what there is. A message that was still waiting for its acknowledgement comes
+     * back as not confirmed: its retries ended with the session. The numbering goes on where it was. Returns how many came back.
+     */
+    fun restore(text: String): Int {
+        val root = try { Json.parseObject(text) } catch (_: Exception) { null } ?: return 0
+        val back = root.objList("messages").mapNotNull { m ->
+            val peer = m.str("p") ?: return@mapNotNull null
+            val st = try { MessageStatus.valueOf(m.str("s") ?: "") } catch (_: Exception) { return@mapNotNull null }
+            ChatMessage(nextId++, peer, m.str("x") ?: "", m.bool("o") ?: false, m.str("n"), if (st == MessageStatus.PENDING) MessageStatus.FAILED else st,
+                m.long("t") ?: 0L, m.int("a") ?: 0)
+        }
+        messages.addAll(0, back)
+        root.int("no")?.takeIf { it in 1..99999 }?.let { nextNo = maxOf(nextNo, it) }
+        return back.size
+    }
+
     /** Queues a message and sends it right away. Returns the message or an error text. */
     fun sendMessage(to: String, text: String, wantAck: Boolean = true): Result<ChatMessage> {
         val peer = to.trim().uppercase()
