@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import es.ea7jrs.aprslorap.core.Aprs
 import es.ea7jrs.aprslorap.core.ChatMessage
+import es.ea7jrs.aprslorap.core.MessageEngine
 import es.ea7jrs.aprslorap.core.MessageStatus
 import kotlinx.coroutines.launch
 
@@ -61,7 +62,7 @@ private data class StatusLook(val icon: String, val iconColor: Color, val text: 
 private fun look(m: ChatMessage, isNew: Boolean): StatusLook = if (!m.outgoing) {
     if (isNew) StatusLook("RX", Alp.Amber, "NEW", Alp.Amber) else StatusLook("RX", Alp.Muted, "read", Alp.Muted)
 } else when (m.status) {
-    MessageStatus.PENDING -> StatusLook("TX", Alp.Cyan, "sending · try ${m.attempts} of 3", Alp.Cyan)
+    MessageStatus.PENDING -> StatusLook("TX", Alp.Cyan, "sending · try ${m.attempts} of ${MessageEngine.LORA_WAITS.size}", Alp.Cyan)
     MessageStatus.ACKED -> StatusLook("TX", Alp.Green, if (m.msgNo == null) "sent (no ACK asked)" else "✓ ACK received", Alp.Green)
     MessageStatus.FAILED -> StatusLook("TX", Alp.RedSoft, "✗ no ACK (stopped)", Alp.RedSoft)
     MessageStatus.REJECTED -> StatusLook("TX", Alp.RedSoft, "✗ rejected", Alp.RedSoft)
@@ -131,8 +132,16 @@ fun MessageListScreen(nav: Navigator) {
             onDismissRequest = { newTo = null },
             title = { Text("New message") },
             text = {
-                OutlinedTextField(to, { newTo = it.uppercase().filter { c -> c.isLetterOrDigit() || c == '-' }.take(9) }, label = { Text("To (callsign-SSID)") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters))
+                Column {
+                    OutlinedTextField(to, { newTo = it.uppercase().filter { c -> c.isLetterOrDigit() || c == '-' }.take(9) }, label = { Text("To (callsign-SSID)") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters))
+                    // conventions, not rules: a group is read by everybody and never confirmed; a -12 is a one-way tracker
+                    val C = es.ea7jrs.aprslorap.core.AprsConventions
+                    when {
+                        C.isGroupAddressee(to) -> Text("${C.groupName(to)}: everybody reads it and nobody confirms it.", fontSize = 12.sp, color = Alp.SubText)
+                        C.oneWay(to) -> Text("-12 is usually a one-way tracker: it will probably not read a message.", fontSize = 12.sp, color = Alp.Amber)
+                    }
+                }
             },
             confirmButton = { TextButton(enabled = to.length >= 3, onClick = { newTo = null; nav.go("THREAD:$to") }) { Text("Write") } },
             dismissButton = { TextButton(onClick = { newTo = null }) { Text("Cancel") } },

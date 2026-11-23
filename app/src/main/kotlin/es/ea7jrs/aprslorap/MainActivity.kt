@@ -225,6 +225,13 @@ fun ConnectTab() {
             fontSize = 12.sp,
         )
         OutlinedTextField(path, { path = it.uppercase() }, label = { Text("Path (WIDE1-1,WIDE2-1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        es.ea7jrs.aprslorap.core.AprsConventions.pathAdvice(path).let { (level, text) ->
+            Text(text, fontSize = 12.sp, color = when (level) {
+                es.ea7jrs.aprslorap.core.AprsConventions.PathLevel.BAD -> Alp.RedSoft
+                es.ea7jrs.aprslorap.core.AprsConventions.PathLevel.NOTE -> Alp.Amber
+                else -> Alp.SubText
+            })
+        }
 
         Text("Tracker (Bluetooth LE, KISS)", fontWeight = FontWeight.Bold)
         Text(if (device.isEmpty()) "No tracker chosen" else "Chosen: " + (if (deviceName.isNotEmpty()) "$deviceName  ($device)" else device))

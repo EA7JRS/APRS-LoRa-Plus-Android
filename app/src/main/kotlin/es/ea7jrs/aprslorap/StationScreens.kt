@@ -302,6 +302,7 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                         InfoRow("SPEED", if (s.speedKmh == null) "—" else est + Fmt.speed(s.speedKmh))
                         InfoRow("COURSE", s.courseDeg?.takeIf { (s.speedKmh ?: 0.0) >= 1.0 }?.let { est + Fmt.deg(it.toDouble()) } ?: "—")
                     }
+                    es.ea7jrs.aprslorap.core.AprsConventions.ssidMeaning(s.call).takeIf { it.isNotEmpty() && s.owner == null }?.let { InfoRow("SSID", it) }
                     InfoRow("ALTITUDE", s.altitudeM?.let { String.format(Locale.US, "%.0f m", it) } ?: "—")
                     InfoRow("LAT", s.lat?.let { Fmt.latLon(it, true) } ?: "—")
                     InfoRow("LON", s.lon?.let { Fmt.latLon(it, false) } ?: "—")

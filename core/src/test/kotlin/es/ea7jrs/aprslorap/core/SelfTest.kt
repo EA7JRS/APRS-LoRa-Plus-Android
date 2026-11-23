@@ -95,6 +95,40 @@ private fun testAprs() {
 }
 
 private fun testMessaging() {
+    // bulletins and groups, late retries, SSID meanings and path advice (2026-11-23)
+    run {
+        var tg = 0L
+        val out = ArrayList<String>()
+        val g = MessageEngine("EA7JRS-7", { out.add(it) }, { tg })
+        val b = g.onMessage("EA7URC-10", Aprs.parse(":BLN1     :Net tonight 2100z{7") as AprsPacket.Message)!!
+        eq(listOf(b.peer, b.text), listOf("BLN1", "EA7URC-10> Net tonight 2100z"), "bulletin shown under its addressee, with who sent it")
+        check(out.isEmpty(), "a bulletin is never acknowledged, even with a number")
+        eq(g.onMessage("EA7URC-10", Aprs.parse(":BLN1     :Net tonight 2100z") as AprsPacket.Message), null, "the same bulletin again: once")
+        tg += 31 * 60_000
+        check(g.onMessage("EA7URC-10", Aprs.parse(":BLN1     :Net tonight 2100z") as AprsPacket.Message) != null, "the same bulletin after 30 min: shown again")
+        check(g.onMessage("N0CALL", Aprs.parse(":ALL      :QRV 433.775") as AprsPacket.Message)?.peer == "ALL", "message to ALL")
+        check(g.onMessage("N0CALL", Aprs.parse(":NWS-WARN :Tornado warning") as AprsPacket.Message)?.peer == "NWS-WARN", "NWS message")
+        eq(g.onMessage("EA7JRS-7", Aprs.parse(":BLN2     :mine") as AprsPacket.Message), null, "our own bulletin heard back is not shown")
+        eq(g.onMessage("N0CALL", Aprs.parse(":EA7ZZZ   :private") as AprsPacket.Message), null, "a message for somebody else is still ignored")
+        val sb = g.sendMessage("BLN3", "Test").getOrThrow()
+        eq(listOf(out.last(), sb.status), listOf<Any>(":BLN3     :Test", MessageStatus.ACKED), "sending a bulletin: no number, no retries")
+        var tl = 0L
+        val outL = ArrayList<String>()
+        val l = MessageEngine("EA7JRS-7", { outL.add(it) }, { tl }, MessageEngine.LORA_WAITS)
+        l.sendMessage("N0CALL", "x")
+        for (s in listOf(30, 90, 210, 510)) { tl = s * 1000L; l.tick() }
+        eq(listOf(outL.size, l.tries, l.all()[0].status), listOf<Any>(5, 5, MessageStatus.PENDING), "LoRa schedule: 5 sends, the last at 8.5 min")
+        tl = 1410_000L; l.tick()
+        eq(l.all()[0].status, MessageStatus.FAILED, "LoRa schedule: given up at 23.5 min")
+    }
+    val AC = AprsConventions
+    check(AC.isGroupAddressee("BLN0") && AC.isGroupAddressee("blnWX") && AC.isGroupAddressee("SKYWARN") && AC.isGroupAddressee("CQ") && !AC.isGroupAddressee("EA7JRS") && !AC.isGroupAddressee("CQ1AA"), "group addressees")
+    eq(listOf(AC.groupName("BLN1"), AC.groupName("BLN1WX"), AC.groupName("BLNA"), AC.groupName("NWS-WARN"), AC.groupName("QST")), listOf("Bulletin", "Group bulletin WX", "Announcement", "Weather service", "To everybody"), "group names")
+    eq(listOf(AC.ssidMeaning("EA7JRS"), AC.ssidMeaning("EA7JRS-9"), AC.ssidMeaning("EA7JRS-13"), AC.ssidMeaning("bad call!")), listOf("main fixed station", "main mobile", "weather station", ""), "SSID meanings")
+    check(AC.oneWay("EA7JRS-12") && !AC.oneWay("EA7JRS-9"), "-12 is a one-way tracker")
+    eq(listOf("", "WIDE1-1", "WIDE1-1,WIDE2-1", "WIDE2-2", "EA7URC-3,WIDE2-1").map { AC.pathAdvice(it).first }, List(5) { AprsConventions.PathLevel.OK }, "paths in use")
+    eq(listOf("WIDE1-1,WIDE2-2", "WIDE2-1,WIDE1-1").map { AC.pathAdvice(it).first }, List(2) { AprsConventions.PathLevel.NOTE }, "paths worth a note")
+    eq(listOf("RELAY,WIDE", "WIDE3-3", "WIDE2-3", "WIDE7-7", "TRACE2-2", "WIDE2", "WIDE1-1,WIDE2-2,WIDE2-1", "HELLO WORLD").map { AC.pathAdvice(it).first }, List(8) { AprsConventions.PathLevel.BAD }, "paths not to use")
     var t = 1_000_000L
     val sent = ArrayList<String>()
     val e = MessageEngine("EA7JRS-7", { sent.add(it) }, { t })

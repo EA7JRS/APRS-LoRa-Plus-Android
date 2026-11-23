@@ -344,7 +344,7 @@ class Notifier(private val ctx: Context) {
         val style = NotificationCompat.MessagingStyle(me)
         val all = AppState.messages.value.filter { it.peer == peer }
         for (m in msgs) {
-            val text = if (m.outgoing) listOfNotNull(m.text, CarText.status(m)).joinToString(" · ")
+            val text = if (m.outgoing) listOfNotNull(m.text, CarText.status(m, es.ea7jrs.aprslorap.core.MessageEngine.LORA_WAITS.size)).joinToString(" · ")
                 else CarText.spoken(m.text, CarText.answers((all + msgs).distinctBy { it.id }.sortedBy { it.timeMs }, m))
             style.addMessage(text, m.timeMs, if (m.outgoing) me else other)
         }

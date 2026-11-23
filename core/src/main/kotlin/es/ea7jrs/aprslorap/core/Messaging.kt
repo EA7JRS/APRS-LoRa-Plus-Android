@@ -33,6 +33,13 @@ class MessageEngine(
 ) {
     companion object {
         /**
+         * Waits for a LoRa channel: the usual 30 s / 60 s / 120 s and two late tries at 5 and 15 min for a station that was out of
+         * reach for a while (5 sends in all, the last one 8.5 min after the first; given up at 23.5 min). The schedule VHF clients
+         * use (every minute for 5 min, then every 5 min for half an hour) would keep a slow LoRa channel busy.
+         */
+        val LORA_WAITS: List<Long> = listOf(30_000L, 60_000L, 120_000L, 300_000L, 900_000L)
+
+        /**
          * True when the app and the tracker use the same callsign and SSID ("EA7JRS" and "EA7JRS-0" are the same).
          * The firmware acknowledges by itself the messages addressed to its own callsign, so the app must not.
          * An empty or invalid tracker callsign means "not known": the app sends the ACKs.
@@ -52,6 +59,9 @@ class MessageEngine(
     private var nextId = 1L
     private var nextNo = 1
     private val seenWindowMs = 10 * 60 * 1000L
+    private val groupWindowMs = 30 * 60 * 1000L
+    /** Sends in all before a message is given up (first one included). */
+    val tries: Int get() = retryWaitsMs.size
 
     fun all(): List<ChatMessage> = messages.toList()
     fun conversation(peer: String): List<ChatMessage> = messages.filter { it.peer == peer.uppercase() }
@@ -61,6 +71,7 @@ class MessageEngine(
         val peer = to.trim().uppercase()
         if (Ax25Address.parse(peer) == null) return Result.failure(IllegalArgumentException("invalid callsign"))
         Aprs.messageTextError(text)?.let { return Result.failure(IllegalArgumentException(it)) }
+        val wantAck = wantAck && !AprsConventions.isGroupAddressee(peer)          // a bulletin or a group is never acknowledged
         val no = if (wantAck) (nextNo++).also { if (nextNo > 99999) nextNo = 1 }.toString() else null
         val msg = ChatMessage(nextId++, peer, text, true, no, if (wantAck) MessageStatus.PENDING else MessageStatus.ACKED, now(), 1)
         messages.add(msg)
@@ -71,6 +82,21 @@ class MessageEngine(
 
     /** Processes a received message. Returns the new message to show, or null (ack, rej, duplicate or not for me). */
     fun onMessage(from: String, m: AprsPacket.Message): ChatMessage? {
+        if (m.isGroup && !m.isAck && !m.isRej) {
+            // bulletins, announcements and group calls are for everybody: one conversation per addressee, "FROM> text", never an
+            // ack; they are repeated on the air for hours, so the same line counts once every 30 minutes
+            val sender = from.uppercase()
+            if (sender.equals(myCall, ignoreCase = true)) return null
+            val group = m.addressee.trim().uppercase()
+            val key = "G/$group/$sender/${m.text}"
+            val t = now()
+            seen.entries.removeIf { t - it.value > (if (it.key.startsWith("G/")) groupWindowMs else seenWindowMs) }
+            if (seen.containsKey(key)) return null
+            seen[key] = t
+            val msg = ChatMessage(nextId++, group, "$sender> ${m.text}", false, null, MessageStatus.RECEIVED, t)
+            messages.add(msg)
+            return msg
+        }
         if (!m.addressee.equals(myCall, ignoreCase = true)) return null
         val peer = from.uppercase()
         if (m.isAck || m.isRej) {
@@ -85,7 +111,7 @@ class MessageEngine(
         if (no != null) {
             val key = "$peer/$no"
             val t = now()
-            seen.entries.removeIf { t - it.value > seenWindowMs }
+            seen.entries.removeIf { t - it.value > (if (it.key.startsWith("G/")) groupWindowMs else seenWindowMs) }
             if (seen.containsKey(key)) return null
             seen[key] = t
         }

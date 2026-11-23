@@ -82,7 +82,7 @@ class Controller(
     private val table = StationTable()
     private val myCall = settings.callsign
     private val trackerAcks = MessageEngine.trackerSendsAcks(myCall, settings.trackerCallsign)
-    private val engine = MessageEngine(myCall, { info -> transmitInfo(info) }, { System.currentTimeMillis() }, sendAcks = !trackerAcks)
+    private val engine = MessageEngine(myCall, { info -> transmitInfo(info) }, { System.currentTimeMillis() }, MessageEngine.LORA_WAITS, sendAcks = !trackerAcks)
     private val iGate = IGate(myCall, softwareVersion = BuildConfig.VERSION_NAME)
     private val rxMeta = RxMetaMatcher()          // "rf" events of the tracker -> #is2-meta of the frame they belong to
     private val txQueue = ArrayDeque<ByteArray>()

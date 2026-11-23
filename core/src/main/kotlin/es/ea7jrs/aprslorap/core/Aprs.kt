@@ -33,6 +33,8 @@ sealed class AprsPacket {
         val isAck: Boolean, val isRej: Boolean,
     ) : AprsPacket() {
         val isBulletin: Boolean get() = addressee.startsWith("BLN") || addressee.startsWith("NWS")
+        /** Addressed to everybody (bulletin, announcement, NWS / SKYWARN, ALL / QST / CQ): shown to all, never acknowledged. */
+        val isGroup: Boolean get() = AprsConventions.isGroupAddressee(addressee)
     }
 
     data class Other(val raw: String) : AprsPacket()
