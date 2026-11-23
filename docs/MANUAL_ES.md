@@ -160,3 +160,15 @@ MAPRS o un tracker con el perfil náutico AIS.
 ## 13. Android Auto
 
 Los mensajes y las alertas llegan como notificaciones de conversación: el coche los lee en voz alta y contestas con la voz.
+
+## 14. Novedades del 23-11-2026
+
+- **Ficha de estación:** tarjeta *LAST PACKET* con la línea tal como llegó (en colores), cada campo explicado y el recorrido (emisor, digipeaters, iGate, tu tracker con dBm y SNR); tarjeta *TELEMETRY* (informes `T#` con los nombres, unidades y ecuaciones que la estación anuncia; bits como luces) y el estado `>` con su antigüedad. Velocidad y rumbo con «~» cuando se calculan de dos posiciones; las estaciones meteorológicas no muestran velocidad ni rumbo (ese campo es el viento).
+- **Mapa:** huella de las estaciones que se mueven (últimas 3 h), trazado del recorrido de la trama de la estación elegida (estación → digipeater o iGate → tu tracker) y los coches en movimiento dibujados girados al rumbo.
+- **Entre sesiones:** estaciones (con huella), y conversaciones vuelven al abrir la app; las estaciones de más de 24 h no. Un mensaje que esperaba confirmación vuelve como no confirmado.
+- **Mensajes:** boletines y mensajes de grupo (BLN, NWS, ALL, CQ…) se muestran y nunca se confirman; 5 intentos (30 s, 60 s, 2 min, 5 min, 15 min).
+- **Baliza de posición desde el móvil** (*Connect > Position beacons from the phone*): con el GPS del móvil y tu indicativo, por el tracker; SmartBeaconing (30 min parado, 90 s a 100 km/h, giros) o intervalo fijo; símbolo y comentario. Solo con indicativo validado y el tracker conectado. Si el indicativo y el SSID son los del tracker, usa otro SSID: el tracker ya baliza con ese.
+- **Config:** *Configuration check* con las mismas reglas que la WebUI del tracker (NOCALL, indicativos, ruta, frecuencias del plan de la IARU, contraseña del WiFi AP, PIN de control, enlaces KISS), con correcciones seguras; al guardar con errores pregunta antes.
+- **Remote:** ◀ ▶ y *Back* hacen lo mismo que el botón del equipo (necesita el firmware 5.4.8 rehecho o posterior).
+- **Official alerts:** Hp30 de GFZ (cada media hora) en la estimación de HF y en los avisos de tormenta geomagnética, Kp previsto, índice A y Dst.
+- **NAVTEX y Wefax:** mensajes de un receptor Navtex de la red (TCP / UDP), sin borrado a mano (OMI MSC.508(105)); cartas, horario con fiabilidad y predicción de un circuito de HF del programa Wefax.

@@ -23,6 +23,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -261,6 +263,38 @@ private fun ConfigNode(name: String, path: List<Any>, value: Any?, epoch: Int, d
     }
 }
 
+/** Result of the configuration check: counters, what was found with its safe fix, and what passed. */
+@Composable
+private fun ConfigCheckPanel(res: es.ea7jrs.aprslorap.core.ConfigCheck.Result, fixed: Map<String, String>, showPassed: Boolean, togglePassed: () -> Unit,
+                             applyFixes: (List<es.ea7jrs.aprslorap.core.ConfigCheck.Finding>) -> Unit) {
+    val sev = es.ea7jrs.aprslorap.core.ConfigCheck.Severity
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Configuration check", fontWeight = FontWeight.Bold)
+            Text("${res.errors} errors", fontSize = 13.sp, color = if (res.errors > 0) Alp.RedSoft else Alp.Muted)
+            Text("${res.warnings} warnings", fontSize = 13.sp, color = if (res.warnings > 0) Alp.Amber else Alp.Muted)
+            Text("${res.passed.size} passed", fontSize = 13.sp, color = Alp.Green)
+        }
+        val fixable = res.findings.filter { it.fix != null }
+        if (fixable.size > 1) OutlinedButton(onClick = { applyFixes(fixable) }) { Text("Apply ${fixable.size} safe fixes") }
+        if (res.findings.isEmpty()) Text("Nothing to fix in what the check looks at.", fontSize = 12.sp, color = Alp.SubText)
+        for (f in res.findings) {
+            val color = when (f.severity) { sev.ERROR -> Alp.RedSoft; sev.WARN -> Alp.Amber; else -> Alp.Cyan }
+            Column(Modifier.fillMaxWidth().border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(8.dp)) {
+                Text((when (f.severity) { sev.ERROR -> "ERROR"; sev.WARN -> "WARNING"; else -> "NOTE" }) + " · " + f.where, fontSize = 11.sp, color = color)
+                Text(f.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(f.why, fontSize = 12.sp, color = Alp.SubText)
+                f.fix?.let { fix -> TextButton(onClick = { applyFixes(listOf(f)) }) { Text(fix.label) } }
+            }
+        }
+        // what a fix put: a new password or PIN has to be read before it is stored
+        for ((id, note) in fixed) if (res.findings.none { it.id == id }) Text("Fixed · $note", fontSize = 12.sp, color = Alp.Green)
+        TextButton(onClick = togglePassed) { Text(if (showPassed) "Hide passed checks" else "Show passed checks") }
+        if (showPassed) for (p in res.passed) Text("✓ $p", fontSize = 12.sp, color = Alp.SubText)
+        Text("Same rules as Config check in the tracker's WebUI. Errors do not stop the store here, but it asks first.", fontSize = 11.sp, color = Alp.Muted)
+    }
+}
+
 /** Every setting of the tracker (the same file the web interface edits): read it, change it, store it (the tracker restarts). */
 @Composable
 fun ConfigTab() {
@@ -298,6 +332,12 @@ fun ConfigTab() {
         } catch (e: Exception) { AppState.configMessage.value = "File not loaded: ${e.message}" }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    val cfgMap = root as? Map<String, Any?>
+    val cfgCheck = remember(root) { cfgMap?.let { try { es.ea7jrs.aprslorap.core.ConfigCheck.check(it) } catch (_: Exception) { null } } }
+    var fixedNotes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var showPassed by remember { mutableStateOf(false) }
+
     // a new file from the tracker replaces what is being edited
     val loaded = remember(text) { text?.let { try { Json.parse(it) } catch (e: Exception) { null } } }
     DisposableEffect(loaded) {
@@ -328,6 +368,26 @@ fun ConfigTab() {
         HorizontalDivider()
         val r = root
         if (text != null && r !is Map<*, *>) Text("The file could not be read as JSON.")
+        // configuration check: the same rules as the tracker's WebUI, on what is on screen
+        cfgCheck?.let { res ->
+            ConfigCheckPanel(res, fixedNotes, showPassed, { showPassed = !showPassed }) { fixes ->
+                var m = cfgMap ?: return@ConfigCheckPanel
+                val notes = HashMap(fixedNotes)
+                for (f in fixes) {
+                    val fix = f.fix ?: continue
+                    val (next, value) = es.ea7jrs.aprslorap.core.ConfigCheck.apply(m, fix)
+                    m = next
+                    notes[f.id] = when (fix.random) {
+                        "password" -> "New WiFi AP password: $value. Write it down before storing."
+                        "pin" -> "New control PIN: $value. After storing: Connect > Forget pairing, and pair again with it."
+                        else -> fix.label.replace(Regex("^Set |^Use "), "Set to ") + "."
+                    }
+                }
+                fixedNotes = notes
+                root = m; dirty = true; epoch++
+            }
+            HorizontalDivider()
+        }
         if (r is Map<*, *>) {
             for ((k, v) in r) {
                 ConfigNode(k.toString(), listOf(k.toString()), v, epoch, 0) { path, value ->
@@ -342,9 +402,10 @@ fun ConfigTab() {
     if (askSave) {
         AlertDialog(
             onDismissRequest = { askSave = false },
-            title = { Text("Store the configuration?") },
-            text = { Text("The tracker keeps these settings and restarts; the link comes back by itself.") },
-            confirmButton = { TextButton(onClick = { c?.configWrite(Json.encode(root)); askSave = false; dirty = false }) { Text("Store") } },
+            title = { Text(if ((cfgCheck?.errors ?: 0) > 0) "The check found ${cfgCheck?.errors} error" + (if (cfgCheck?.errors == 1) "" else "s") else "Store the configuration?") },
+            text = { Text((if ((cfgCheck?.errors ?: 0) > 0) "Fix what the configuration check lists in red first, or store it as it is. " else "") +
+                "The tracker keeps these settings and restarts; the link comes back by itself.") },
+            confirmButton = { TextButton(onClick = { c?.configWrite(Json.encode(root)); askSave = false; dirty = false }) { Text(if ((cfgCheck?.errors ?: 0) > 0) "Store anyway" else "Store") } },
             dismissButton = { TextButton(onClick = { askSave = false }) { Text("Cancel") } },
         )
     }

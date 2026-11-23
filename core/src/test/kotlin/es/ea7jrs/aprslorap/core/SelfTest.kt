@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3481,6 +3481,54 @@ private fun testEphem() {
     near(Ephem.normalGravity(0.0, 0.0), 9.780325, 1e-6, "gravity at the equator"); near(Ephem.normalGravity(90.0, 0.0), 9.832185, 1e-6, "gravity at the pole")
     near(Ephem.earthRadiusAtM(0.0), 6378137.0, 0.5, "equatorial radius"); near(Ephem.earthRadiusAtM(90.0), 6356752.3, 0.5, "polar radius")
     eq(Ephem.jdToMs(Celnav.julianDay(1794441600000L)), 1794441600000L, "julian day and back")
+}
+
+// Configuration check: the same cases as tools/test_cfg_check.js of the tracker
+private fun testConfigCheck() {
+    val CC = ConfigCheck
+    fun good(): Map<String, Any?> = Json.parseObject("""{"beacons":[{"callsign":"EA7XXX-7"},{"callsign":"EA7XXX-9"}],
+        "lora":[{"frequency":433775000,"spreadingFactor":12,"signalBandwidth":125000,"codingRate4":5,"ais":false,"iaruRegion":1},
+                {"frequency":433775000,"spreadingFactor":9,"signalBandwidth":125000,"codingRate4":5,"ais":true,"iaruRegion":1}],
+        "other":{"path":"WIDE1-1"},"wifiAP":{"password":"k3Yp-rT9xQ2m"},
+        "bluetooth":{"active":true,"useBLE":true,"useKISS":false,"controlPin":482913},
+        "kissNet":{"enabled":true,"allowed":"192.168.1.","tcpPort":8001}}""")!!
+    @Suppress("UNCHECKED_CAST")
+    fun with(path: List<Any>, v: Any?) = JsonEdit.set(good(), path, v) as Map<String, Any?>
+    fun ids(m: Map<String, Any?>) = CC.check(m).findings.map { it.id + ":" + it.severity.name.lowercase() }.sorted()
+    val clean = CC.check(good())
+    eq(clean.findings.size to clean.passed.size, 0 to 6, "config check: a clean configuration passes everything")
+    @Suppress("UNCHECKED_CAST")
+    var v = JsonEdit.set(with(listOf("beacons", 0, "callsign"), "NOCALL-7"), listOf("wifiAP", "password"), "1234567890") as Map<String, Any?>
+    eq(ids(v), listOf("ap:error", "nocall:error"), "config check: factory defaults are errors")
+    @Suppress("UNCHECKED_CAST")
+    v = JsonEdit.set(v, listOf("beacons", 1, "callsign"), "NOCALL-5") as Map<String, Any?>
+    eq(CC.check(v).findings.first { it.id == "nocall" }.where, "beacons · 1, 2", "config check: which profiles are NOCALL")
+    for (c in listOf("EA7XXX-16", "EAXXX", "1234", "EA7-XXX", "EA7XXXXX-1")) eq(ids(with(listOf("beacons", 1, "callsign"), c)), listOf("call1:error"), "config check: $c is not a callsign")
+    for (c in listOf("EA7XXX", "EA7XXX-15", "M0ABC-0", "4X1AB")) eq(ids(with(listOf("beacons", 1, "callsign"), c)), emptyList<String>(), "config check: $c is a callsign")
+    eq(CC.pathHops(listOf("WIDE1-1", "WIDE2-2")), 3 to 2, "config check: hops of a path")
+    val pf = CC.check(with(listOf("other", "path"), "WIDE1-1,WIDE2-2")).findings[0]
+    eq(pf.severity.name to pf.fix?.value?.toString(), "WARN" to "WIDE1-1", "config check: a long path is a warning with a fix")
+    eq(ids(with(listOf("other", "path"), "WIDE1-1,WIDE2-1")), emptyList<String>(), "config check: two hops are fine")
+    eq(ids(with(listOf("other", "path"), "")), emptyList<String>(), "config check: no path is fine")
+    eq(ids(with(listOf("other", "path"), "WIDE3-3")), listOf("path:warn"), "config check: WIDE3-3")
+    eq(ids(with(listOf("other", "path"), "WIDE2-3")), listOf("path:error"), "config check: N greater than n")
+    eq(ids(with(listOf("other", "path"), "WIDE1-1,TCP*")), listOf("path:error"), "config check: not a path element")
+    eq(ids(with(listOf("lora", 0, "frequency"), 433900000)), listOf("freq0:warn"), "config check: not a Region 1 channel")
+    eq(ids(with(listOf("lora", 0, "frequency"), 868000000)), listOf("freq0:warn"), "config check: outside the band")
+    eq(CC.check(with(listOf("lora", 0, "frequency"), 868000000)).findings[0].fix, null, "config check: no fix for a frequency out of the band")
+    eq(ids(with(listOf("lora", 0, "spreadingFactor"), 9)), listOf("std0:info"), "config check: other LoRa settings on 433.775")
+    eq(ids(with(listOf("lora", 1, "frequency"), 161975000)), emptyList<String>(), "config check: the AIS profile is not checked")
+    eq(ids(with(listOf("wifiAP", "password"), "abc")), listOf("ap:error"), "config check: short AP password")
+    eq(ids(with(listOf("wifiAP", "password"), "")), listOf("ap:warn"), "config check: open AP")
+    eq(ids(with(listOf("bluetooth", "controlPin"), 123456)), listOf("pin:warn"), "config check: factory PIN")
+    eq(ids(with(listOf("bluetooth", "useKISS"), true)), listOf("kiss:warn"), "config check: two KISS links")
+    eq(ids(with(listOf("kissNet", "allowed"), " ")), listOf("kissopen:warn"), "config check: KISS over WiFi open to all")
+    eq(CC.check(mapOf("sa868" to mapOf("x" to 1))).let { it.findings.size to it.passed.size }, 0 to 0, "config check: groups that are not there are not checked")
+    val fixed = CC.apply(with(listOf("bluetooth", "controlPin"), 123456), CC.check(with(listOf("bluetooth", "controlPin"), 123456)).findings[0].fix!!, java.util.Random(1))
+    check(fixed.second.length == 6 && fixed.second != "123456" && fixed.first.obj("bluetooth")?.get("controlPin") is Long && ids(fixed.first).isEmpty(), "config check: a new PIN keeps the number type and passes")
+    val pw = CC.apply(with(listOf("wifiAP", "password"), ""), CC.check(with(listOf("wifiAP", "password"), "")).findings[0].fix!!, java.util.Random(2))
+    check(pw.second.length == 12 && pw.first.obj("wifiAP")?.str("password") == pw.second && ids(pw.first).isEmpty(), "config check: a new AP password passes")
+    eq(CC.apply(with(listOf("lora", 0, "frequency"), 433900000), CC.check(with(listOf("lora", 0, "frequency"), 433900000)).findings[0].fix!!).first.objList("lora")[0].long("frequency"), 433775000L, "config check: frequency fix")
 }
 
 private fun testWefax() {

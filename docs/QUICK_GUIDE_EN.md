@@ -25,3 +25,5 @@ Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.4.8**. Full ma
 - **Theme and units**: ☰ menu.
 - If you change the tracker PIN: *Connect* > *Forget pairing* and link again.
 - The tracker takes one control device at a time (app, Display or plotter).
+
+**New on 2026-11-23** (packet explained, telemetry, trails on the map, beacons from the phone, Configuration check): section 14 of the [manual](USER_MANUAL_EN.md).

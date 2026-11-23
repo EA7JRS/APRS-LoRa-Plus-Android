@@ -157,3 +157,15 @@ transponder or a tracker with the nautical AIS profile.
 ## 13. Android Auto
 
 Messages and alerts come as conversation notifications: the car reads them aloud and you answer by voice.
+
+## 14. New on 2026-11-23
+
+- **Station page:** a *LAST PACKET* card with the line as it came (in colour), every field explained and the way it travelled (sender, digipeaters, iGate, your tracker with dBm and SNR); a *TELEMETRY* card (`T#` reports with the names, units and equations the station announces; bits as lamps) and the `>` status with its age. Speed and course carry "~" when worked out from two positions; weather stations show no speed or course (that field is the wind).
+- **Map:** trail of the stations that move (last 3 h), the way of the last frame of the chosen station (station → digipeater or iGate → your tracker) and moving cars drawn turned to their course.
+- **Between sessions:** stations (with their trails) and conversations come back when the app opens; stations older than 24 h do not. A message that was waiting for its acknowledgement comes back as not confirmed.
+- **Messages:** bulletins and group messages (BLN, NWS, ALL, CQ…) are shown and never acknowledged; 5 tries (30 s, 60 s, 2 min, 5 min, 15 min).
+- **Position beacons from the phone** (*Connect > Position beacons from the phone*): the phone's GPS and your callsign, through the tracker; SmartBeaconing (30 min when still, 90 s at 100 km/h, turns) or a fixed interval; symbol and comment. Only with a validated callsign and the tracker connected. If the callsign and SSID are the tracker's, use another SSID: the tracker already beacons with it.
+- **Config:** a *Configuration check* with the same rules as the tracker's WebUI (NOCALL, callsigns, path, IARU band plan frequencies, WiFi AP password, control PIN, KISS links), with safe fixes; storing with errors asks first.
+- **Remote:** ◀ ▶ and *Back* do what the device button does (needs the rebuilt 5.4.8 firmware or later).
+- **Official alerts:** GFZ Hp30 (every half hour) in the HF estimate and the geomagnetic storm alerts, Kp forecast, A index and Dst.
+- **NAVTEX and Wefax:** messages from a Navtex receiver on the network (TCP / UDP), no manual deletion (IMO MSC.508(105)); charts, schedule with reliability and an HF circuit prediction from the Wefax program.
