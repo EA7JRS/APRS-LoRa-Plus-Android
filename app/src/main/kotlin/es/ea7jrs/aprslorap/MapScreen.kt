@@ -65,6 +65,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.TilesOverlay
 import java.io.File
 
@@ -487,6 +488,40 @@ fun MapScreen(nav: Navigator) {
                 holder.dynamic.add(Polygon(map).apply {
                     points = pts
                     fillPaint.color = 0x2EFFB347; outlinePaint.color = 0xCCFFB347.toInt(); outlinePaint.strokeWidth = 3f
+                    setOnClickListener { _, _, _ -> false }
+                })
+            }
+            // trail of the stations that move: where each one has been in the last 3 h; a dot at every position heard for the chosen one
+            val dm = ctx.resources.displayMetrics.density
+            for (s in shown) if (s.trail.size >= 2) {
+                val sel = s.call == focus
+                holder.dynamic.add(Polyline(map).apply {
+                    setPoints(s.trail.map { GeoPoint(it.lat, it.lon) })
+                    outlinePaint.color = if (sel) 0xF028B5E1.toInt() else 0xA028B5E1.toInt(); outlinePaint.strokeWidth = (if (sel) 3.5f else 2.5f) * dm
+                    outlinePaint.strokeCap = Paint.Cap.ROUND; outlinePaint.strokeJoin = Paint.Join.ROUND
+                    setOnClickListener { _, _, _ -> false }
+                })
+                if (sel) for (pt in s.trail.dropLast(1)) holder.dynamic.add(Polygon(map).apply {
+                    points = Polygon.pointsAsCircle(GeoPoint(pt.lat, pt.lon), 1.0)
+                    outlinePaint.color = 0xFF28B5E1.toInt(); outlinePaint.strokeWidth = 5f * dm; outlinePaint.strokeCap = Paint.Cap.ROUND
+                    setOnClickListener { _, _, _ -> false }
+                })
+            }
+            // the way of the last frame of the chosen station, as aprs.fi draws it: station -> each digipeater or iGate whose
+            // position we know -> our receiver
+            shown.firstOrNull { it.call == focus }?.let { st ->
+                val f = st.lastFrame ?: return@let
+                val pts = ArrayList<GeoPoint>()
+                pts.add(GeoPoint(st.lat!!, st.lon!!))
+                for (hop in es.ea7jrs.aprslorap.core.PacketExplain.hops(f).drop(1)) {
+                    val v = all.firstOrNull { it.call == hop.who && it.lat != null && it.lon != null } ?: continue
+                    pts.add(GeoPoint(v.lat!!, v.lon!!))
+                }
+                if (center != null) pts.add(center)
+                if (pts.size >= 2) holder.dynamic.add(Polyline(map).apply {
+                    setPoints(pts)
+                    outlinePaint.color = 0xE6FFB347.toInt(); outlinePaint.strokeWidth = 2.5f * dm
+                    outlinePaint.pathEffect = DashPathEffect(floatArrayOf(10f * dm, 7f * dm), 0f)
                     setOnClickListener { _, _, _ -> false }
                 })
             }
