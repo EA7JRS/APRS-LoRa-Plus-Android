@@ -721,4 +721,29 @@ class Settings(ctx: Context) {
     var navtexAlarm: Boolean
         get() = p.getBoolean("navtex_alarm", true)
         set(v) { p.edit().putBoolean("navtex_alarm", v).apply() }
+    /** Bridge alert management sentences (ALF, ALC, HBT) on the NMEA server, besides ALR. */
+    var navtexBam: Boolean
+        get() = p.getBoolean("navtex_bam", false)
+        set(v) { p.edit().putBoolean("navtex_bam", v).apply() }
+    /** Station letters (B1) and subject letters (B2) the phone's own NAVTEX decoder stores; empty = all. */
+    var navtexStations: String
+        get() = p.getString("navtex_stations", "") ?: ""
+        set(v) { p.edit().putString("navtex_stations", v).apply() }
+    var navtexSubjects: String
+        get() = p.getString("navtex_subjects", "") ?: ""
+        set(v) { p.edit().putString("navtex_subjects", v).apply() }
+    /** NAVTEX from a receiver on the network (the Navtex program): 0 off, 1 TCP client, 2 UDP listener. */
+    var navtexNetMode: Int
+        get() = p.getInt("navtex_net_mode", 0)
+        set(v) { p.edit().putInt("navtex_net_mode", v).apply() }
+    var navtexNetHost: String
+        get() = p.getString("navtex_net_host", "") ?: ""
+        set(v) { p.edit().putString("navtex_net_host", v).apply() }
+    var navtexNetPort: Int
+        get() = p.getInt("navtex_net_port", 10110)
+        set(v) { p.edit().putInt("navtex_net_port", v).apply() }
+    /** NRX sentences in the form of IEC 61097-6 instead of the Furuno one the plotter reads. */
+    var navtexNrxIec: Boolean
+        get() = p.getBoolean("navtex_nrx_iec", false)
+        set(v) { p.edit().putBoolean("navtex_nrx_iec", v).apply() }
 }

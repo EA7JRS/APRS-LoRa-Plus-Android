@@ -134,6 +134,7 @@ object AlertCenter {
 
     fun close(key: String) {
         synchronized(queue) { queue.close(key, System.currentTimeMillis()) }
+        if (key.startsWith("navtex:")) NavtexHub.acknowledge()          // closing the window is the manual reset of the alarm
         AppState.notifier?.clear(CAR_PREFIX + key)
         publish()
     }

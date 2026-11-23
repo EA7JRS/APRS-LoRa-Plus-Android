@@ -3152,6 +3152,124 @@ private fun testNavtex() {
     check(nrx.joinToString("") { it.substring(it.indexOf(",0.0,") + 5, it.indexOf('*')) }.contains("005-21.2W^2C KEEP CLEAR"), "navtex nrx escapes the comma")
     check(nrx.all { val b = it.substring(1, it.indexOf('*')); it.endsWith(String.format("*%02X", Nmea.checksum(b))) }, "navtex nrx checksums")
     check(pos.size == 3 && kotlin.math.abs(pos[1].first - (36 + 7.5 / 60)) < 1e-9 && kotlin.math.abs(pos[1].second + (5 + 21.2 / 60)) < 1e-9, "navtex positions: $pos")
+
+    // receiver rules (IMO MSC.508(105), NAVTEX Manual 2023): messages written for the test
+    fun msg(id: String, text: String, cut: Boolean = false, ms: Long = t0) = Navtex.Message(id[0], id[1], id.substring(2).toInt(), text, false, cut, ms)
+    val clean = msg("GA12", "LIGHT UNLIT. TEST MESSAGE, NOT A REAL ONE. " + "X".repeat(57))
+    val dirty = msg("GA12", "L*GHT UNL*T. TEST M*SS*GE, NOT A REAL ONE. " + "X".repeat(57))
+    check(clean.text.length == 100 && clean.bad == 0 && clean.satisfactory && dirty.bad == 4 && !dirty.satisfactory, "navtex 4 % rule: ${dirty.bad} bad of ${dirty.text.length}")
+    check(msg("GA12", "L*GHT UNL*T. TEST M*SSAGE, NOT A REAL ONE. " + "X".repeat(57)).satisfactory, "navtex 3 % is satisfactory")
+    check(!msg("GA12", "LIGHT UNLIT", cut = true).satisfactory && kotlin.math.abs(dirty.errorRate - 4.0) < 1e-9, "navtex cut is not satisfactory; error rate")
+    check(Navtex.betterCopy(clean, dirty) && !Navtex.betterCopy(dirty, clean) && Navtex.betterCopy(dirty, msg("GA12", "LIGHT UNLIT. " + "X".repeat(300), cut = true)), "navtex better copy")
+    check(!Navtex.betterCopy(msg("GA12", "SHORT", cut = true), msg("GA12", "MUCH LONGER TEXT", cut = true)), "navtex among cut copies the longer stays")
+    check(Navtex.verdict(clean, null, 0, t0) == Navtex.Verdict.NEW, "navtex first reception is new")
+    check(Navtex.verdict(clean, clean, t0, t0 + 4 * 3_600_000L) == Navtex.Verdict.REPEAT, "navtex repeat within 72 h is not shown again")
+    check(Navtex.verdict(clean, clean, t0, t0 + 73 * 3_600_000L) == Navtex.Verdict.NEW, "navtex after 72 h it is a new message")
+    check(Navtex.verdict(clean, dirty, t0, t0 + 4 * 3_600_000L) == Navtex.Verdict.BETTER && Navtex.verdict(dirty, clean, t0, t0 + 4 * 3_600_000L) == Navtex.Verdict.REPEAT, "navtex better copy replaces, worse does not")
+    check(Navtex.verdict(msg("GD00", "TEST. SECOND."), msg("GD00", "TEST. FIRST."), t0, t0 + 3_600_000L) == Navtex.Verdict.BETTER && msg("GD00", "X").alwaysShown, "navtex B3B4 = 00 is always shown")
+    // slots: G owns 0100, 0500, 0900, 1300... t0 is 12:00 UTC
+    check(Navtex.inOwnSlot('G', t0 + 68 * 60_000L) == true && Navtex.inOwnSlot('G', t0 + 72 * 60_000L) == true && Navtex.inOwnSlot('G', t0 + 100 * 60_000L) == false, "navtex own slot of G")
+    check(Navtex.inOwnSlot('A', t0 + 3 * 60_000L) == true && Navtex.inOwnSlot('X', t0 - 5 * 60_000L) == true && Navtex.inOwnSlot('Z', t0) == null, "navtex own slot of A, X, Z")
+    // the asterisk only inside a message
+    val gotA = ArrayList<Navtex.Message>()
+    val asm = Navtex.Assembler({ gotA.add(it) }, { t0 })
+    check(!asm.bad(), "navtex no asterisk before a header")
+    for (ch in "ZCZC GA07\nWRECK IN ") asm.push(ch)
+    check(asm.bad(), "navtex asterisk inside a message")
+    for (ch in "6-07N.\nNNNN\n") asm.push(ch)
+    check(gotA.size == 1 && gotA[0].text == "WRECK IN *6-07N." && gotA[0].bad == 1, "navtex bad character kept as an asterisk: ${gotA.map { it.text }}")
+    // NRX with the real error rate, and the form of IEC 61097-6 (its own example: checksum 09)
+    check(Navtex.nrx(dirty, 518.0)[0].contains(",4.0,"), "navtex nrx carries the error rate: ${Navtex.nrx(dirty, 518.0)[0]}")
+    check(Nmea.sentence("CRNRX,007,001,00,IE69,1,135600,27,06,2001,241,3,A,==========================").trimEnd().endsWith("*09"), "nrx example of IEC 61097-6")
+    val iecMsg = Navtex.Message('I', 'E', 69, "==========================\nISSUED ON SATURDAY 06 JANUARY 2001.\nSHOWERY WINDS, STRONGEST IN N*RTH.", false, false, t0 + 300_000L)
+    val iec = Navtex.nrxIec(iecMsg, 490.0, 107)
+    check(iec.size == 3 && iec[0].startsWith("\$CRNRX,003,001,07,IE69,1,120500,15,11,2026,99,1,A,==========================") && iec[1].startsWith("\$CRNRX,003,002,07,,,,,,,,,,"), "navtex nrx iec: $iec")
+    check(iec.all { it.length <= 82 && it.endsWith(String.format("*%02X", Nmea.checksum(it.substring(1, it.indexOf('*'))))) }, "navtex nrx iec length and checksums")
+    check(iec.joinToString("") { it.substring(0, it.indexOf('*')).split(",").drop(13).joinToString(",") } ==
+        "==========================^0D^0AISSUED ON SATURDAY 06 JANUARY 2001.^0D^0ASHOWERY WINDS^2C STRONGEST IN N^2ARTH.", "navtex nrx iec carries the whole text")
+    check(Navtex.nrxIec(msg("GA05", "CUT SH*RT", cut = true), 4209.5, 3)[0].startsWith("\$CRNRX,001,001,03,GA05,3,120000,15,11,2026,9,1,V,CUT SH^2ART*"), "navtex nrx iec: index 3, status V")
+    val alr = Navtex.alr(t0 + 5_000L, active = true, acknowledged = false)
+    check(alr.startsWith("\$CRALR,120005.00,003,A,V,NAVTEX: Search and rescue information*") && alr.length <= 82, "navtex alr: $alr")
+    run {   // NRX from a receiver on the network (the same cases as the plotter's reader), and back through our own writers
+        val asm = Navtex.NrxAssembler()
+        val now = t0 + 99_000L
+        check(asm.feed(Nmea.sentence("CRNRX,GA05,1,3,518,15,11,2026,120500,1.5,TARIFA NAVTEX"), now) == null, "nrx in: line 1")
+        check(asm.feed(Nmea.sentence("CRNRX,GA05,2,3,518,15,11,2026,120500,1.5,WRECK IN 36-07.5N 005-21.2W"), now) == null, "nrx in: line 2")
+        check(asm.feed("\$CRNRX,GA05,3,3,518,15,11,2026,120500,1.5,KEEP CLEAR*00", now) == null, "nrx in: bad checksum")
+        val a1 = asm.feed(Nmea.sentence("CRNRX,GA05,3,3,518,15,11,2026,120500,1.5,KEEP CLEAR"), now)
+        check(a1 != null && a1.msg.id == "GA05" && a1.khz == 518.0 && !a1.msg.lostTrailer && !a1.msg.lostHeader &&
+            a1.msg.text == "TARIFA NAVTEX\nWRECK IN 36-07.5N 005-21.2W\nKEEP CLEAR", "nrx in: furuno message")
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = a1!!.msg.timeMs }
+        check(cal.get(java.util.Calendar.YEAR) == 2026 && cal.get(java.util.Calendar.MONTH) == 10 && cal.get(java.util.Calendar.DAY_OF_MONTH) == 15 &&
+            cal.get(java.util.Calendar.HOUR_OF_DAY) == 12 && cal.get(java.util.Calendar.MINUTE) == 5, "nrx in: time")
+        check(asm.feed("CRNRX,2,1,7,XD12,2,083000.00,15,11,2026,40,0,A,MAYDAY RELAY^0D^0AYACHT SINKING", now) == null, "nrx in: iec 1")
+        val a2 = asm.feed("CRNRX,2,2,7,,,,,,,,,, 3810N 00012W^0D^0ANNNN", now)
+        check(a2 != null && a2.msg.id == "XD12" && a2.msg.urgent && a2.khz == 518.0 && a2.msg.text == "MAYDAY RELAY\nYACHT SINKING 3810N 00012W\nNNNN", "nrx in: iec message")
+        val src = msg("GA05", "GALE WARNING, FORCE 8*\nA LONG LINE THAT HAS TO BE SPLIT IN TWO SENTENCES BECAUSE IT DOES NOT FIT IN ONE OF THEM AT ALL\nEND")
+        var back: Navtex.NetMessage? = null
+        for (l in Navtex.nrx(src, 490.0)) back = asm.feed(l, now)
+        check(back != null && back!!.msg.text == src.text && back!!.msg.id == "GA05" && back!!.khz == 490.0 && back!!.msg.bad == 1 &&
+            back!!.msg.timeMs / 1000 == src.timeMs / 1000, "nrx in: our Furuno form comes back the same")
+        back = null
+        for (l in Navtex.nrxIec(src, 4209.5, 41)) back = asm.feed(l, now)
+        check(back != null && back!!.msg.text == src.text && back!!.khz == 4209.5 && !back!!.msg.lostTrailer, "nrx in: our IEC form comes back the same")
+        back = null
+        for (l in Navtex.nrxIec(msg("GA05", "CUT SH*RT", cut = true), 518.0, 42)) back = asm.feed(l, now)
+        check(back != null && back!!.msg.lostTrailer && back!!.msg.text == "CUT SH*RT", "nrx in: status V = cut short")
+        check(asm.feed("\$GPRMC,1,2,3", now) == null && asm.feed("", now) == null && asm.feed("\$CRNRX,GA05,9,3,518,,,,,,x", now) == null, "nrx in: rejects")
+        val al = Navtex.parseAlr(alr)
+        check(al != null && al.active && !al.acknowledged, "alr in: active")
+        val al2 = Navtex.parseAlr("\$CRALR,140230.00,003,V,A,NAVTEX: Search and rescue information")
+        check(al2 != null && !al2.active && al2.acknowledged, "alr in: acknowledged")
+        check(Navtex.parseAlr("\$CRALR,140230.00,001,A,V,x") == null && Navtex.parseAlr("\$GPALR,140230.00,003,A,V,x") == null &&
+            Navtex.parseAlr("\$CRALR,140230.00,003,A,V,x*00") == null, "alr in: rejects")
+        check(Navtex.ackSentence() == "\$IIACK,003*56" && Navtex.isAlarmAck(Navtex.ackSentence()), "ack sentence")
+    }
+    run {   // bridge alert management, the receiver's masks and the station by its slot
+        check(Navtex.alf(t0 + 5_000L, 'V', 2) == Nmea.sentence("CRALF,1,1,0,120005.00,B,W,V,,3,1,2,0,NAVTEX SAR").trimEnd() && Navtex.alf(t0, 'V', 2).length <= 82, "alf out")
+        check(Navtex.alc(true, 2).startsWith("\$CRALC,01,01,00,1,,3,1,2*5E") && Navtex.alc(false, 2).startsWith("\$CRALC,01,01,00,0*"), "alc out")
+        check(Navtex.hbt(30, 11).startsWith("\$CRHBT,30,A,1*10") && Navtex.arc(t0, 3, 1, 'S').startsWith("\$CRARC,120000.00,,3,1,S*"), "hbt and arc out")
+        val a1 = Navtex.parseAcn("\$IIACN,140500.00,,3,1,A,C*62")
+        check(a1 != null && a1.identifier == 3 && a1.instance == 1 && a1.command == 'A', "acn in: acknowledge")
+        val a2 = Navtex.parseAcn("\$IIACN,,,0,,Q,C*6E")
+        check(a2 != null && a2.identifier == 0 && a2.instance == 0 && a2.command == 'Q', "acn in: repeat all")
+        check(Navtex.parseAcn("\$IIACN,140500.00,,3,1,A,C*00") == null && Navtex.parseAcn("\$IIACN,140500.00,FEC,3,1,A,C*22") == null &&
+            Navtex.parseAcn("\$IIACN,140500.00,,3,1,X,C*7B") == null && Navtex.parseAcn("IIACN,,,3,1,A,C") == null, "acn in: rejects")
+        check(Navtex.parseAcn(Navtex.acnSentence())?.command == 'A' && Navtex.acnSentence() == Nmea.sentence("IIACN,,,3,1,A,C").trimEnd(), "acn out")
+        val f1 = Navtex.parseAlf("\$CRALF,1,1,0,122537.00,B,W,V,,3,1,2,0,NAVTEX SAR*5B")     // as Navtex 1.7.0 writes it
+        check(f1 != null && f1.state == 'V' && f1.instance == 1 && f1.unacknowledged, "alf in: not acknowledged")
+        val f2 = Navtex.parseAlf("\$CRALF,1,1,0,122607.00,B,W,N,,3,1,3,0,NAVTEX SAR*42")
+        check(f2 != null && !f2.unacknowledged && Navtex.parseAlf(Navtex.alf(t0, 'V', 1))?.state == 'V', "alf in: normal; our own")
+        check(Navtex.parseAlf("\$CRALF,1,1,0,122607.00,B,W,N,,3,1,3,0,NAVTEX SAR*00") == null && Navtex.parseAlf(Nmea.sentence("CRALF,1,1,0,1.00,B,W,V,FEC,3,1,3,0,X")) == null &&
+            Navtex.parseAlf(Nmea.sentence("CRALF,1,1,0,1.00,B,W,V,,7,1,3,0,X")) == null && Navtex.parseAlf(Nmea.sentence("GPALF,1,1,0,1.00,B,W,V,,3,1,3,0,X")) == null, "alf in: rejects")
+        check(Navtex.lettersToMask("ABDL") == 0x80B && Navtex.maskToLetters(0x80B) == "ABDL" && Navtex.maskToLetters(Navtex.ALL_LETTERS).length == 26, "letters and masks")
+        val n1 = Navtex.parseNrm("\$CRNRM,1,1,03FFFFFF,0000083F*3E")
+        check(n1 != null && n1.function == 1 && n1.khz == 490.0 && n1.stations == Navtex.ALL_LETTERS && n1.subjects == 0x83F, "nrm in")
+        check(Navtex.parseNrm(Nmea.sentence("CRNRM,1,2,FC000041,0000000B"))?.stations == 0x41 && Navtex.parseNrm("\$CRNRM,1,3,03FFFFFF,0000083F*3C")?.khz == 4209.5, "nrm in: reserved bits, 4209.5")
+        check(Navtex.parseNrm("\$CRNRM,1,1,03FFFFFF,0000083F*00") == null && Navtex.parseNrm(Nmea.sentence("CRNRM,1,4,03FFFFFF,0000083F")) == null &&
+            Navtex.parseNrm(Nmea.sentence("CRNRM,1,1,3FFFFFF,0000083F")) == null && Navtex.parseNrm(Nmea.sentence("CRNRM,1,1,03FFFFFG,0000083F")) == null, "nrm in: rejects")
+        val gx = Navtex.Mask(1, 518.0, Navtex.lettersToMask("GX"), Navtex.lettersToMask("E"))
+        check(Navtex.nrmSentence(gx) == Nmea.sentence("IINRM,1,2,00800040,0000081B").trimEnd() && Navtex.nrmSentence(gx, "CR").startsWith("\$CRNRM,1,2,00800040,0000081B*34"), "nrm out: A, B, D and L always")
+        check(gx.accepts('G', 'E') && gx.accepts('X', 'D') && gx.accepts('G', 'A') && !gx.accepts('G', 'F') && !gx.accepts('T', 'A') && gx.accepts('?', '?'), "mask: what is stored")
+        check(Navtex.nrmQuery() == "\$IICRQ,NRM*" + String.format("%02X", Nmea.checksum("IICRQ,NRM")) && Navtex.isNrmQuery(Navtex.nrmQuery()) && !Navtex.isNrmQuery("\$IICRQ,NRM*00") &&
+            !Navtex.isNrmQuery(Navtex.ackSentence()), "nrm query")
+        // the station by its slot: G at 01:00, 05:00... every 4 h; X at 03:50...
+        val list = listOf(
+            Navtex.Station("Spain", 518.0, 'G', "", "Tarifa", 36.0, -5.6, "III", "EN"), Navtex.Station("UK", 518.0, 'G', "", "Cullercoats", 55.0, -1.4, "I", "EN"),
+            Navtex.Station("Spain", 518.0, 'X', "", "Valencia", 39.5, -0.4, "III", "EN"), Navtex.Station("Spain", 490.0, 'T', "", "Tarifa", 36.0, -5.6, "III", "ES"))
+        val day = t0 - t0 % 86_400_000L
+        val inG = day + 5 * 3_600_000L + 6 * 60_000L                    // 05:06 UTC: the slot of G
+        check(Navtex.stationBySlot(list, 518.0, inG, 36.5, -6.3)?.name == "Tarifa", "station by slot: the nearest G")
+        check(Navtex.stationBySlot(list, 518.0, inG, 54.0, -1.0)?.name == "Cullercoats", "station by slot: from the North Sea")
+        check(Navtex.stationBySlot(list, 518.0, inG, null, null) == null && Navtex.stationBySlot(list, 518.0, day + 3 * 3_600_000L + 55 * 60_000L, null, null)?.name == "Valencia",
+            "station by slot: without a position only when one fits")
+        check(Navtex.stationBySlot(list, 518.0, day + 2 * 3_600_000L, 36.5, -6.3) == null && Navtex.stationBySlot(list, 490.0, inG, 36.5, -6.3) == null &&
+            Navtex.stationBySlot(list, 518.0, inG, -30.0, 150.0) == null, "station by slot: nobody's slot, another frequency, too far")
+    }
+    check(Navtex.isAlarmAck("\$IIACK,003*56") && Navtex.isAlarmAck(Nmea.sentence("ECACK,003")) && Navtex.isAlarmAck(" \$IIACK,3*56\r\n"), "navtex ack: accepted")
+    check(!Navtex.isAlarmAck("\$IIACK,003*00") && !Navtex.isAlarmAck(Nmea.sentence("IIACK,001")) && !Navtex.isAlarmAck("IIACK,003") &&
+        !Navtex.isAlarmAck(alr) && !Navtex.isAlarmAck(Nmea.sentence("IIACKX,003")), "navtex ack: rejected")
+    check(Navtex.export(listOf(clean to 518.0, msg("GB20", "GALE", ms = t0 - 60_000L) to 4209.5)).startsWith("==== GB20  4209.5 kHz  received 2026-11-15 11:59 UTC  complete, 4 characters, 0 bad ====\r\nZCZC GB20\r\nGALE\r\n"), "navtex export")
 }
 
 private fun testNavaids() {

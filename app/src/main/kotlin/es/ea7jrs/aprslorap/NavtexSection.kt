@@ -5,6 +5,7 @@
  */
 package es.ea7jrs.aprslorap
 
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +44,21 @@ fun NavtexSection() {
     val msgs by NavtexHub.messages.collectAsState()
     var khz by remember { mutableStateOf(settings.navtexKhz) }
     var alarm by remember { mutableStateOf(settings.navtexAlarm) }
+    var iec by remember { mutableStateOf(settings.navtexNrxIec) }
+    var note by remember { mutableStateOf("") }
+    var netMode by remember { mutableStateOf(settings.navtexNetMode) }
+    var netHost by remember { mutableStateOf(settings.navtexNetHost) }
+    var netPort by remember { mutableStateOf(settings.navtexNetPort.toString()) }
+    val netStatus by NavtexNet.status.collectAsState()
+    val netMasks by NavtexNet.masks.collectAsState()
+    val ownChanged by NavtexHub.ownMaskChanged.collectAsState()
+    var bam by remember { mutableStateOf(settings.navtexBam) }
+    var ownSt by remember(ownChanged) { mutableStateOf(settings.navtexStations) }
+    var ownSu by remember(ownChanged) { mutableStateOf(settings.navtexSubjects) }
+    val rxMask = netMasks[Navtex.freqIndex(khz)]
+    var rxSt by remember(rxMask) { mutableStateOf(rxMask?.let { Navtex.maskToLetters(it.stations) } ?: "") }
+    var rxSu by remember(rxMask) { mutableStateOf(rxMask?.let { Navtex.maskToLetters(it.subjects) } ?: "") }
+    fun letters(s: String) = s.uppercase().filter { it in 'A'..'Z' }.toSortedSet().joinToString("")
     var subject by remember { mutableStateOf<Char?>(null) }
     var open by remember { mutableStateOf<String?>(null) }
     val now = rememberNow(30_000)
@@ -59,6 +76,65 @@ fun NavtexSection() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Alarm on search and rescue (D)", fontSize = 13.sp, modifier = Modifier.weight(1f))
             Switch(alarm, { alarm = it; settings.navtexAlarm = it })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("NRX to the plotter in the IEC 61097-6 form (off: Furuno form)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Switch(iec, { iec = it; settings.navtexNrxIec = it })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Bridge alert management sentences too (ALF, ALC, HBT; accepts ACN)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Switch(bam, { bam = it; settings.navtexBam = it })
+        }
+        // what this phone's decoder stores (the masks other equipment reads and sets with NRM)
+        Text("Stored by this phone's decoder", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(ownSt, { ownSt = letters(it); settings.navtexStations = if (ownSt.length == 26) "" else ownSt },
+                label = { Text("Stations B1 (empty = all)") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(ownSu, { ownSu = letters(it); settings.navtexSubjects = if (ownSu.length == 26) "" else ownSu },
+                label = { Text("Subjects B2 (empty = all)") }, singleLine = true, modifier = Modifier.weight(1f))
+        }
+        Text("Subjects A, B, D and L (navigational and meteorological warnings, search and rescue) are always stored.", fontSize = 11.sp, color = Alp.Muted)
+        // messages from a receiver on the network (the Navtex program), besides the ones decoded here
+        Text("Receiver on the network (NRX sentences)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            for ((v, name) in listOf(NavtexNet.OFF to "OFF", NavtexNet.TCP to "TCP", NavtexNet.UDP to "UDP")) Chip(name, netMode == v) {
+                netMode = v; settings.navtexNetMode = v; NavtexNet.apply(settings)
+            }
+        }
+        if (netMode != NavtexNet.OFF) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (netMode == NavtexNet.TCP) OutlinedTextField(netHost, { netHost = it.trim().take(64); settings.navtexNetHost = netHost },
+                    label = { Text("Receiver address") }, singleLine = true, modifier = Modifier.weight(2f))
+                OutlinedTextField(netPort, { netPort = it.filter { c -> c.isDigit() }.take(5); netPort.toIntOrNull()?.let { p -> settings.navtexNetPort = p } },
+                    label = { Text(if (netMode == NavtexNet.TCP) "Port" else "UDP port to listen on") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { NavtexNet.stop(); NavtexNet.apply(settings) }) { Text("APPLY") }
+            }
+            Text(netStatus, fontSize = 12.sp, color = if (netStatus.startsWith("Connected") || netStatus.startsWith("Listening")) Alp.Green else Alp.Amber)
+            Text(if (netMode == NavtexNet.TCP) "The phone connects to the receiver's NMEA port (Navtex program: its nrx.tcp port). Acknowledging the alarm here acknowledges it there too."
+                else "The receiver sends to this phone's address and port (Navtex program: nrx.udp). One way: the alarm is not acknowledged on the receiver.",
+                fontSize = 11.sp, color = Alp.Muted)
+            Text("Receive only; the receiver's NMEA output has no password: local network only.", fontSize = 11.sp, color = Alp.Muted)
+            if (netMode == NavtexNet.TCP) {
+                // what the receiver stores on the frequency chosen above (NRM / CRQ of IEC 61097-6)
+                Text(if (rxMask == null) "Receiver filters on $khz kHz: not answered yet" else "Receiver filters on $khz kHz", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(rxSt, { rxSt = letters(it) }, label = { Text("Stations B1") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(rxSu, { rxSu = letters(it) }, label = { Text("Subjects B2") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(onClick = { note = if (NavtexNet.askMasks()) "" else "No connection to the receiver." }) { Text("READ") }
+                    OutlinedButton(onClick = {
+                        note = if (NavtexNet.setMask(Navtex.Mask(1, khz, Navtex.lettersToMask(rxSt), Navtex.lettersToMask(rxSu)))) "" else "No connection to the receiver."
+                    }) { Text("SEND") }
+                }
+            }
+        }
+        // a search and rescue message waits to be acknowledged: only by hand
+        val pending = msgs.filter { it.alarm }
+        if (pending.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("ALARM · search and rescue not acknowledged: " + pending.joinToString(", ") { it.msg.id }, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                color = Alp.Red, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { NavtexHub.acknowledge() }) { Text("ACKNOWLEDGE") }
         }
 
         // stations within reach and their next slots (letter × 10 min, every 4 hours)
@@ -78,8 +154,12 @@ fun NavtexSection() {
         // messages
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("Messages (${msgs.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-            if (msgs.isNotEmpty()) TextButton(onClick = { NavtexHub.clear() }) { Text("Clear") }
+            if (msgs.isNotEmpty()) TextButton(onClick = {
+                try { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, NavtexHub.export()), "NAVTEX")) }
+                catch (_: Exception) { note = "No app to share the text with." }
+            }) { Text("Share") }
         }
+        if (note.isNotEmpty()) Text(note, fontSize = 11.sp, color = Alp.Amber)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Chip("ALL", subject == null, height = 30.dp) { subject = null }
             for (c in listOf('A', 'B', 'D', 'E', 'L')) Chip(c.toString(), subject == c, height = 30.dp) { subject = if (subject == c) null else c }
@@ -92,9 +172,22 @@ fun NavtexSection() {
             Column(Modifier.fillMaxWidth().clickable { open = if (isOpen) null else key }.padding(vertical = 4.dp)) {
                 Text(String.format(Locale.US, "%s  %s  %s", if (e.msg.lostHeader) "????" else e.msg.id, day.format(Date(e.msg.timeMs)), e.stationName),
                     fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (e.msg.urgent) Alp.Red else Alp.Text)
-                Text(e.msg.subjectName + (if (e.msg.lostTrailer) " · incomplete" else "") + (if (e.positions.isNotEmpty()) " · ${e.positions.size} position(s)" else ""),
-                    fontSize = 11.sp, color = Alp.Muted)
+                Text(e.msg.subjectName + (if (e.kept) " · kept" else "") + (if (e.msg.lostTrailer) " · incomplete" else if (!e.msg.lostHeader && !e.msg.satisfactory) " · with errors" else "") +
+                    (if (e.positions.isNotEmpty()) " · ${e.positions.size} position(s)" else ""), fontSize = 11.sp, color = Alp.Muted)
                 Text(if (isOpen) e.msg.text else e.msg.text.lineSequence().take(2).joinToString(" "), fontSize = 12.sp, fontFamily = TechMono)
+                if (isOpen) {
+                    val facts = ArrayList<String>()
+                    if (e.msg.bad > 0) facts.add(String.format(Locale.US, "%d character(s) not received (the asterisks): %.1f %%", e.msg.bad, e.msg.errorRate))
+                    if (!e.msg.lostHeader && !e.msg.lostTrailer && !e.msg.satisfactory) facts.add("4 % of errors or more: a better repeat will replace this copy")
+                    if (e.heardMs - e.msg.timeMs > 600_000L) facts.add("still being broadcast, last heard " + day.format(Date(e.heardMs)))
+                    if (e.inSlot == false) facts.add("outside the time slot of letter ${e.msg.station}: maybe a distant station")
+                    if (facts.isNotEmpty()) Text(facts.joinToString(" · "), fontSize = 11.sp, color = Alp.Muted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(onClick = { note = if (NavtexHub.keep(e, !e.kept)) "" else "${NavtexHub.MAX_KEPT} messages are kept already: stop keeping one."; open = null }) {
+                            Text(if (e.kept) "STOP KEEPING" else "KEEP")
+                        }
+                    }
+                }
                 if (isOpen && e.positions.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val p = e.positions.first()
                     val d = Own.to(p.first, p.second)
@@ -105,7 +198,9 @@ fun NavtexSection() {
             }
             HorizontalDivider()
         }
-        Text("Station letters and positions: fldigi's NAVTEX station list (may be out of date). NAVTEX is no substitute for the official receiver on board.",
+        Text("Station letters and positions: fldigi's NAVTEX station list (may be out of date). NAVTEX is no substitute for the official receiver on board. " +
+            "Rules of IMO MSC.508(105) and the NAVTEX Manual: a repeat is not shown again for 72 hours; messages cannot be deleted by hand, " +
+            "the oldest one not kept goes when the memory is full.",
             fontSize = 10.sp, color = Alp.Muted)
     }
 }

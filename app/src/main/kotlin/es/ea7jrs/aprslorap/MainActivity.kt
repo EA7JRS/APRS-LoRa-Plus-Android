@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
         Spotter.init(this)
         AlertCenter.init(this)
         NavtexHub.init(this)
+        NavtexNet.apply(Settings(this))                         // NAVTEX from a receiver on the network, if it is set up
         DscHub.init(this)
         Beacon406Hub.init(this)
         LogStore.init(this)

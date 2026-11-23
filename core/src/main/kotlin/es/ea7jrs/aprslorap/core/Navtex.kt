@@ -105,6 +105,60 @@ object Navtex {
         val subjectName get() = subjectName(subject)
         /** Distress / SAR (D) or a search and rescue word: the alert window should open. */
         val urgent get() = subject == 'D'
+        /** Characters that could not be received: the decoder writes an asterisk for each (IMO MSC.508(105), 5.7). */
+        val bad get() = text.count { it == '*' }
+        /** Character error rate, per cent. */
+        val errorRate get() = if (text.isEmpty()) 0.0 else 100.0 * bad / text.length
+        /** Satisfactorily received: whole, and with a character error rate below 4 % (IMO MSC.508(105), 6.2.3). */
+        val satisfactory get() = !lostHeader && !lostTrailer && text.isNotEmpty() && bad * 100 < 4 * text.length
+        /** B3B4 = 00: always shown, whatever was received before (ITU-R M.540-2; NAVTEX Manual, 5.4.3). */
+        val alwaysShown get() = !lostHeader && number == 0
+    }
+
+    // ------------------------------------------------------------------ what a NAVTEX receiver does with a message it already has
+    //
+    // IMO MSC.508(105), 6.2 and the NAVTEX Manual (2023), 6.2 and 7.5: the identity B1B2B3B4 of a satisfactorily received message
+    // is remembered for 60 to 72 hours, and a repeat of the broadcast within that time is not shown again; after that time it is
+    // a new message. A message with B3B4 = 00 is always shown. On top of that, as the Navtex program (EA7JRS/Navtex) does: a
+    // better copy replaces a worse one, and what the user tagged to keep is never replaced by a later message with the same number.
+
+    /** How long a message identity is remembered, ms. */
+    const val IDENTITY_MS = 72 * 3_600_000L
+
+    enum class Verdict { NEW, REPEAT, BETTER }
+
+    /** 2 satisfactory, 1 whole with too many errors, 0 cut short. */
+    private fun quality(m: Message) = if (m.satisfactory) 2 else if (!m.lostTrailer && !m.lostHeader) 1 else 0
+
+    /** Is [new] worth more than [old]? Whole beats cut; among whole copies the lower error rate; among cut ones, the more good text. */
+    fun betterCopy(new: Message, old: Message): Boolean {
+        val qn = quality(new); val qo = quality(old)
+        if (qn != qo) return qn > qo
+        if (qn == 0) return new.text.length - new.bad > old.text.length - old.bad
+        return new.bad.toLong() * old.text.length < old.bad.toLong() * new.text.length
+    }
+
+    /**
+     * What to do with [new] when [old] is the stored copy with the same identity on the same frequency, first received at
+     * [oldFirstMs]: NEW (store it as another message), REPEAT (keep the stored copy, note that it was heard again) or BETTER
+     * (replace the stored copy).
+     */
+    fun verdict(new: Message, old: Message?, oldFirstMs: Long, nowMs: Long): Verdict {
+        if (old == null || new.lostHeader || old.lostHeader) return Verdict.NEW
+        if (nowMs - oldFirstMs >= IDENTITY_MS) return Verdict.NEW           // the number has been used again for another message
+        if (new.alwaysShown) return Verdict.BETTER
+        if (old.satisfactory) return Verdict.REPEAT
+        return if (betterCopy(new, old)) Verdict.BETTER else Verdict.REPEAT
+    }
+
+    /**
+     * Did a message of station [id], stored at [timeMs] (when it ended), arrive within the ten minutes of its letter? A broadcast
+     * may overrun a little: up to 13 minutes after the start of the slot count. Null when the letter has no slot.
+     */
+    fun inOwnSlot(id: Char, timeMs: Long): Boolean? {
+        val first = firstSlotMin(id) ?: return null
+        val min = ((timeMs / 60_000L) % 240).toInt()
+        return ((min - first + 240) % 240) <= 13
     }
 
     fun subjectName(s: Char): String = when (s) {
@@ -140,6 +194,13 @@ object Navtex {
 
         /** Ten minutes without characters ends a message without its trailer. */
         fun tick() { if (buf.isNotBlank() && clock() - lastMs > 600_000) flush(!header, true) }
+
+        /** A character that could not be received: an asterisk, but only inside a message (between phasing and header it is just noise). */
+        fun bad(): Boolean {
+            if (!header) return false
+            buf.append('*'); lastMs = clock()
+            return true
+        }
 
         private fun flush(lostHeader: Boolean, lostTrailer: Boolean) {
             if (buf.isNotBlank()) emit(buf.toString(), lostHeader, lostTrailer)
@@ -270,7 +331,9 @@ object Navtex {
             }
             if (state == 2 && cursor < bits.size - 7) {
                 if (alphaPhase) {
-                    errors -= bytes(cursor)
+                    val got = bytes(cursor)
+                    if (got == -2 && assembler.bad()) onText("*")          // not even the repeated copy could be read
+                    errors -= got
                     if (errors > 5) state = 0
                     if (errors < 0) errors = 0
                 }
@@ -386,6 +449,18 @@ object Navtex {
         return c.minByOrNull { Geo.distanceKm(lat, lon, it.lat, it.lon) }
     }
 
+    /**
+     * The station a message without its header probably came from: the ones on [khz] whose ten-minute slot the message ended
+     * in (see [inOwnSlot]), the nearest first when the position is known. Null when none fits or, without a position, when
+     * more than one does. The slots are the ones of the letter (NAVTEX Manual, 5.2.5): a few stations keep other times.
+     */
+    fun stationBySlot(stations: List<Station>, khz: Double, timeMs: Long, lat: Double?, lon: Double?, maxKm: Double = 2500.0): Station? {
+        val c = stations.filter { abs(it.khz - khz) < 1.0 && inOwnSlot(it.id, timeMs) == true }
+        if (c.isEmpty()) return null
+        if (lat == null || lon == null) return c.singleOrNull()
+        return c.map { it to Geo.distanceKm(lat, lon, it.lat, it.lon) }.filter { it.second <= maxKm }.minByOrNull { it.second }?.first
+    }
+
     /** Minutes after midnight UTC of the first slot of a station letter (A = 00:00, B = 00:10 ... X = 03:50; every 4 hours). */
     fun firstSlotMin(id: Char): Int? = (id.uppercaseChar() - 'A').takeIf { it in 0..23 }?.let { it * 10 }
 
@@ -459,8 +534,9 @@ object Navtex {
         val code = if (m.lostHeader) "??00" else m.id
         val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = m.timeMs }
         val f = if (khz > 4000) "4209" else khz.toInt().toString()
-        val head = String.format(java.util.Locale.US, "CRNRX,%s,%%d,%%d,%s,%02d,%02d,%04d,%02d%02d%02d,0.0,", code, f, c.get(java.util.Calendar.DAY_OF_MONTH),
-            c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND))
+        val head = String.format(java.util.Locale.US, "CRNRX,%s,%%d,%%d,%s,%02d,%02d,%04d,%02d%02d%02d,%.1f,", code, f, c.get(java.util.Calendar.DAY_OF_MONTH),
+            c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND),
+            m.errorRate)
         val room = 76 - head.length                                       // 82 = "$" + head (its two "%d" up to 3 digits each) + text + "*hh"
         val pieces = ArrayList<String>()
         for (line in m.text.split('\n')) {
@@ -477,6 +553,303 @@ object Navtex {
         }
         val total = pieces.size.coerceIn(1, 999)
         return pieces.take(999).mapIndexed { i, p -> Nmea.sentence(String.format(java.util.Locale.US, head, i + 1, total) + p).trimEnd() }
+    }
+
+    /**
+     * The message as NRX sentences in the form of IEC 61097-6, annex C:
+     *   $CRNRX,sentences,sentence,id,GA05,2,hhmmss,dd,mm,yyyy,characters,bad characters,A,text
+     *   $CRNRX,sentences,sentence,id,,,,,,,,,,more text
+     * the text runs on from one sentence to the next, its line ends as ^0D^0A (each counts as two characters); the frequency
+     * is an index (1 = 490 kHz, 2 = 518 kHz, 3 = 4209.5 kHz); status A when the message reached its NNNN, V when it did not;
+     * [seq] (00-99) tells messages apart. No sentence passes 82 characters.
+     */
+    fun nrxIec(m: Message, khz: Double, seq: Int): List<String> {
+        val code = if (m.lostHeader) "??00" else m.id
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = m.timeMs }
+        val index = if (khz > 4000) 3 else if (khz < 500) 1 else 2
+        val body = StringBuilder(); var chars = 0
+        for (ch in m.text) {
+            if (ch == '\r') continue
+            if (ch == '\n') { body.append("^0D^0A"); chars += 2; continue }
+            chars++; body.append(escapeNmea(ch.toString()))
+        }
+        val id = String.format(java.util.Locale.US, "%02d", Math.floorMod(seq, 100))
+        val first = String.format(java.util.Locale.US, ",%s,%s,%d,%02d%02d%02d,%02d,%02d,%04d,%d,%d,%s,", id, code, index, c.get(java.util.Calendar.HOUR_OF_DAY),
+            c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND), c.get(java.util.Calendar.DAY_OF_MONTH), c.get(java.util.Calendar.MONTH) + 1,
+            c.get(java.util.Calendar.YEAR), chars, m.bad, if (m.lostTrailer || m.lostHeader) "V" else "A")
+        val next = ",$id,,,,,,,,,,"
+        val pieces = ArrayList<String>()
+        var rest = body.toString()
+        do {
+            val room = 82 - 17 - (if (pieces.isEmpty()) first else next).length       // 82 = "$CRNRX,nnn,nnn" + fields + text + "*hh"
+            var n = minOf(room, rest.length)
+            if (n < rest.length) { val caret = rest.lastIndexOf('^', n - 1); if (caret >= n - 2) n = caret }      // never inside ^hh
+            pieces.add(rest.substring(0, n)); rest = rest.substring(n)
+        } while (rest.isNotEmpty() && pieces.size < 999)
+        return pieces.mapIndexed { i, p ->
+            Nmea.sentence(String.format(java.util.Locale.US, "CRNRX,%03d,%03d", pieces.size, i + 1) + (if (i == 0) first else next) + p).trimEnd()
+        }
+    }
+
+    /**
+     * The search and rescue alarm for other equipment (IEC 61097-6, 4.3.9.2 and table 1: alarm 003), to be repeated every 30 s
+     * until it is acknowledged: $CRALR,hhmmss.00,003,A,V,NAVTEX: Search and rescue information
+     */
+    fun alr(timeMs: Long, active: Boolean, acknowledged: Boolean): String {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = timeMs }
+        return Nmea.sentence(String.format(java.util.Locale.US, "CRALR,%02d%02d%02d.00,003,%s,%s,NAVTEX: Search and rescue information", c.get(java.util.Calendar.HOUR_OF_DAY),
+            c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND), if (active) "A" else "V", if (acknowledged) "A" else "V")).trimEnd()
+    }
+
+    /**
+     * Is [line] the acknowledgement of the search and rescue alarm from other equipment ("$--ACK,003*hh", IEC 61097-6: the
+     * alarm can be acknowledged from the bridge alert system)? Any talker, the checksum has to be right.
+     */
+    fun isAlarmAck(line: String): Boolean {
+        val l = line.trim()
+        if (l.length > 40 || !Nmea.valid(l)) return false
+        val f = l.substring(1, l.lastIndexOf('*')).split(',')
+        return f.size >= 2 && f[0].length == 5 && f[0].endsWith("ACK") && f[1].trim().toIntOrNull() == 3
+    }
+
+    /** The sentence that acknowledges the search and rescue alarm on the receiver: "$IIACK,003*56". */
+    fun ackSentence(): String = Nmea.sentence("IIACK,003").trimEnd()
+
+    /** State of the receiver's alarm 003, from its ALR sentence. */
+    data class Alr(val active: Boolean, val acknowledged: Boolean)
+
+    /** Reads "$CRALR,hhmmss.00,003,A|V,A|V,text" (only alarm 003 of a NAVTEX receiver, talker CR); null for anything else. */
+    fun parseAlr(line: String): Alr? {
+        val f = nmeaFields(line, "ALR") ?: return null
+        if (f.talker != "CR" || f.fields.size < 4 || f.fields[1].trim().toIntOrNull() != 3) return null
+        return Alr(f.fields[2] == "A", f.fields[3] == "A")
+    }
+
+    // ------------------------------------------------------------------ bridge alert management
+    //
+    // IMO MSC.302(87) with the sentences of IEC 61162-1 ed. 5 that IEC 62923 uses, as the Navtex program (EA7JRS/Navtex 1.7.0)
+    // sends them. Formats from the manuals of equipment that uses them (Furuno GS-100, JRC JFE-400, Icom GM600), not from the
+    // standards. The one alert: search and rescue information received, identifier 3 (the number IEC 61097-6 gives the alarm
+    // in ALR; not confirmed for bridge alert management), instance 1, category B, priority warning, no manufacturer code.
+
+    private fun hhmmss(timeMs: Long): String {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = timeMs }
+        return String.format(java.util.Locale.US, "%02d%02d%02d.00", c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND))
+    }
+
+    /** "$CRALF,1,1,0,hhmmss.00,B,W,V,,3,1,revision,0,NAVTEX SAR": [state] V active and not acknowledged, N normal. */
+    fun alf(timeMs: Long, state: Char, revision: Int): String =
+        Nmea.sentence("CRALF,1,1,0,${hhmmss(timeMs)},B,W,$state,,3,1,${revision.coerceIn(1, 99)},0,NAVTEX SAR").trimEnd()
+
+    /** The cyclic list of active alerts: "$CRALC,01,01,00,1,,3,1,revision", or with 0 entries. */
+    fun alc(active: Boolean, revision: Int): String =
+        Nmea.sentence(if (active) "CRALC,01,01,00,1,,3,1,${revision.coerceIn(1, 99)}" else "CRALC,01,01,00,0").trimEnd()
+
+    /** Heartbeat: "$CRHBT,30,A,n". */
+    fun hbt(intervalS: Int, seq: Int): String = Nmea.sentence("CRHBT,$intervalS,A,${Math.floorMod(seq, 10)}").trimEnd()
+
+    /** A command that is not carried out (silence, responsibility transfer): "$CRARC,hhmmss.00,,3,1,S". */
+    fun arc(timeMs: Long, identifier: Int, instance: Int, command: Char): String =
+        Nmea.sentence("CRARC,${hhmmss(timeMs)},,$identifier,$instance,$command").trimEnd()
+
+    /** An alert command from the bridge: [command] A acknowledge, Q repeat, S silence, O transfer; [identifier] 0 = all alerts. */
+    data class Acn(val identifier: Int, val instance: Int, val command: Char)
+
+    /** Reads "$--ACN,time,manufacturer,identifier,instance,command,C" (checksum needed; no manufacturer code: one of ours). */
+    fun parseAcn(line: String): Acn? {
+        val l = line.trim()
+        if (!Nmea.valid(l)) return null
+        val f = (nmeaFields(l, "ACN") ?: return null).fields
+        if (f.size != 6 || f[1].isNotEmpty() || f[4].length != 1 || f[4][0] !in "AQOS" || f[5] != "C") return null
+        val id = f[2].toIntOrNull() ?: return null
+        val inst = if (f[3].isEmpty()) 0 else f[3].toIntOrNull() ?: return null
+        if (id < 0 || inst < 0) return null
+        return Acn(id, inst, f[4][0])
+    }
+
+    /** The receiver's alert, from its ALF sentence: [state] V, S (not acknowledged), A, N, U, O. */
+    data class Alf(val state: Char, val instance: Int) { val unacknowledged get() = state == 'V' || state == 'S' }
+
+    /** Reads the ALF of a NAVTEX receiver (talker CR) for alert 3 without manufacturer code; null for anything else. */
+    fun parseAlf(line: String): Alf? {
+        val f = nmeaFields(line, "ALF") ?: return null
+        val x = f.fields
+        if (f.talker != "CR" || x.size < 12 || x[1] != "1" || x[7].isNotEmpty() || x[8].toIntOrNull() != 3 || x[6].length != 1 || x[6][0] !in "VSANUO") return null
+        return Alf(x[6][0], x[9].toIntOrNull() ?: 1)
+    }
+
+    /** Acknowledges the alert on the receiver: "$IIACN,,,3,1,A,C". */
+    fun acnSentence(instance: Int = 1): String = Nmea.sentence("IIACN,,,3,${instance.coerceAtLeast(1)},A,C").trimEnd()
+
+    // ------------------------------------------------------------------ the receiver's masks (NRM, IEC 61097-6 annex C.2)
+    //
+    // "$--NRM,function,frequency,stations,subjects": function 1 = what is stored; frequency 1 = 490, 2 = 518, 3 = 4209.5 kHz;
+    // the masks are 32 bits in hex, bit 0 = letter A. Subjects A, B, D and L cannot be excluded (IEC 61097-6, 4.3.7).
+
+    const val ALL_LETTERS = 0x03FFFFFF
+    val FIXED_SUBJECTS = lettersToMask("ABDL")
+
+    fun lettersToMask(letters: String): Int = letters.fold(0) { m, c -> if (c in 'A'..'Z') m or (1 shl (c - 'A')) else m }
+    fun maskToLetters(mask: Int): String = ('A'..'Z').filter { mask and (1 shl (it - 'A')) != 0 }.joinToString("")
+
+    data class Mask(val function: Int, val khz: Double, val stations: Int, val subjects: Int) {
+        /** Is a message of this station and subject stored? Subjects A, B, D and L always are. */
+        fun accepts(station: Char, subject: Char): Boolean {
+            val st = station.uppercaseChar(); val su = subject.uppercaseChar()
+            if (st !in 'A'..'Z' || su !in 'A'..'Z') return true          // unknown letters are not filtered out
+            return stations and (1 shl (st - 'A')) != 0 && (subjects or FIXED_SUBJECTS) and (1 shl (su - 'A')) != 0
+        }
+    }
+
+    fun freqIndex(khz: Double) = if (khz > 4000) 3 else if (khz < 500) 1 else 2
+
+    fun parseNrm(line: String): Mask? {
+        val f = (nmeaFields(line, "NRM") ?: return null).fields
+        if (f.size != 4 || f[0].length != 1 || f[0][0] !in '0'..'3' || f[1].length != 1 || f[1][0] !in '1'..'3' || f[2].length != 8 || f[3].length != 8) return null
+        val a = f[2].toLongOrNull(16) ?: return null
+        val t = f[3].toLongOrNull(16) ?: return null
+        return Mask(f[0][0] - '0', when (f[1][0]) { '1' -> 490.0; '2' -> 518.0; else -> 4209.5 }, (a and ALL_LETTERS.toLong()).toInt(), (t and ALL_LETTERS.toLong()).toInt())
+    }
+
+    fun nrmSentence(m: Mask, talker: String = "II"): String = Nmea.sentence(String.format(java.util.Locale.US, "%sNRM,%d,%d,%08X,%08X", talker, m.function,
+        freqIndex(m.khz), m.stations and ALL_LETTERS, (m.subjects or FIXED_SUBJECTS) and ALL_LETTERS)).trimEnd()
+
+    /** Asks the receiver for its masks: "$IICRQ,NRM". */
+    fun nrmQuery(): String = Nmea.sentence("IICRQ,NRM").trimEnd()
+
+    fun isNrmQuery(line: String): Boolean {
+        val l = line.trim()
+        return l.length == 13 && Nmea.valid(l) && l.startsWith("CRQ,NRM", 3)
+    }
+
+    private class Fields(val talker: String, val fields: List<String>)
+
+    /** Splits a sentence of the given [type] ("NRX", "ALR"), with or without "$" and checksum; a wrong checksum gives null. */
+    private fun nmeaFields(line: String, type: String): Fields? {
+        var s = line.trim()
+        val star = s.lastIndexOf('*')
+        if (star >= 0 && star + 3 == s.length) {
+            val body = if (s.startsWith("$") || s.startsWith("!")) s.substring(1, star) else s.substring(0, star)
+            val cs = s.substring(star + 1).toIntOrNull(16) ?: return null
+            if (Nmea.checksum(body) != cs) return null
+            s = s.substring(0, star)
+        }
+        if (s.startsWith("$") || s.startsWith("!")) s = s.substring(1)
+        val comma = s.indexOf(',')
+        if (comma != 5 || !s.startsWith(type, 2)) return null
+        return Fields(s.substring(0, 2), s.substring(comma + 1).split(','))
+    }
+
+    /** A message that came already decoded in NRX sentences, with the frequency its receiver gave (0 = not given). */
+    data class NetMessage(val msg: Message, val khz: Double)
+
+    /**
+     * Puts NAVTEX messages together from the NRX sentences of a receiver on the network (the Navtex program, a Furuno...), the
+     * way the plotter does. Two forms: Furuno ("$CRNRX,GA05,line,lines,518,dd,mm,yyyy,hhmmss,error,text": one line of the message
+     * per sentence; a piece that ends in a space is continued by the next) and IEC 61097-6 annex C ("$CRNRX,total,number,
+     * sequence,GA05,frequency index,hhmmss,dd,mm,yyyy,characters,bad,A|V,body" with ^hh escapes). Not thread safe.
+     */
+    class NrxAssembler {
+        private class Part(val key: String) { var total = 0; var lines = arrayOfNulls<String>(0); var code = ""; var khz = 0.0; var timeMs = 0L; var complete = true }
+        private val parts = ArrayList<Part>()
+
+        private fun part(key: String): Part {
+            parts.firstOrNull { it.key == key }?.let { return it }
+            if (parts.size >= 4) parts.removeAt(0)                        // messages left half way
+            return Part(key).also { parts.add(it) }
+        }
+
+        private fun isCode(s: String) = s.length == 4 && (s[0].isLetterOrDigit() || s[0] == '?') && (s[1].isLetter() || s[1] == '?') && s[2].isDigit() && s[3].isDigit()
+
+        private fun unescape(s: String): String {
+            val o = StringBuilder()
+            var i = 0
+            while (i < s.length) {
+                val v = if (s[i] == '^' && i + 2 < s.length) s.substring(i + 1, i + 3).toIntOrNull(16) else null
+                if (v != null) { if (v != 13) o.append(v.toChar()); i += 3 } else { o.append(s[i]); i++ }
+            }
+            return o.toString()
+        }
+
+        private fun khzOf(f: String) = when (f) { "1", "490" -> 490.0; "2", "518" -> 518.0; "3", "4209", "4209.5" -> 4209.5; else -> 0.0 }
+
+        private fun timeOf(d: String, mo: String, y: String, t: String, nowMs: Long): Long {
+            if (d.isEmpty() || mo.isEmpty() || y.isEmpty() || t.length < 6) return nowMs
+            var yy = y.toIntOrNull() ?: return nowMs
+            val mm = mo.toIntOrNull() ?: return nowMs
+            val dd = d.toIntOrNull() ?: return nowMs
+            val h = t.substring(0, 2).toIntOrNull() ?: return nowMs
+            val mi = t.substring(2, 4).toIntOrNull() ?: return nowMs
+            val se = t.substring(4, 6).toIntOrNull() ?: return nowMs
+            if (yy < 100) yy += 2000
+            if (yy < 2000 || mm !in 1..12 || dd !in 1..31 || h > 23 || mi > 59 || se > 60) return nowMs
+            val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+            c.clear(); c.set(yy, mm - 1, dd, h, mi, se)
+            return c.timeInMillis
+        }
+
+        private fun finish(p: Part, text: String): NetMessage {
+            parts.remove(p)
+            val lost = p.code.contains('?')
+            var t = text
+            while (t.endsWith("\n") || t.endsWith(" ")) t = t.dropLast(1)
+            while (t.startsWith("\n") || t.startsWith(" ")) t = t.drop(1)
+            return NetMessage(Message(if (lost) '?' else p.code[0], if (lost) '?' else p.code[1], if (lost) 0 else p.code.substring(2).toInt(), t, lost,
+                !p.complete, p.timeMs), p.khz)
+        }
+
+        /** One sentence; the message when this sentence completes one. [nowMs] dates a message whose sentences carry no date. */
+        fun feed(sentence: String, nowMs: Long): NetMessage? {
+            val f = (nmeaFields(sentence, "NRX") ?: return null).fields
+            if (f.size >= 10 && isCode(f[0])) {                           // Furuno
+                val text = f.subList(9, f.size).joinToString(",")
+                val line = f[1].toIntOrNull() ?: return null
+                val total = f[2].toIntOrNull() ?: return null
+                if (line < 1 || total < 1 || line > total || total > 999) return null
+                val p = part("F" + f[0] + f[3])
+                if (line == 1 || p.total == 0) {
+                    p.total = total; p.lines = arrayOfNulls(total); p.code = f[0]; p.khz = khzOf(f[3]); p.timeMs = timeOf(f[4], f[5], f[6], f[7], nowMs); p.complete = true
+                }
+                if (line <= p.lines.size) p.lines[line - 1] = unescape(text)
+                if (line != p.total) return null
+                val o = StringBuilder()
+                for (l in p.lines) {
+                    if (l == null) { p.complete = false; continue }
+                    if (o.isNotEmpty() && !o.endsWith(" ")) o.append('\n')   // a piece that ends in a space goes on in the same line
+                    o.append(l)
+                }
+                return finish(p, o.toString())
+            }
+            if (f.size >= 13) {                                           // IEC 61097-6
+                val total = f[0].toIntOrNull() ?: return null
+                val num = f[1].toIntOrNull() ?: return null
+                if (num < 1 || total < 1 || num > total || total > 999) return null
+                val body = f.subList(12, f.size).joinToString(",")
+                val p = part("I" + f[2])
+                if (num == 1 || p.total == 0) {
+                    if (!isCode(f[3])) return null
+                    p.total = total; p.lines = arrayOfNulls(total); p.code = f[3]; p.khz = khzOf(f[4]); p.timeMs = timeOf(f[6], f[7], f[8], f[5], nowMs); p.complete = f[11] != "V"
+                }
+                if (num > p.lines.size) return null
+                p.lines[num - 1] = body
+                if (num != p.total) return null
+                val o = StringBuilder()
+                for (l in p.lines) { if (l == null) { p.complete = false; continue }; o.append(l) }
+                return finish(p, unescape(o.toString()))
+            }
+            return null
+        }
+    }
+
+    /** All the stored messages as text, oldest first, to save or share. */
+    fun export(list: List<Pair<Message, Double>>): String {
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        return list.sortedBy { it.first.timeMs }.joinToString("\r\n") { (m, khz) ->
+            val freq = if (khz > 4000) "4209.5" else khz.toInt().toString()
+            "==== ${if (m.lostHeader) "????" else m.id}  $freq kHz  received ${f.format(java.util.Date(m.timeMs))} UTC  " +
+                (if (m.lostTrailer || m.lostHeader) "cut short" else "complete") + ", ${m.text.length} characters, ${m.bad} bad ====\r\n" +
+                (if (m.lostHeader) "" else "ZCZC ${m.id}\r\n") + m.text.replace("\n", "\r\n") + "\r\n"
+        }
     }
 
     private fun escapeNmea(s: String): String {
