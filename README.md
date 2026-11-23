@@ -19,9 +19,11 @@ The interface works like a radio: a main screen with band A (the tracker) and ba
 
 ## APRS
 - **Stations** list and detail with compass (north-up / heading-up), **GO TO** in Google Maps, rotor pointing; APRS symbols; Mic-E (status, altitude), objects and items, third-party frames.
+- **Packet explained**: the last frame of a station as it came, every field in words and the way it travelled (digipeaters, iGate, your tracker); telemetry (`T#` with PARM / UNIT / EQNS / BITS) and status (`>`). Stations, trails and conversations are kept between sessions.
+- **Position beacons from the phone** through the tracker (SmartBeaconing or a fixed interval), and a **configuration check** of the tracker with the rules of its WebUI.
 - **Weather stations** (WX): APRS weather in your units, pressure trend, dew point, wind chill, Beaufort, cloud base.
 - **Messages**: write, answer, retries and acknowledgements, sent / acked / failed / rejected; notifications with reply and mark-as-read, so **Android Auto** reads them aloud and answers by voice.
-- **Map** (osmdroid): OpenStreetMap, IGN (MTN, PNOA, Base), dark, Esri with your own ArcGIS key, OpenSeaMap; layers with their own transparency: AEMET radar and lightning, Meteosat clouds, OpenWeather maps (your key), official alerts, earthquakes, day / night line, METAR / TAF / SIGMET, aurora, D-RAP, tropical cyclones, Maidenhead grid, CQ / ITU zones, great circle, IBP beacons, worked locators, who hears me (WSPR, PSK Reporter), balloons (SondeHub), fires and floods (EONET), NDBC buoys, aircraft.
+- **Map** (osmdroid): trails of moving stations, the path of the last frame, cars turned to their course; OpenStreetMap, IGN (MTN, PNOA, Base), dark, Esri with your own ArcGIS key, OpenSeaMap; layers with their own transparency: AEMET radar and lightning, Meteosat clouds, OpenWeather maps (your key), official alerts, earthquakes, day / night line, METAR / TAF / SIGMET, aurora, D-RAP, tropical cyclones, Maidenhead grid, CQ / ITU zones, great circle, IBP beacons, worked locators, who hears me (WSPR, PSK Reporter), balloons (SondeHub), fires and floods (EONET), NDBC buoys, aircraft.
 - **Mobile iGate** (radio → APRS-IS), **DAPNET** pages received by the tracker and sent through the DAPNET API, **NMEA** server (TCP 10110) with APRS stations as AIS targets for OpenCPN or the plotter, and the tracker's GNSS as the phone location.
 
 ## Alerts and safety
@@ -64,6 +66,6 @@ The core alone runs anywhere with a JDK and `kotlinc`:
 `kotlinc core/src/main/kotlin core/src/test/kotlin -include-runtime -d core-test.jar && java -cp core-test.jar es.ea7jrs.aprslorap.core.SelfTestKt`
 
 ## Not done yet
-APRS telemetry (`T#`) and status (`>`); saving messages and stations between runs; position beacons from the phone; Android Auto station list; KISS over TCP as the main link; AIS built by the phone for boards without NMEA output; automatic measurement of the IBP beacon dashes; live I/Q from SDRconnect.
+Android Auto station list; KISS over TCP as the main link; AIS built by the phone for boards without NMEA output; automatic measurement of the IBP beacon dashes; live I/Q from SDRconnect.
 
 License: GPL-3.0-or-later.
