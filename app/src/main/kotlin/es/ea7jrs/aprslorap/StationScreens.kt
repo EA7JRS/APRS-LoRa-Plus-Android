@@ -76,6 +76,8 @@ data class StationView(
     val wx: AprsWx? = null, val wxMs: Long? = null, val owner: String? = null, val micE: String? = null,
     val wxPressD3h: Double? = null,     // change of the pressure over 3 h, once the station has been heard for an hour
     val motionDerived: Boolean = false, // course and speed worked out from two positions, not sent by the station
+    val lastFrame: es.ea7jrs.aprslorap.core.Ax25Frame? = null,          // the last frame the app decoded from it (packet card)
+    val trail: List<es.ea7jrs.aprslorap.core.TrackPoint> = emptyList(), // where it has been, oldest first (map)
 ) {
     val symbol: AprsSymbols.Symbol? get() = AprsSymbols.of(table, code)
     val kind: String get() = AprsSymbols.describe(table, code)
@@ -111,6 +113,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             s.courseDeg ?: heardCourse(h).takeIf { !wxStation && s.speedKmh == null }, s.speedKmh ?: heardSpeed(h).takeIf { !wxStation },
             s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, h?.status,
             wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE, wxPressD3h = s.wxPressD3h, motionDerived = s.motionDerived,
+            lastFrame = s.lastFrame, trail = s.trail,
         ))
     }
     val known = stations.map { it.call }.toSet()
@@ -315,6 +318,7 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                     s.owner?.let { InfoRow("OBJECT OF", it) }
                     if (s.comment.isNotBlank()) Text("“${s.comment}”", fontSize = 15.sp, color = Alp.SubText, modifier = Modifier.padding(top = 6.dp))
                 }
+                s.lastFrame?.let { PacketCard(it, s) }
             }
             Row(Modifier.fillMaxWidth().height(58.dp).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 RadioKey("BACK", Modifier.weight(1f).height(54.dp), color = Alp.RedSoft) { if (!nav.back()) nav.go("STATIONS") }
@@ -328,6 +332,76 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                 }
             }
         }
+    }
+}
+
+/**
+ * The last frame of the station explained: the line as it came with its parts in colour, every field in words and the way it
+ * travelled to our tracker (core PacketExplain). Only for stations the app has decoded a frame from.
+ */
+@Composable
+fun PacketCard(frame: es.ea7jrs.aprslorap.core.Ax25Frame, s: StationView) {
+    val pe = es.ea7jrs.aprslorap.core.PacketExplain
+    val inner = remember(frame) { Aprs.unwrapThirdParty(frame) }
+    val comment = remember(frame) { (Aprs.parse(inner.infoText, inner.destination.call) as? es.ea7jrs.aprslorap.core.AprsPacket.Position)?.comment }
+    val parts = remember(frame) { pe.parts(frame, comment) }
+    val fields = remember(frame, s.courseDeg, s.speedKmh) {
+        pe.fields(frame, s.courseDeg.takeIf { s.motionDerived }, s.speedKmh.takeIf { s.motionDerived })
+    }
+    val hops = remember(frame) { pe.hops(frame) }
+    Panel(Modifier.fillMaxWidth(), padding = 10.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("LAST PACKET")
+            Spacer(Modifier.weight(1f))
+            Text(Fmt.hhmm(s.lastMs, utc = true) + "Z · " + Fmt.ago(s.lastMs), fontSize = 13.sp, color = Alp.Muted)
+        }
+        Text(androidx.compose.ui.text.buildAnnotatedString {
+            for (p in parts) {
+                val c = when (p.kind) {
+                    es.ea7jrs.aprslorap.core.PacketExplain.Kind.SOURCE -> Alp.Green
+                    es.ea7jrs.aprslorap.core.PacketExplain.Kind.DEST -> Alp.Cyan
+                    es.ea7jrs.aprslorap.core.PacketExplain.Kind.PATH -> Alp.Amber
+                    es.ea7jrs.aprslorap.core.PacketExplain.Kind.DATA -> Alp.Text
+                    es.ea7jrs.aprslorap.core.PacketExplain.Kind.COMMENT -> Alp.SubText
+                    es.ea7jrs.aprslorap.core.PacketExplain.Kind.SEP -> Alp.Muted
+                }
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = c)); append(p.text); pop()
+            }
+        }, fontFamily = TechMono, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+            .background(Alp.SymbolBg, RoundedCornerShape(8.dp)).padding(8.dp))
+        SectionLabel("DECODED")
+        for (f in fields) Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            Text(f.name, fontFamily = BarlowCondensed, fontSize = 14.sp, color = Alp.Muted, modifier = Modifier.width(118.dp))
+            Column(Modifier.weight(1f)) {
+                Text(f.value, fontFamily = TechMono, fontSize = 14.sp, color = Alp.Text)
+                if (f.note.isNotEmpty()) Text(f.note, fontSize = 12.sp, color = Alp.Muted)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        SectionLabel("HOW IT GOT HERE")
+        for ((i, h) in hops.withIndex()) {
+            val (tag, col) = when (h.role) {
+                es.ea7jrs.aprslorap.core.PacketExplain.Role.TX -> "TX" to Alp.Green
+                es.ea7jrs.aprslorap.core.PacketExplain.Role.DIGI -> "DIGI" to Alp.Amber
+                es.ea7jrs.aprslorap.core.PacketExplain.Role.IGATE -> "IGATE" to Alp.Cyan
+                es.ea7jrs.aprslorap.core.PacketExplain.Role.IS -> "IS" to Alp.Muted
+            }
+            HopRow(i + 1, tag, col, h.who, h.note)
+        }
+        HopRow(hops.size + 1, "RX", Alp.Green, "Your tracker",
+            listOfNotNull(s.rssi?.let { "$it dBm" }, s.snr?.let { String.format(Locale.US, "SNR %.1f", it) }).joinToString(" · ").ifEmpty { "received" })
+        Text(pe.pathSummary(frame), fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+private fun HopRow(n: Int, tag: String, color: Color, who: String, note: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("$n", fontFamily = TechMono, fontSize = 13.sp, color = Alp.Muted, modifier = Modifier.width(16.dp))
+        Text(tag, fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = color,
+            textAlign = TextAlign.Center, modifier = Modifier.width(46.dp).border(1.dp, color, RoundedCornerShape(5.dp)).padding(vertical = 1.dp))
+        Text(who, fontFamily = TechMono, fontSize = 14.sp, color = Alp.Text)
+        Text(note, fontSize = 12.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
     }
 }
 

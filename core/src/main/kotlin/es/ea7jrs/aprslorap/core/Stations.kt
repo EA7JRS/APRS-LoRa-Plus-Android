@@ -5,6 +5,9 @@
  */
 package es.ea7jrs.aprslorap.core
 
+/** A point of the trail of a station. */
+data class TrackPoint(val lat: Double, val lon: Double, val timeMs: Long)
+
 data class Station(
     val call: String,
     val lat: Double?, val lon: Double?,
@@ -17,6 +20,10 @@ data class Station(
     val courseDeg: Int? = null, val speedKmh: Double? = null, val altitudeM: Double? = null,
     /** True when course and speed were worked out from two positions (the packet carried none: altitude in its cs bytes). */
     val motionDerived: Boolean = false,
+    /** The last frame heard from it, as it came (a third-party frame still wrapped): for the packet card of its page. */
+    val lastFrame: Ax25Frame? = null,
+    /** Where it has been, oldest first (the last point is where it is): the trail of a moving station on the map. */
+    val trail: List<TrackPoint> = emptyList(),
     /** Last weather report and when it came. */
     val wx: AprsWx? = null, val wxMs: Long? = null,
     /** Change of the station's pressure over 3 h (hPa), once it has been heard for at least an hour. */
@@ -68,6 +75,8 @@ class StationTable(private val maxStations: Int = 500) {
             packets = (old?.packets ?: 0) + 1,
             lastPath = path,
             courseDeg = course, speedKmh = speed, motionDerived = derived,
+            lastFrame = frame,
+            trail = if (pos != null) Motion.trail(old?.trail ?: emptyList(), pos.lat, pos.lon, nowMs) else old?.trail ?: emptyList(),
             altitudeM = pos?.altitudeM ?: old?.altitudeM,
             wx = wx ?: old?.wx, wxMs = if (wx != null) nowMs else old?.wxMs,
             wxPressD3h = wx?.pressureHpa?.let { hpa -> trends.getOrPut(call) { WxCalc.PressureTrend() }.also { it.add(nowMs / 1000, hpa) }.delta3h(nowMs / 1000) } ?: old?.wxPressD3h,
@@ -106,6 +115,21 @@ object Motion {
     const val MIN_S = 10
     const val MAX_S = 30 * 60
     const val MIN_M = 40.0
+    const val TRAIL_POINTS = 80
+    const val TRAIL_MS = 3 * 3600_000L
+
+    /**
+     * The trail with a new position: added if it is [MIN_M] from the last point (a parked station keeps one point), without the
+     * points older than [TRAIL_MS] and with [TRAIL_POINTS] at most; a jump of more than 1200 km/h starts the trail again.
+     */
+    fun trail(old: List<TrackPoint>, lat: Double, lon: Double, nowMs: Long): List<TrackPoint> {
+        val last = old.lastOrNull() ?: return listOf(TrackPoint(lat, lon, nowMs))
+        val m = Geo.distanceKm(last.lat, last.lon, lat, lon) * 1000.0
+        if (m < MIN_M) return old
+        val dt = (nowMs - last.timeMs) / 1000.0
+        if (dt > 0 && m / dt * 3.6 > 1200) return listOf(TrackPoint(lat, lon, nowMs))
+        return (old.filter { nowMs - it.timeMs <= TRAIL_MS } + TrackPoint(lat, lon, nowMs)).takeLast(TRAIL_POINTS)
+    }
 
     /**
      * (course in degrees, speed in km/h) from the previous position to the new one; (null course, 0) if it has not moved [MIN_M];

@@ -147,8 +147,10 @@ internal object MarkerArt {
     private val cache = LruCache<String, Bitmap>(400)
 
     /** [sub]: a second line under the callsign (the weather of a weather station: "21° 12 km/h"). */
-    fun station(ctx: Context, sym: AprsSymbols.Symbol?, call: String, selected: Boolean, emergency: Boolean, sub: String? = null): Bitmap {
-        val key = "$call|$sym|$selected|$emergency|$sub"
+    /** [course]: for a car that moves, our own car seen from above turned to where it goes (10° steps), instead of the symbol. */
+    fun station(ctx: Context, sym: AprsSymbols.Symbol?, call: String, selected: Boolean, emergency: Boolean, sub: String? = null, course: Int? = null): Bitmap {
+        val turn = course?.let { ((it + 5) / 10 * 10) % 360 }
+        val key = "$call|$sym|$selected|$emergency|$sub|$turn"
         cache.get(key)?.let { return it }
         val d = ctx.resources.displayMetrics.density
         val symPx = (26 * d).toInt()
@@ -168,7 +170,8 @@ internal object MarkerArt {
         c.translate(0f, (hb - h) / 2f)
         val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f * d; color = 0xFFFFB347.toInt() }
         if (selected) c.drawCircle(h / 2f, h / 2f, h / 2f - 1.5f * d, ring)
-        if (sym != null) c.drawBitmap(AprsSprites.bitmap(ctx, sym, symPx), 2 * d, 2 * d, null)
+        if (turn != null) car(c, h / 2f, h / 2f, d, turn.toFloat(), emergency)
+        else if (sym != null) c.drawBitmap(AprsSprites.bitmap(ctx, sym, symPx), 2 * d, 2 * d, null)
         else c.drawCircle(h / 2f, h / 2f, 6 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE53935.toInt() })
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xD9131A22.toInt() }
         val left = symPx + 4 * d
@@ -177,6 +180,20 @@ internal object MarkerArt {
         else { c.drawText(call, left + pad, h / 2f - 2 * d, text); c.drawText(sub, left + pad, h / 2f + 11.5f * d, small) }
         cache.put(key, b)
         return b
+    }
+
+    /** A car seen from above, nose to [deg] (0 = north): body, windscreen, rear window and headlights. Our own drawing. */
+    private fun car(c: Canvas, cx: Float, cy: Float, d: Float, deg: Float, emergency: Boolean) {
+        c.save(); c.rotate(deg, cx, cy)
+        val body = RectF(cx - 5.5f * d, cy - 11.5f * d, cx + 5.5f * d, cy + 11.5f * d)
+        c.drawRoundRect(body, 4 * d, 4.5f * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (emergency) 0xFFE53935.toInt() else 0xFF28B5E1.toInt() })
+        c.drawRoundRect(body, 4 * d, 4.5f * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.4f * d; color = 0xFF131A22.toInt() })
+        val glass = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF131A22.toInt() }
+        c.drawRoundRect(RectF(cx - 4 * d, cy - 6 * d, cx + 4 * d, cy - 2 * d), 1.5f * d, 1.5f * d, glass)       // windscreen
+        c.drawRoundRect(RectF(cx - 3.6f * d, cy + 5 * d, cx + 3.6f * d, cy + 8 * d), 1.2f * d, 1.2f * d, glass)   // rear window
+        val lamp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFE9A8.toInt() }
+        c.drawCircle(cx - 3.4f * d, cy - 10 * d, 1.2f * d, lamp); c.drawCircle(cx + 3.4f * d, cy - 10 * d, 1.2f * d, lamp)
+        c.restore()
     }
 
     /** A small label for the map (alert, warning, earthquake): text on a coloured rounded box. */
@@ -477,7 +494,8 @@ fun MapScreen(nav: Navigator) {
                 val sel = s.call == holder.focused
                 holder.dynamic.add(Marker(map).apply {
                     position = GeoPoint(s.lat!!, s.lon!!)
-                    icon = BitmapDrawable(ctx.resources, MarkerArt.station(ctx, s.symbol, s.call, sel, s.emergency, s.wx?.mapLabel(Fmt.units)))
+                    icon = BitmapDrawable(ctx.resources, MarkerArt.station(ctx, s.symbol, s.call, sel, s.emergency, s.wx?.mapLabel(Fmt.units),
+                        course = s.courseDeg.takeIf { s.code == '>' && (s.speedKmh ?: 0.0) >= 3.0 }))
                     val d = ctx.resources.displayMetrics.density
                     setAnchor((15 * d) / icon.intrinsicWidth, 0.5f)
                     setOnMarkerClickListener { _, _ -> nav.go("STATION:" + s.call); true }

@@ -238,6 +238,53 @@ private fun testIGate() {
 }
 
 private fun testGeoStations() {
+    // a frame explained: parts, fields and the way it travelled (2026-11-23)
+    run {
+        val PE = PacketExplain
+        val f = Tnc2.parse("EA7KKK-9>APLJRT,EA7URC-3*,WIDE1*,WIDE2-1:!/7Zf:Pq2l>7RQBat=4.02V")!!
+        val pos = Aprs.parse(f.infoText, f.destination.call) as AprsPacket.Position
+        eq(PE.parts(f, pos.comment).map { it.kind }, listOf(PacketExplain.Kind.SOURCE, PacketExplain.Kind.SEP, PacketExplain.Kind.DEST, PacketExplain.Kind.SEP, PacketExplain.Kind.PATH, PacketExplain.Kind.SEP, PacketExplain.Kind.DATA, PacketExplain.Kind.COMMENT), "packet parts")
+        eq(PE.parts(f, pos.comment).joinToString("") { it.text }, f.toTnc2(), "the parts put together are the frame")
+        val fl = PE.fields(f, 48, 62.0).associate { it.name to (it.value to it.note) }
+        eq(fl["Source"], "EA7KKK-9" to "main mobile", "explained: source and its SSID")
+        eq(fl["Device (tocall)"], "APLJRT" to "APRS LoRa+ tracker", "explained: device")
+        eq(fl["Type"]?.first, "Position, compressed, no messaging", "explained: type")
+        eq(fl["cs bytes"]?.first, "altitude (T = Q)", "explained: the cs bytes carry the altitude")
+        eq(fl["Course / speed"], "not in the packet" to "~ 62 km/h, 048° from 2 positions", "explained: course and speed worked out")
+        eq(fl["Comment"]?.first, "Bat=4.02V", "explained: comment")
+        eq(PE.hops(f).map { it.who to it.role }, listOf("EA7KKK-9" to PacketExplain.Role.TX, "EA7URC-3" to PacketExplain.Role.DIGI), "hops: sender and the digipeater that repeated it")
+        eq(PE.hops(f)[1].note, "digipeater · used WIDE1", "hops: the alias it used")
+        eq(PE.pathSummary(f), "1 hop used, 1 left.", "path summary")
+        eq(PE.pathSummary(Tnc2.parse("EA7KKK-9>APLJRT:>hi")!!), "No path: heard directly.", "path summary: direct")
+        val t = Tnc2.parse("EA7GAT-10>APLRG1:}EA1ZZZ-7>APDR16,TCPIP,EA7GAT-10*::EA7JRS-7 :hola{12")!!
+        eq(PE.hops(t).map { it.role }, listOf(PacketExplain.Role.TX, PacketExplain.Role.IS, PacketExplain.Role.IGATE), "hops of a third-party frame: station, APRS-IS, iGate")
+        eq(PE.hops(t)[1].who to PE.hops(t)[1].note, "APRS-IS" to "came through the internet", "hops: APRS-IS")
+        val tq = Tnc2.parse("EA7GAT-10>APLRG1:}EA1ZZZ-7>APDR16,TCPIP*,qAC,T2SPA::EA7JRS-7 :hola{12")!!
+        eq(PE.hops(tq)[1].who to PE.hops(tq)[1].note, "T2SPA" to "came straight from a verified client", "hops: the q construct in words")
+        val tf = PE.fields(t).associate { it.name to it.value }
+        eq(listOf(tf["Sent to the radio by"], tf["Source"], tf["To"], tf["Text"], tf["Number"]), listOf("EA7GAT-10", "EA1ZZZ-7", "EA7JRS-7", "hola", "12"), "explained: a message from APRS-IS")
+        eq(PE.fields(Tnc2.parse("EA7WX>APRS:!3631.80N/00617.02W_090/005g010t068h55b10132")!!).first { it.name == "Weather" }.note, "the course / speed field carries the wind", "explained: weather station")
+        eq(PE.compressedCs("!3631.80N/00617.02W>"), null, "cs bytes: not a compressed position")
+        eq(listOf(PE.device("APDR16"), PE.device("APXYZ")), listOf("APRSdroid", ""), "device names")
+        val tb = StationTable()
+        check(tb.onFrame(f, 1000L).lastFrame === f, "the station keeps its last frame")
+        // the trail of a moving station
+        var tr = Motion.trail(emptyList(), 36.5, -6.2, 0L)
+        tr = Motion.trail(tr, 36.5001, -6.2, 30_000L)
+        eq(tr.size, 1, "trail: 11 m is the same point")
+        tr = Motion.trail(tr, 36.51, -6.2, 60_000L)
+        tr = Motion.trail(tr, 36.52, -6.2, 120_000L)
+        eq(tr.map { it.lat }, listOf(36.5, 36.51, 36.52), "trail: oldest first")
+        eq(Motion.trail(tr, 36.53, -6.2, 4 * 3600_000L).map { it.lat }, listOf(36.53), "trail: points of more than 3 h go")
+        eq(Motion.trail(tr, 46.0, -6.2, 180_000L).size, 1, "trail: a jump starts it again")
+        var long = emptyList<TrackPoint>()
+        for (k in 0 until 100) long = Motion.trail(long, 36.0 + k * 0.001, -6.0, k * 30_000L)
+        eq(long.size to long.last().lat, Motion.TRAIL_POINTS to 36.0 + 99 * 0.001, "trail: 80 points at most, the newest kept")
+        val tt = StationTable()
+        tt.onFrame(Tnc2.parse("EA7MOV-9>APRS:!3630.00N/00612.00W>")!!, 0L)
+        tt.onFrame(Tnc2.parse("EA7MOV-9>APRS:>status")!!, 20_000L)
+        eq(tt.onFrame(Tnc2.parse("EA7MOV-9>APRS:!3630.60N/00612.00W>")!!, 60_000L).trail.size, 2, "the table keeps the trail")
+    }
     // course and speed of a station that sends none, from two positions (2026-11-23)
     eq(Motion.between(null, null, null, 36.5, -6.2, 60_000), null, "motion: no previous position")
     eq(Motion.between(36.5, -6.2, 0, 36.5, -6.2, 5_000), null, "motion: too soon")
