@@ -674,6 +674,34 @@ class Controller(
         }
     }
 
+    // ------------------------------------------------------------------ position beacons from the phone
+
+    private var beaconTimer = es.ea7jrs.aprslorap.core.PhoneBeacon.Timer(settings.phoneBeaconMinutes * 60)
+    private var fixLat = 0.0; private var fixLon = 0.0; private var fixAlt: Double? = null
+    private var fixSpeed: Double? = null; private var fixCourse: Int? = null; private var fixAtMs = 0L
+
+    /** A fix of the phone's GNSS for the beacons (any thread); fixes worse than 50 m are left out. */
+    fun beaconFix(lat: Double, lon: Double, altM: Double?, speedKmh: Double?, courseDeg: Int?, accM: Float?) {
+        if (accM != null && accM > 50f) return
+        exec.execute { safe {
+            fixLat = lat; fixLon = lon; fixAlt = altM; fixSpeed = speedKmh; fixCourse = courseDeg.takeIf { (speedKmh ?: 0.0) >= 3.0 }
+            fixAtMs = System.currentTimeMillis()
+            if (AppState.phoneBeacon.value.startsWith("Waiting")) AppState.phoneBeacon.value = "Fix: first beacon when the tracker is connected"
+        } }
+    }
+
+    private fun maybePhoneBeacon(now: Long) {
+        if (!settings.phoneBeacon || fixAtMs == 0L || now - fixAtMs > 30_000 || !Licence.isValid(settings)) return
+        if (!controlOn && AppState.bleStatus.value.let { !it.startsWith("Connected") || it.startsWith("Connected, prep") }) return   // no link: nothing to send through
+        if (!beaconTimer.due(now, fixSpeed, fixCourse)) return
+        val sym = settings.phoneBeaconSymbol
+        val info = es.ea7jrs.aprslorap.core.PhoneBeacon.encode(fixLat, fixLon, sym[0], sym[1], fixCourse, fixSpeed, fixAlt, settings.phoneBeaconComment) ?: return
+        beaconTimer.sent(now, fixCourse)
+        transmitInfo(info)
+        AppState.phoneBeacon.value = "Last beacon " + java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(now)) +
+            " · next in " + beaconTimer.intervalS(fixSpeed).let { if (it >= 120) "${it / 60} min" else "$it s" } + " or on a turn".takeIf { settings.phoneBeaconMinutes == 0 }.orEmpty()
+    }
+
     /** Stops repeating the phone position (the tracker uses its own GNSS again after 2 minutes). */
     fun phonePositionOff() { exec.execute { safe { phoneAtMs = 0 } } }
 
@@ -731,6 +759,7 @@ class Controller(
             sendControlLine(Control.command("gpsaid", "s" to "abort"))
         }
         sendPhonePosition(force = false)
+        maybePhoneBeacon(now)
         if (controlOn && now - lastStatusMs >= STATUS_EVERY_MS) {
             lastStatusMs = now
             sendControlLine(Control.command("status"))

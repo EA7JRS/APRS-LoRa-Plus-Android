@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -76,6 +77,8 @@ data class StationView(
     val wx: AprsWx? = null, val wxMs: Long? = null, val owner: String? = null, val micE: String? = null,
     val wxPressD3h: Double? = null,     // change of the pressure over 3 h, once the station has been heard for an hour
     val motionDerived: Boolean = false, // course and speed worked out from two positions, not sent by the station
+    val telemetry: es.ea7jrs.aprslorap.core.TelemetryReading? = null, val telemetryDefs: es.ea7jrs.aprslorap.core.TelemetryDefs? = null,
+    val statusMs: Long? = null,
     val lastFrame: es.ea7jrs.aprslorap.core.Ax25Frame? = null,          // the last frame the app decoded from it (packet card)
     val trail: List<es.ea7jrs.aprslorap.core.TrackPoint> = emptyList(), // where it has been, oldest first (map)
 ) {
@@ -113,7 +116,7 @@ fun stationViews(stations: List<Station>, heard: List<HeardStation>, heardAtMs: 
             s.courseDeg ?: heardCourse(h).takeIf { !wxStation && s.speedKmh == null }, s.speedKmh ?: heardSpeed(h).takeIf { !wxStation },
             s.altitudeM ?: h?.altitudeM?.toDouble(), h?.device, s.status ?: h?.status,
             wx = s.wx, wxMs = s.wxMs, owner = s.owner, micE = s.micE, wxPressD3h = s.wxPressD3h, motionDerived = s.motionDerived,
-            lastFrame = s.lastFrame, trail = s.trail,
+            lastFrame = s.lastFrame, trail = s.trail, telemetry = s.telemetry, telemetryDefs = s.telemetryDefs, statusMs = s.statusMs,
         ))
     }
     val known = stations.map { it.call }.toSet()
@@ -313,11 +316,12 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                     InfoRow("POSITION", Fmt.ago(s.positionMs))
                     InfoRow("PACKETS", "${s.packets}" + (s.device?.let { " · $it" } ?: ""))
                     if (s.path.isNotEmpty()) InfoRow("PATH", s.path)
-                    if (!s.status.isNullOrBlank()) InfoRow("STATUS", s.status)
+                    if (!s.status.isNullOrBlank()) InfoRow("STATUS", s.status + (s.statusMs?.let { " · " + Fmt.ago(it) } ?: ""))
                     s.micE?.let { InfoRow("MIC-E", it, if (it == Aprs.MICE_EMERGENCY) Alp.RedSoft else Alp.Text) }
                     s.owner?.let { InfoRow("OBJECT OF", it) }
                     if (s.comment.isNotBlank()) Text("“${s.comment}”", fontSize = 15.sp, color = Alp.SubText, modifier = Modifier.padding(top = 6.dp))
                 }
+                s.telemetry?.let { TelemetryPanel(it, s.telemetryDefs) }
                 s.lastFrame?.let { PacketCard(it, s) }
             }
             Row(Modifier.fillMaxWidth().height(58.dp).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -332,6 +336,29 @@ fun StationDetailScreen(nav: Navigator, call: String) {
                 }
             }
         }
+    }
+}
+
+/** The last telemetry report of a station: analog channels with their names and units, bits as lamps. */
+@Composable
+fun TelemetryPanel(r: es.ea7jrs.aprslorap.core.TelemetryReading, defs: es.ea7jrs.aprslorap.core.TelemetryDefs?) {
+    val values = remember(r, defs) { es.ea7jrs.aprslorap.core.Telemetry.values(defs, r) }
+    Panel(Modifier.fillMaxWidth(), padding = 10.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("TELEMETRY" + (defs?.title?.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""))
+            Spacer(Modifier.weight(1f))
+            Text("#${r.seq} · " + Fmt.ago(r.timeMs), fontSize = 13.sp, color = Alp.Muted)
+        }
+        for (v in values.filter { it.on == null }) InfoRow(v.name.uppercase(), v.value + if (v.unit.isNotEmpty()) " " + v.unit else "")
+        val bits = values.filter { it.on != null }
+        if (bits.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (b in bits) {
+                val c = if (b.on == true) Alp.Green else Alp.Muted
+                Text(b.name + if (b.unit.isNotEmpty() && b.on == true) " " + b.unit else "", fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = c,
+                    modifier = Modifier.border(1.dp, c, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+            }
+        }
+        if (defs == null) Text("The station has not said yet what its channels are (PARM / UNIT / EQNS): raw values.", fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

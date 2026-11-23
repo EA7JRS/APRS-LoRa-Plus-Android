@@ -72,6 +72,22 @@ class Settings(ctx: Context) {
         get() = p.getInt("nmea_port", 10110)
         set(v) { p.edit().putInt("nmea_port", v).apply() }
 
+    // Position beacons from the phone, with the app's callsign, through the tracker
+    var phoneBeacon: Boolean
+        get() = p.getBoolean("phone_beacon", false)
+        set(v) { p.edit().putBoolean("phone_beacon", v).apply() }
+    /** Symbol table and code ("/>" car, "/[" person, "/$" phone...). */
+    var phoneBeaconSymbol: String
+        get() = p.getString("phone_beacon_sym", "/$")!!.let { if (it.length == 2) it else "/$" }
+        set(v) { p.edit().putString("phone_beacon_sym", v).apply() }
+    var phoneBeaconComment: String
+        get() = p.getString("phone_beacon_text", "APRS LoRa+")!!
+        set(v) { p.edit().putString("phone_beacon_text", v).apply() }
+    /** Minutes between beacons; 0 = SmartBeaconing (by speed and turns). */
+    var phoneBeaconMinutes: Int
+        get() = p.getInt("phone_beacon_min", 0)
+        set(v) { p.edit().putInt("phone_beacon_min", v.coerceIn(0, 120)).apply() }
+
     /** Tracker GNSS as the phone location (the app must be the mock location app in the developer options). */
     var mockLocation: Boolean
         get() = p.getBoolean("mock_location", false)

@@ -154,6 +154,7 @@ object AppState {
     val nmeaStatus = MutableStateFlow("Off")
     val nmeaRecent = MutableStateFlow<List<String>>(emptyList())
     val mockStatus = MutableStateFlow("Off")
+    val phoneBeacon = MutableStateFlow("Off")                                    // position beacons from the phone: state and the last one sent
     // Telegraph key on the phone
     val cwActive = MutableStateFlow(false)
     val cwInputStatus = MutableStateFlow("Off")

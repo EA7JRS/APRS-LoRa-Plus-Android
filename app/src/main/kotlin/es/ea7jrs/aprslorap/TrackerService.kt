@@ -28,6 +28,7 @@ class TrackerService : Service() {
 
     private var ble: TrackerBle? = null
     private var controller: Controller? = null
+    private var beaconSource: PhoneBeaconSource? = null
     private var isClient: IsClient? = null
     private var nmeaServer: NmeaServer? = null
     private var mock: MockLocation? = null
@@ -54,7 +55,10 @@ class TrackerService : Service() {
         try {
             ServiceCompat.startForeground(
                 this, Notifier.ID_SERVICE, notifier.foreground("Starting..."),
-                if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0,
+                // "location" only when the phone is to send position beacons and may read its position: Android 14 refuses
+                // a location service without the permission
+                if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+                    (if (settings.phoneBeacon && PhoneBeaconSource.permitted(this)) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0) else 0,
             )
         } catch (e: Exception) {
             // Android 14+: a connectedDevice service needs the Bluetooth permission already granted (e.g. it was revoked
@@ -110,6 +114,8 @@ class TrackerService : Service() {
         controller = c
         AppState.controller = c
         isClient?.start()
+        if (settings.phoneBeacon && Licence.isValid(settings)) beaconSource = PhoneBeaconSource(this).also { it.start() }
+        else AppState.phoneBeacon.value = if (settings.phoneBeacon) "Callsign not validated" else "Off"
         RotctlLink.apply(settings)
         bleLink.connect(settings.deviceAddress)
         ExtraReceivers.start(this, settings)
@@ -124,6 +130,7 @@ class TrackerService : Service() {
         AppState.ble = null
         isClient?.stop(); isClient = null
         CwEngine.stop()
+        beaconSource?.stop(); beaconSource = null
         controller?.stop(); controller = null
         nmeaServer?.stop(); nmeaServer = null; AppState.nmeaOut = null
         mock?.stop(); mock = null

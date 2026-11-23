@@ -19,6 +19,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -145,6 +146,14 @@ fun ConnectTab() {
     var device by rememberSaveable { mutableStateOf(settings.deviceAddress) }
     var deviceName by rememberSaveable { mutableStateOf(settings.deviceName) }
     var igate by rememberSaveable { mutableStateOf(settings.igateEnabled) }
+    var beacon by rememberSaveable { mutableStateOf(settings.phoneBeacon) }
+    var beaconSym by rememberSaveable { mutableStateOf(settings.phoneBeaconSymbol) }
+    var beaconText by rememberSaveable { mutableStateOf(settings.phoneBeaconComment) }
+    var beaconMin by rememberSaveable { mutableStateOf(settings.phoneBeaconMinutes) }
+    val beaconState by AppState.phoneBeacon.collectAsState()
+    val locationAsk = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (!ok) { beacon = false; AppState.error.value = "Without the location permission the phone cannot send its position" }
+    }
     var host by rememberSaveable { mutableStateOf(settings.isHost) }
     var port by rememberSaveable { mutableStateOf(settings.isPort.toString()) }
     var dapUser by rememberSaveable { mutableStateOf(settings.dapnetUser) }
@@ -190,6 +199,10 @@ fun ConnectTab() {
         settings.deviceAddress = device
         settings.deviceName = deviceName
         settings.igateEnabled = igate
+        settings.phoneBeacon = beacon
+        settings.phoneBeaconSymbol = beaconSym
+        settings.phoneBeaconComment = beaconText
+        settings.phoneBeaconMinutes = beaconMin
         settings.isHost = host
         settings.isPort = port.toIntOrNull() ?: 14580
         settings.dapnetUser = dapUser
@@ -295,6 +308,36 @@ fun ConnectTab() {
         OutlinedButton(onClick = { newRx?.let { e -> if (extras.none { it.key == e.key }) { extras = extras + e; settings.extraReceivers = extras }; rxAddr = ""; rxName = "" } },
             enabled = newRx != null) { Text("Add receiver") }
         if (running && extras.isNotEmpty()) Text("Changes apply when the link is restarted.", fontSize = 11.sp)
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = beacon, onCheckedChange = {
+                beacon = it
+                if (it && !PhoneBeaconSource.permitted(ctx)) locationAsk.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            })
+            Spacer(Modifier.width(8.dp))
+            Text("Position beacons from the phone (its GNSS, your callsign)")
+        }
+        if (beacon) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                AprsSymbolIcon(es.ea7jrs.aprslorap.core.AprsSymbols.of(beaconSym.getOrNull(0), beaconSym.getOrNull(1)), 34.dp, Alp.SymbolBg)
+                OutlinedTextField(beaconSym, { beaconSym = it.take(2) }, label = { Text("Symbol") }, singleLine = true, modifier = Modifier.width(96.dp))
+                OutlinedTextField(beaconText, { beaconText = it.take(43) }, label = { Text("Comment") }, singleLine = true, modifier = Modifier.weight(1f))
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((label, sym) in listOf("PHONE" to "/$", "CAR" to "/>", "PERSON" to "/[", "BIKE" to "/b", "BOAT" to "/Y", "HOME" to "/-"))
+                    Chip(label, beaconSym == sym, height = 32.dp) { beaconSym = sym }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for ((label, min) in listOf("SMART" to 0, "1 min" to 1, "5 min" to 5, "10 min" to 10, "30 min" to 30))
+                    Chip(label, beaconMin == min, height = 32.dp) { beaconMin = min }
+            }
+            Text(if (beaconMin == 0) "SmartBeaconing: every 30 min when still, down to 90 s at 100 km/h, and at once on a turn."
+                 else "A beacon every $beaconMin min, moving or not.", fontSize = 12.sp, color = Alp.SubText)
+            if (MessageEngine.trackerSendsAcks(call, trackerCall))
+                Text("Same callsign and SSID as the tracker: the tracker already sends its own beacons with it. Use another SSID here (-7 handheld, -9 car) or turn the tracker's beacon off.",
+                    fontSize = 12.sp, color = Alp.Amber)
+            Text(if (running) beaconState else "Applies when the link is restarted.", fontSize = 12.sp, color = Alp.SubText)
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = igate, onCheckedChange = { igate = it })

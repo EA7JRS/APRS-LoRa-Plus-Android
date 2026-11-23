@@ -26,6 +26,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- position beacons from the phone with the screen off (Connect > Position beacons from the phone) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- emergency alerts: full-screen notification over the lock screen, vibration with the alarm -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
@@ -83,7 +85,7 @@
         <service
             android:name=".TrackerService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|location" />
 
         <receiver
             android:name=".ReplyReceiver"
