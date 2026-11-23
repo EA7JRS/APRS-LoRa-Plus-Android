@@ -157,7 +157,9 @@ private fun SpaceCard(w: SpaceWx) {
     if (sfi != null && pos != null) {
         val elev = es.ea7jrs.aprslorap.core.Astro.sunPosition(System.currentTimeMillis(), pos.first, pos.second).altDeg
         val e = HfProp.estimate(sfi, elev, HfProp.xrayFlux(w.xray))
-        val kp = w.kpNow ?: 0.0
+        // Hp30 when it is fresh (it reacts before the 3-hour Kp), clamped to the 0..9 the band states expect
+        val geo = OfficialAlerts.geomagNow(w, System.currentTimeMillis() / 1000)
+        val kp = (geo?.first ?: 0.0).coerceAtMost(9.0)
         Text(String.format(Locale.US, "HF now: MUF %.1f · LUF %.1f MHz", e.muf, e.luf) + (HfProp.bestDx(e, kp)?.let { " · best DX $it" } ?: "") +
             if (elev > 0) " (day)" else " (night)", fontSize = 13.sp, color = Alp.Text)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -170,7 +172,7 @@ private fun SpaceCard(w: SpaceWx) {
                 }
             }
         }
-        Text("Estimated from the solar flux, the sun's elevation here, X-rays and Kp; without an ionosonde.", fontSize = 11.sp, color = Alp.Muted)
+        Text("Estimated from the solar flux, the sun's elevation here, X-rays and ${geo?.second ?: "Kp"}; without an ionosonde.", fontSize = 11.sp, color = Alp.Muted)
     }
 }
 

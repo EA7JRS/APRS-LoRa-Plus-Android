@@ -626,6 +626,34 @@ object OfficialAlerts {
         return w.copy(hp30 = rows.takeLast(keep).map { it.second }, hp30Time = rows.last().first)
     }
 
+    /**
+     * The geomagnetic index to work with now: GFZ's Hp30 if its newest half hour started less than 2 h ago (it reacts up to 2.5 h
+     * before the 3-hour Kp), else the Kp; with its name. Null without either. Hp30 is open-ended: callers that expect 0..9 clamp it.
+     */
+    fun geomagNow(w: SpaceWx, nowS: Long): Pair<Double, String>? {
+        val hp = w.hp30.lastOrNull()
+        if (hp != null && w.hp30Time != 0L && nowS - w.hp30Time < 2 * 3600) return hp to "Hp30"
+        return w.kpNow?.let { it to "Kp" }
+    }
+
+    /**
+     * Geomagnetic storm seen in the Hp30 (>= 5 = G1, same thresholds as the Kp): an alert of its own, earlier than SWPC's. One id per
+     * day and G level, so a storm that grows opens a new one; it lasts 3 h after the half hour that showed it.
+     */
+    fun hp30Alert(w: SpaceWx, nowS: Long): OfficialAlert? {
+        val (v, name) = geomagNow(w, nowS) ?: return null
+        if (name != "Hp30") return null
+        val g = kpToG(v)
+        if (g < 1) return null
+        val day = (w.hp30Time / 86400)
+        return OfficialAlert("gfz/hp30/G$g/$day", AlertSrc.SWPC, if (g >= 4) 3 else if (g == 3) 2 else 1,
+            String.format(Locale.US, "Geomagnetic storm G%d (Hp30 %.1f)", g, v), "G$g " + scaleName('G'), "Observed, GFZ Hp30", "",
+            w.hp30Time, w.hp30Time, w.hp30Time + 3 * 3600)
+    }
+
+    /** The G level (1..5) an SWPC alert is about, 0 if it is not a geomagnetic one. */
+    fun alertG(a: OfficialAlert): Int = if (a.area.length >= 2 && a.area[0] == 'G' && a.area[1].isDigit()) a.area[1] - '0' else 0
+
     /** Storm level by Dst as it is usually read: 0 quiet (> -30 nT), 1 weak, 2 moderate (<= -50), 3 intense (<= -100), 4 super (<= -250). */
     fun dstLevel(dst: Double) = when { dst <= -250 -> 4; dst <= -100 -> 3; dst <= -50 -> 2; dst <= -30 -> 1; else -> 0 }
     fun dstName(dst: Double) = listOf("quiet", "weak storm", "moderate storm", "intense storm", "super storm")[dstLevel(dst)]

@@ -1708,6 +1708,15 @@ private fun testOfficialAlerts() {
     eq(hpW.hp30Time, O.parseIso("2026-11-23 10:30:00"), "GFZ Hp30: start of the newest half hour")
     eq(O.gfzHp30(hpTxt, SpaceWx(), keep = 2)?.hp30?.size, 2, "GFZ Hp30: only the last ones")
     eq(O.gfzHp30("# nothing yet\n2026 11 23 0.0 0.25 1 1 -1.000 -1 0", SpaceWx()), null, "GFZ Hp30: no data")
+    val hpNow = O.parseIso("2026-11-23 11:10:00")
+    eq(O.geomagNow(hpW.copy(kp = listOf(4.0)), hpNow), 10.667 to "Hp30", "geomagnetic index now: the fresh Hp30 before the Kp")
+    eq(O.geomagNow(hpW.copy(kp = listOf(4.0)), hpNow + 3 * 3600), 4.0 to "Kp", "geomagnetic index now: Hp30 too old, the Kp")
+    eq(O.geomagNow(SpaceWx(), hpNow), null, "geomagnetic index now: nothing")
+    val hpA = O.hp30Alert(hpW, hpNow)!!
+    eq(listOf(hpA.level, hpA.event, hpA.area, O.alertG(hpA)), listOf<Any>(3, "Geomagnetic storm G5 (Hp30 10.7)", "G5 Geomagnetic storm", 5), "Hp30 storm alert")
+    check(hpA.activeAt(hpNow) && !hpA.activeAt(hpNow + 4 * 3600) && hpA.id.startsWith("gfz/hp30/G5/"), "Hp30 storm alert: id and 3 h of life")
+    eq(O.hp30Alert(hpW.copy(hp30 = listOf(4.9)), hpNow), null, "Hp30 below 5: no alert")
+    eq(O.hp30Alert(hpW, hpNow + 3 * 3600), null, "Hp30 too old: no alert")
     val rw = O.rtswWind("""[{"time_tag":"2026-11-19T21:39:00","active":false,"source":"ACE","proton_speed":470.0,"proton_density":4.0},
         {"time_tag":"2026-11-19T21:40:00","active":true,"source":"DSCOVR","proton_speed":487.3,"proton_density":5.4,"proton_temperature":110200},
         {"time_tag":"2026-11-19T21:40:00","active":false,"source":"ACE","proton_speed":480.0,"proton_density":5.0}]""", SpaceWx())!!

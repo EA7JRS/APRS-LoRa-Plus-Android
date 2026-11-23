@@ -171,7 +171,10 @@ object OfficialAlertsFetcher {
                         n0nbhXml?.let { x -> OfficialAlerts.n0nbhFill(x, w)?.let { w = it } }
                     }
                     AppState.spaceWx.value = w.copy(updatedMs = System.currentTimeMillis())
-                    bySource[AlertSrc.SWPC] = OfficialAlerts.swpcAlerts(text(OfficialAlerts.SWPC_ALERTS), nowS)
+                    val swpc = OfficialAlerts.swpcAlerts(text(OfficialAlerts.SWPC_ALERTS), nowS)
+                    // storm seen in the Hp30 before SWPC says it: its own alert, unless SWPC already has one of that G level or more
+                    val hp = OfficialAlerts.hp30Alert(w, nowS)?.takeIf { h -> swpc.none { OfficialAlerts.alertG(it) >= OfficialAlerts.alertG(h) } }
+                    bySource[AlertSrc.SWPC] = swpc + listOfNotNull(hp)
                 } else bySource.remove(AlertSrc.SWPC)
                 publish(settings, nowS)
                 AppState.officialMessage.value = (if (errors.isEmpty()) "Updated" else errors.joinToString("; ")) +
