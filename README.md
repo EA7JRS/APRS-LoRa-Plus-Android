@@ -6,7 +6,7 @@ Android companion for the [APRS LoRa+](https://github.com/EA7JRS/APRS-LoRa-Plus)
 
 **Documentation**: [user manual](docs/USER_MANUAL_EN.md) ([español](docs/MANUAL_ES.md)), [quick guide](docs/QUICK_GUIDE_EN.md) ([español](docs/GUIA_RAPIDA.md)), [tracker BLE protocol](docs/BLE_CONTROL.md), [coverage of the tracker functions](docs/APP_COVERAGE.md), [Google Play notes](docs/GOOGLE_PLAY.md).
 
-Status: **5.4.8** (the Android app now has its own version, ahead of the rest of the ecosystem). The pure Kotlin core is tested on the PC (about 1750 checks); the Android app builds in the CI (debug APK and Google Play bundle) and is in Google Play internal testing. Most features have not been tried yet on a phone with real hardware.
+Status: **5.4.8** (the Android app now has its own version, ahead of the rest of the ecosystem). The pure Kotlin core is tested on the PC (about 1830 checks); the Android app builds in the CI (debug APK and Google Play bundle) and is in Google Play internal testing. Most features have not been tried yet on a phone with real hardware.
 
 The interface works like a radio: a main screen with band A (the tracker) and band B (the CAT radio or the SDR), soft keys [F] with three pages (APRS / RADIO / SYSTEM), and a side menu with every tool.
 
@@ -52,7 +52,7 @@ The interface works like a radio: a main screen with band A (the tracker) and ba
 The callsign must have a DMR ID / CCS7 in RadioID.net. Until it is validated the app only listens: no APRS frames, iGate, DAPNET, spots, uploads or commands that transmit.
 
 ## Layout
-- `core/`: pure Kotlin (no Android): KISS, AX.25, APRS, message engine, control protocol, DSP and modems, decoders, formulas (WMM, astronomy, celestial navigation), map data readers. `gradle :core:selfTest` runs its checks.
+- `core/`: pure Kotlin (no Android): KISS, AX.25, APRS, message engine, control protocol, DSP and modems, decoders, formulas (WMM, astronomy, Sun / Moon / Earth almanac, celestial navigation), map data readers. `gradle :core:selfTest` runs its checks.
 - `app/`: Android app (Compose UI, BLE, foreground service, notifications, Android Auto messaging).
 - `native/`: dsd-fme, ft8_lib, wsprd and the FST4W decoder built as separate programs with the NDK (the CI builds them).
 - `docs/`: control protocol (`BLE_CONTROL.md`, copy of the firmware's), coverage table (`APP_COVERAGE.md`), Google Play steps (`GOOGLE_PLAY.md`).

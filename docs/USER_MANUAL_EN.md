@@ -49,7 +49,9 @@ The main screen works like a mobile radio: two bands, touch keys and the **[F]**
 - **Side menu** (☰): every screen and tool, the theme (light, dark, system, auto = light from sunrise to sunset),
   units (metric, nautical, imperial) and the emergency alert options (sound, vibration, torch, full-screen).
 - **DISP**: compass, GPS sky (tracker or phone: satellites by constellation, SNR bars, errors), altitude and clock with
-  sun, twilight and moon.
+  sun, twilight and moon (true phase), and an **almanac**: next Moon phase, perigee or apogee, equilibrium tide (a guide,
+  not a port prediction), next lunar and solar eclipses, next equinox or solstice, the Sun's distance and clear-sky UV
+  index, and the moonbounce (EME) path loss, echo delay and Doppler on 432 MHz.
 
 ## 4. APRS
 

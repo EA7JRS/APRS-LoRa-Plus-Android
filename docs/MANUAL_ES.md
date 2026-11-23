@@ -51,7 +51,9 @@ La pantalla principal se maneja como una emisora móvil: dos bandas, teclas tác
   salida a la puesta del sol), las unidades (métrico, náutico, imperial) y las opciones de las alertas de emergencia
   (sonido, vibración, linterna, pantalla completa).
 - **DISP**: brújula, cielo GPS (del tracker o del móvil: satélites por constelación, barras de SNR, errores), altitud y reloj
-  con sol, crepúsculo y luna.
+  con sol, crepúsculo y luna (fase verdadera), y un **almanaque**: próxima fase de la luna, perigeo o apogeo, marea de
+  equilibrio (orienta; no es la predicción de ningún puerto), próximos eclipses de Luna y de Sol, próximo equinoccio o
+  solsticio, distancia del Sol e índice UV de cielo despejado, y el rebote lunar (EME) en 432 MHz: pérdida, eco y Doppler.
 
 ## 4. APRS
 

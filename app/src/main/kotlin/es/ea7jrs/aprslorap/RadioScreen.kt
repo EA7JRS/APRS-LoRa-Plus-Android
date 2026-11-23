@@ -476,12 +476,40 @@ private fun ClockPage() {
             val civil = es.ea7jrs.aprslorap.core.Astro.sunTimes(utc.get(java.util.Calendar.YEAR), utc.get(java.util.Calendar.MONTH) + 1,
                 utc.get(java.util.Calendar.DAY_OF_MONTH), lat, lon, -6.0)
             val moon = remember(dayStart, lat.toInt(), lon.toInt()) { es.ea7jrs.aprslorap.core.Astro.moonTimes(dayStart, lat, lon) }
-            val age = es.ea7jrs.aprslorap.core.Astro.moonAgeDays(now)
             val A = es.ea7jrs.aprslorap.core.Astro
+            val E = es.ea7jrs.aprslorap.core.Ephem
+            val jd = es.ea7jrs.aprslorap.core.Celnav.julianDay(now)
+            // true phase (real elongation, not the mean synodic month): recomputed every minute
+            val phase = remember(now / 60_000) { E.moonPhaseTrue(jd) }
             InfoRow("SUN", if (sun.riseMin == null) "no rise / set today" else "${A.hhmm(sun.riseMin, off)} – ${A.hhmm(sun.setMin, off)}")
             InfoRow("TWILIGHT", "${A.hhmm(civil.riseMin, off)} – ${A.hhmm(civil.setMin, off)}")
-            InfoRow("MOON", String.format(Locale.US, "%s %d %%", A.moonPhaseName(A.moonPhase8(age)), Math.round(A.moonIllumination(age) * 100)))
+            InfoRow("MOON", String.format(Locale.US, "%s %.1f %% · %.1f d", A.moonPhaseName(phase.phase8), phase.illum * 100, phase.ageDays))
             InfoRow("MOONRISE", "${A.hhmm(moon.riseMin, off)} · set ${A.hhmm(moon.setMin, off)}")
+            // Almanac (the Ephem formulas of the plotter core): what comes next. Costly, so only every 10 minutes
+            val alm = remember(now / 600_000) {
+                val q = (0..3).minByOrNull { E.nextMoonPhase(jd, it) } ?: 0
+                val per = E.nextMoonApsis(jd, true); val apo = E.nextMoonApsis(jd, false)
+                listOf<Any?>(q, E.nextMoonPhase(jd, q), if (per.first < apo.first) "Perigee" else "Apogee", if (per.first < apo.first) per else apo,
+                    E.nextEclipse(jd, true), E.nextEclipse(jd, false), E.nextSeason(jd))
+            }
+            val day = java.text.SimpleDateFormat("d MMM HH:mm", Locale.US)
+            val date = java.text.SimpleDateFormat("d MMM yyyy", Locale.US)
+            fun at(j: Double, f: java.text.SimpleDateFormat): String = f.format(java.util.Date(E.jdToMs(j)))
+            SectionLabel("ALMANAC")
+            InfoRow(listOf("NEW MOON", "FIRST QUARTER", "FULL MOON", "LAST QUARTER")[alm[0] as Int], at(alm[1] as Double, day))
+            @Suppress("UNCHECKED_CAST") val apsis = alm[3] as Pair<Double, Double>
+            InfoRow((alm[2] as String).uppercase(Locale.US), String.format(Locale.US, "%s · %,.0f km", at(apsis.first, day), apsis.second))
+            val tide = E.tideForceIndex(jd)
+            InfoRow("TIDE (EQUILIBRIUM)", String.format(Locale.US, "%.0f %% · %s", tide, if (tide >= 85) "springs" else if (tide <= 55) "neaps" else "mid"))
+            (alm[4] as es.ea7jrs.aprslorap.core.Ephem.Eclipse?)?.let { InfoRow("LUNAR ECLIPSE", String.format(Locale.US, "%s · %s · mag %.2f", at(it.jd, date), it.kind.label.substringBefore(" lunar"), it.magnitude)) }
+            (alm[5] as es.ea7jrs.aprslorap.core.Ephem.Eclipse?)?.let { InfoRow("SOLAR ECLIPSE", "${at(it.jd, date)} · ${it.kind.label.substringBefore(" solar")} (somewhere on Earth)") }
+            @Suppress("UNCHECKED_CAST") val season = alm[6] as Pair<Double, Int>
+            InfoRow(if (season.second % 2 == 0) "EQUINOX" else "SOLSTICE", at(season.first, day))
+            val sunNow = A.sunPosition(now, lat, lon)
+            val au = E.sunDistanceAu(jd)
+            InfoRow("SUN", String.format(Locale.US, "%.4f AU · %.0f W/m² · UV %.1f (clear sky)", au, E.solarIrradianceToa(jd), E.clearSkyUvIndex(sunNow.altDeg, au)))
+            val eme = E.emeInfo(jd, lat, lon, 432e6)
+            InfoRow("EME 432 MHz", String.format(Locale.US, "%.1f dB · echo %.2f s · Doppler %+.0f Hz", eme.pathLossDb, eme.echoDelayS, eme.dopplerHz))
         }
     }
 }

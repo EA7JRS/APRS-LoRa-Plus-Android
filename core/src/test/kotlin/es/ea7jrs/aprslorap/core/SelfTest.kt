@@ -2188,7 +2188,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3075,4 +3075,68 @@ private fun testCarText() {
     eq(Alerts.fromAprs("EA7ABC-9", "MOB", false, t0)?.kind, AlertKind.MOB, "MOB from a -9 stays MOB")
     eq(Alerts.ssid("EA7ABC-9"), 9, "ssid -9"); eq(Alerts.ssid("EA7ABC"), 0, "ssid none"); eq(Alerts.ssid("OBJ-X"), -1, "ssid odd")
     eq(CarText.trendArrow(-1.4), "↓", "car trend falling"); eq(CarText.trendArrow(0.3), "→", "car trend steady"); eq(CarText.trendArrow(null), "", "car trend none")
+}
+
+// Sun, Moon and Earth (Ephem): the same reference values as testEphem of the plotter core (Meeus 49.a and 50.a, the phases, seasons
+// and eclipses of 2026 and 2027 of the almanacs, the EME path loss on 432 MHz)
+private fun testEphem() {
+    fun jdOf(y: Int, m: Int, d: Int, h: Int, min: Double): Double {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")); c.clear(); c.set(y, m - 1, d, h, 0, 0)
+        return Celnav.julianDay(c.timeInMillis) + min / 1440.0
+    }
+    val minute = 1.0 / 1440.0
+    val jd = jdOf(2026, 11, 23, 6, 0.0)
+    near(Ephem.nextMoonPhase(jd, 2), jdOf(2026, 11, 24, 14, 53.0), 2 * minute, "full moon 24-11-2026 14:53")
+    near(Ephem.nextMoonPhase(jd, 0), jdOf(2026, 12, 9, 0, 52.0), 2 * minute, "new moon 9-12-2026 00:52")
+    near(Ephem.nextMoonPhase(jdOf(1977, 2, 10, 0, 0.0), 0), jdOf(1977, 2, 18, 3, 36.9), 2 * minute, "Meeus 49.a new moon")
+    check(Ephem.nextMoonPhase(Ephem.nextMoonPhase(jd, 2), 2) - Ephem.nextMoonPhase(jd, 2) > 29.2, "at the full moon: the next one")
+    var p = Ephem.moonPhaseTrue(jd)
+    check(p.waxing && p.phase8 == 4, "almost full, waxing")
+    near(p.illum, 0.971, 0.004, "lit fraction"); near(p.ageDays, 13.96, 0.03, "true age")
+    p = Ephem.moonPhaseTrue(Ephem.nextMoonPhase(jd, 0) + 0.01)
+    near(p.ageDays, 0.01, 0.002, "age just after new"); near(p.illum, 0.0, 0.002, "dark at new")
+    p = Ephem.moonPhaseTrue(Ephem.nextMoonPhase(jd, 3))
+    check(!p.waxing && p.phase8 == 6, "last quarter"); near(p.illum, 0.5, 0.01, "half lit at the quarter")
+    var a = Ephem.nextMoonApsis(jdOf(1988, 10, 1, 0, 0.0), false)
+    near(a.first, jdOf(1988, 10, 7, 20, 29.0), 5 * minute, "Meeus 50.a apogee"); near(a.second, 405948.0, 60.0, "Meeus 50.a distance")
+    a = Ephem.nextMoonApsis(jd, true)
+    near(a.first, jdOf(2026, 11, 25, 21, 4.0), 10 * minute, "perigee 25-11-2026"); check(a.second > 356000 && a.second < 370500, "perigee distance")
+    near(Ephem.moonAngularDiameterArcmin(384400.0), 31.08, 0.02, "moon diameter")
+    var e = Ephem.nextEclipse(jdOf(2026, 1, 1, 0, 0.0), true)!!
+    eq(e.kind, Ephem.EclipseKind.LUNAR_TOTAL, "total lunar 3-3-2026"); near(e.jd, jdOf(2026, 3, 3, 11, 33.0), 10 * minute, "its time"); near(e.magnitude, 1.15, 0.02, "its magnitude")
+    e = Ephem.nextEclipse(jdOf(2026, 1, 1, 0, 0.0), false)!!
+    eq(e.kind, Ephem.EclipseKind.SOLAR_ANNULAR, "annular 17-2-2026"); near(e.jd, jdOf(2026, 2, 17, 12, 12.0), 15 * minute, "its time")
+    e = Ephem.nextEclipse(jdOf(2026, 3, 1, 0, 0.0), false)!!
+    eq(e.kind, Ephem.EclipseKind.SOLAR_TOTAL, "total solar 12-8-2026"); near(e.jd, jdOf(2026, 8, 12, 17, 46.0), 15 * minute, "its time"); near(e.magnitude, 0.898, 0.01, "its gamma")
+    e = Ephem.nextEclipse(jdOf(2026, 3, 10, 0, 0.0), true)!!
+    eq(e.kind, Ephem.EclipseKind.LUNAR_PARTIAL, "partial lunar 28-8-2026"); near(e.magnitude, 0.93, 0.02, "its magnitude")
+    eq(Ephem.nextEclipse(jd, true)!!.kind, Ephem.EclipseKind.LUNAR_PENUMBRAL, "penumbral 20-2-2027")
+    eq(Ephem.nextEclipse(jd, false)!!.kind, Ephem.EclipseKind.SOLAR_ANNULAR, "annular 6-2-2027")
+    eq(Ephem.eclipseAtSyzygy(Ephem.nextMoonPhase(jd, 2), true).kind, Ephem.EclipseKind.NONE, "no eclipse on 24-11-2026")
+    val tFull = Ephem.tideForceIndex(Ephem.nextMoonPhase(jd, 2)); val tQuarter = Ephem.tideForceIndex(Ephem.nextMoonPhase(jd, 3))
+    check(tFull > 105 && tFull < 125, "spring tide near perigee"); check(tQuarter > 28 && tQuarter < 50, "neap tide")
+    val m = Ephem.emeInfo(jd, 36.53, -6.29, 432e6)
+    check(m.rangeKm > 350000 && m.rangeKm < 407000, "EME range")
+    near(m.pathLossDb, 261.64 + 40 * kotlin.math.log10(m.rangeKm / 384400.0), 0.02, "EME path loss on 432 MHz")
+    near(m.echoDelayS, 2 * m.rangeKm / 299792.458, 1e-9, "EME echo delay")
+    check(abs(m.dopplerHz) < 1300 && m.dopplerHz != 0.0, "EME Doppler")
+    near(Ephem.emeInfo(jd, 36.53, -6.29, 144e6).dopplerHz, m.dopplerHz / 3, 0.01, "Doppler scales with the frequency")
+    var ap = Ephem.nextEarthApsis(jd, true)
+    near(ap.first, jdOf(2027, 1, 3, 12, 0.0), 1.5, "perihelion"); near(ap.second, 0.98330, 0.0001, "perihelion distance")
+    ap = Ephem.nextEarthApsis(jd, false)
+    near(ap.first, jdOf(2027, 7, 5, 6, 0.0), 1.5, "aphelion"); near(ap.second, 1.01670, 0.0001, "aphelion distance")
+    var se = Ephem.nextSeason(jd)
+    near(se.first, jdOf(2026, 12, 21, 20, 50.0), 2 * minute, "December solstice 2026"); eq(se.second, 3, "season 3")
+    se = Ephem.nextSeason(jdOf(2026, 1, 1, 0, 0.0))
+    near(se.first, jdOf(2026, 3, 20, 14, 46.0), 2 * minute, "March equinox 2026"); eq(se.second, 0, "season 0")
+    near(Ephem.sunDistanceAu(jd), 0.9875, 0.0003, "sun distance"); near(Ephem.sunAngularDiameterArcmin(jd), 32.39, 0.02, "sun diameter")
+    near(Ephem.solarIrradianceToa(jd), 1361.0 / (0.98755 * 0.98755), 0.5, "irradiance"); near(Ephem.carringtonRotation(jd), 2318.13, 0.02, "Carrington rotation")
+    near(Ephem.clearSkyUvIndex(90.0, 1.0), 12.5, 1e-9, "UV index overhead")
+    check(Ephem.clearSkyUvIndex(-5.0, 1.0) == 0.0 && Ephem.clearSkyUvIndex(30.0, 1.0) < 2.5 && Ephem.clearSkyUvIndex(60.0, 1.0, 250.0) > Ephem.clearSkyUvIndex(60.0, 1.0, 350.0), "UV index shape")
+    near(Ephem.horizonKm(100.0), 35.7, 0.05, "horizon"); near(Ephem.radioHorizonKm(100.0), 41.2, 0.05, "radio horizon")
+    near(Ephem.radioRangeKm(10.0, 100.0), 13.03 + 41.2, 0.1, "radio range"); near(Ephem.opticalRangeNm(4.0, 36.0), 2.03 * 8, 1e-9, "range of a light")
+    check(Ephem.horizonKm(0.0) == 0.0 && Ephem.radioHorizonKm(-3.0) == 0.0, "no height, no horizon")
+    near(Ephem.normalGravity(0.0, 0.0), 9.780325, 1e-6, "gravity at the equator"); near(Ephem.normalGravity(90.0, 0.0), 9.832185, 1e-6, "gravity at the pole")
+    near(Ephem.earthRadiusAtM(0.0), 6378137.0, 0.5, "equatorial radius"); near(Ephem.earthRadiusAtM(90.0), 6356752.3, 0.5, "polar radius")
+    eq(Ephem.jdToMs(Celnav.julianDay(1794441600000L)), 1794441600000L, "julian day and back")
 }
