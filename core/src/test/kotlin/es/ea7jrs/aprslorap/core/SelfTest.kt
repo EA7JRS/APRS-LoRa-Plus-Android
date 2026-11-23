@@ -1696,6 +1696,18 @@ private fun testOfficialAlerts() {
     eq(O.n0nbhFill(n0, nb), null, "N0NBH: nothing missing, nothing done")
     eq(O.n0nbhFill("<html>busy</html>", SpaceWx()), null, "N0NBH: not his feed")
     check(O.needsBackup(SpaceWx(sfi = 150.0)) && !O.needsBackup(nb.copy(xray = "C1.0")), "needsBackup")
+    val hpTxt = """# Hp30 and ap30, GFZ, CC BY 4.0
+#YYY MM DD hh.h hh._m      days    days_m   Hp30 ap30 D
+2026 11 23  9.5  9.75 34660.39583 34660.40625  2.667   12 0
+2026 11 23 10.0 10.25 34660.41667 34660.42708  9.333  300 0
+2026 11 23 10.5 10.75 34660.43750 34660.44792 10.667  550 0
+2026 11 23 11.0 11.25 34660.45833 34660.46875 -1.000   -1 0
+"""
+    val hpW = O.gfzHp30(hpTxt, SpaceWx())!!
+    eq(hpW.hp30, listOf(2.667, 9.333, 10.667), "GFZ Hp30: the values that exist, oldest first (it goes above 9)")
+    eq(hpW.hp30Time, O.parseIso("2026-11-23 10:30:00"), "GFZ Hp30: start of the newest half hour")
+    eq(O.gfzHp30(hpTxt, SpaceWx(), keep = 2)?.hp30?.size, 2, "GFZ Hp30: only the last ones")
+    eq(O.gfzHp30("# nothing yet\n2026 11 23 0.0 0.25 1 1 -1.000 -1 0", SpaceWx()), null, "GFZ Hp30: no data")
     val rw = O.rtswWind("""[{"time_tag":"2026-11-19T21:39:00","active":false,"source":"ACE","proton_speed":470.0,"proton_density":4.0},
         {"time_tag":"2026-11-19T21:40:00","active":true,"source":"DSCOVR","proton_speed":487.3,"proton_density":5.4,"proton_temperature":110200},
         {"time_tag":"2026-11-19T21:40:00","active":false,"source":"ACE","proton_speed":480.0,"proton_density":5.0}]""", SpaceWx())!!

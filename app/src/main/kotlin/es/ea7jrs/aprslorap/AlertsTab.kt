@@ -131,6 +131,17 @@ private fun SpaceCard(w: SpaceWx) {
             Text("  forecast", fontSize = 11.sp, color = Alp.Muted)
         }
     }
+    // GFZ Hp30: the same thing every half hour and without the cap at 9 (a storm shows up to 2.5 h earlier than in the Kp)
+    if (w.hp30.isNotEmpty()) Row(Modifier.height(40.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (h in w.hp30) {
+            val g = OfficialAlerts.kpToG(h)
+            Box(Modifier.width(7.dp).height((4 + minOf(h, 12.0) * 3.0).dp).clip(RoundedCornerShape(2.dp))
+                .background(if (g >= 1) Color(0xFF000000.toInt() or OfficialAlerts.noaaScaleRgb(g)) else Alp.Green))
+        }
+        Text(String.format(Locale.US, "  Hp30 %.1f · %s UTC (GFZ, 12 h)", w.hp30.last(),
+            java.text.SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(w.hp30Time * 1000))),
+            fontSize = 11.sp, color = Alp.Muted)
+    }
     val nowS = System.currentTimeMillis() / 1000
     val fc = listOf("next 24 h" to (nowS to nowS + 86400), "24–48 h" to (nowS + 86400 to nowS + 2 * 86400)).mapNotNull { (n, r) ->
         OfficialAlerts.kpForecastMax(w.kpForecast, r.first, r.second)?.let { String.format(Locale.US, "%s Kp %.1f", n, it.kp) + if (it.g >= 1) " (G${it.g})" else "" }

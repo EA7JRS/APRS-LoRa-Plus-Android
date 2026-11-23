@@ -64,6 +64,7 @@ data class SpaceWx(
     val aIndex: Double? = null,                                   // running planetary A index (SWPC, with the Kp) or N0NBH's
     val dst: Double? = null, val dstTime: Long = 0,               // Kyoto Dst (nT) by the SWPC mirror, hourly
     val kpForecast: List<KpForecast> = emptyList(),               // SWPC 3-day Kp forecast (3-hour periods still to come)
+    val hp30: List<Double> = emptyList(), val hp30Time: Long = 0,  // GFZ Hp30 (half-hourly, open-ended Kp-like), oldest first; start of the last one
     val backup: String = "",                                      // what came from the backup source (N0NBH): "SFI SSN ..."; "" = none
 ) {
     val kpNow: Double? get() = kp.lastOrNull()
@@ -96,6 +97,8 @@ object OfficialAlerts {
     const val SWPC_DAILY_INDICES = "https://services.swpc.noaa.gov/text/daily-solar-indices.txt"
     const val SWPC_KP_FORECAST = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"
     const val SWPC_DST = "https://services.swpc.noaa.gov/products/kyoto-dst.json"
+    /** GFZ Potsdam Hp30 / ap30 nowcast, last 30 days (CC BY 4.0; cite Yamazaki et al. and Matzka et al., as its header asks). */
+    const val GFZ_HP30 = "https://kp.gfz.de/fileadmin/files_for_gfz_cms/Hp30_ap30_nowcast.txt"
     /** N0NBH's solar-terrestrial XML (hamqsl.com): backup only, at most once an hour (his FAQ), credit asked for. */
     const val N0NBH_XML = "https://www.hamqsl.com/solarxml.php"
     const val N0NBH_MIN_INTERVAL_S = 3600L
@@ -599,6 +602,28 @@ object OfficialAlerts {
             return w.copy(dst = v, dstTime = parseIso(t))
         }
         return null
+    }
+
+    /**
+     * GFZ's Hp30 nowcast text: "yyyy mm dd hh.h hh.hh days days_m Hp30 ap30 D" per half hour, "#" comments, -1 = not yet there.
+     * Keeps the last [keep] values that exist (24 = 12 h), oldest first, and the start time of the newest.
+     */
+    fun gfzHp30(text: String, w: SpaceWx, keep: Int = 24): SpaceWx? {
+        val rows = ArrayList<Pair<Long, Double>>()
+        for (line in text.lineSequence()) {
+            val t = line.trim()
+            if (t.isEmpty() || t[0] == '#') continue
+            val p = t.split(Regex("\\s+"))
+            if (p.size < 8) continue
+            val y = p[0].toIntOrNull() ?: continue; val mo = p[1].toIntOrNull() ?: continue; val d = p[2].toIntOrNull() ?: continue
+            val h = p[3].toDoubleOrNull() ?: continue
+            val hp = p[7].toDoubleOrNull() ?: continue
+            if (hp < 0) continue
+            rows += (unixFromUtc(y, mo, d) + (h * 3600).roundToLong()) to hp
+        }
+        if (rows.isEmpty()) return null
+        rows.sortBy { it.first }
+        return w.copy(hp30 = rows.takeLast(keep).map { it.second }, hp30Time = rows.last().first)
     }
 
     /** Storm level by Dst as it is usually read: 0 quiet (> -30 nT), 1 weak, 2 moderate (<= -50), 3 intense (<= -100), 4 super (<= -250). */

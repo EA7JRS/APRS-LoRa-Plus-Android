@@ -161,6 +161,7 @@ object OfficialAlertsFetcher {
                     w = w.copy(ssn = ssnValue, sfi = w.sfi ?: dailyFlux)
                     runCatching { w = w.copy(kpForecast = OfficialAlerts.swpcKpForecast(text(OfficialAlerts.SWPC_KP_FORECAST), nowS)) }
                     runCatching { OfficialAlerts.swpcDst(text(OfficialAlerts.SWPC_DST), w)?.let { w = it } }
+                    runCatching { OfficialAlerts.gfzHp30(text(OfficialAlerts.GFZ_HP30), w)?.let { w = it } }
                     // N0NBH (hamqsl.com) only as a backup for what SWPC did not give, and at most once an hour (what his FAQ asks)
                     if (OfficialAlerts.needsBackup(w)) {
                         if (System.currentTimeMillis() - n0nbhAtMs > OfficialAlerts.N0NBH_MIN_INTERVAL_S * 1000) {
