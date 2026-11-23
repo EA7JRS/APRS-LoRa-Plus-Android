@@ -1717,6 +1717,11 @@ private fun testOfficialAlerts() {
     check(hpA.activeAt(hpNow) && !hpA.activeAt(hpNow + 4 * 3600) && hpA.id.startsWith("gfz/hp30/G5/"), "Hp30 storm alert: id and 3 h of life")
     eq(O.hp30Alert(hpW.copy(hp30 = listOf(4.9)), hpNow), null, "Hp30 below 5: no alert")
     eq(O.hp30Alert(hpW, hpNow + 3 * 3600), null, "Hp30 too old: no alert")
+    eq(O.spaceCommand(hpW)["hp"], 10.7, "spacewx command carries the Hp30")
+    eq(O.spaceCommand(hpW)["ht"], hpW.hp30Time, "spacewx command carries its time")
+    check(!O.spaceCommand(SpaceWx(g = 0)).containsKey("hp"), "spacewx command without Hp30")
+    val swFull = SpaceWx(g = 5, r = 5, s = 5, gMax = 5, kp = List(8) { 8.67 }, kpTime = 1795000000, sfi = 250.0, bz = -25.4, bt = 31.2, windKms = 1050.0, xray = "X12.5", ssn = 250.0, hp30 = listOf(11.33), hp30Time = 1795000000)
+    check(Control.command("spacewx", *O.spaceCommand(swFull).toList().toTypedArray()).length <= 250, "spacewx command with everything fits the tracker line (256)")
     val rw = O.rtswWind("""[{"time_tag":"2026-11-19T21:39:00","active":false,"source":"ACE","proton_speed":470.0,"proton_density":4.0},
         {"time_tag":"2026-11-19T21:40:00","active":true,"source":"DSCOVR","proton_speed":487.3,"proton_density":5.4,"proton_temperature":110200},
         {"time_tag":"2026-11-19T21:40:00","active":false,"source":"ACE","proton_speed":480.0,"proton_density":5.0}]""", SpaceWx())!!

@@ -831,6 +831,7 @@ object OfficialAlerts {
         w.windKms?.let { put("ws", it.roundToLong()) }
         if (w.xray.isNotEmpty()) put("xr", w.xray)
         w.ssn?.let { put("sn", it.roundToLong()) }
+        if (w.hp30.isNotEmpty() && w.hp30Time != 0L) { put("hp", (w.hp30.last() * 10).roundToLong() / 10.0); put("ht", w.hp30Time) }
     }
 
     /** An alert sent by the tracker (event "alert": SAME decoded by the T-TWR) or in its "alerts" list. */
