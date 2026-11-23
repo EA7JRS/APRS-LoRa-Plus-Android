@@ -267,7 +267,6 @@ private fun ConfigNode(name: String, path: List<Any>, value: Any?, epoch: Int, d
 @Composable
 private fun ConfigCheckPanel(res: es.ea7jrs.aprslorap.core.ConfigCheck.Result, fixed: Map<String, String>, showPassed: Boolean, togglePassed: () -> Unit,
                              applyFixes: (List<es.ea7jrs.aprslorap.core.ConfigCheck.Finding>) -> Unit) {
-    val sev = es.ea7jrs.aprslorap.core.ConfigCheck.Severity
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Configuration check", fontWeight = FontWeight.Bold)
@@ -279,9 +278,9 @@ private fun ConfigCheckPanel(res: es.ea7jrs.aprslorap.core.ConfigCheck.Result, f
         if (fixable.size > 1) OutlinedButton(onClick = { applyFixes(fixable) }) { Text("Apply ${fixable.size} safe fixes") }
         if (res.findings.isEmpty()) Text("Nothing to fix in what the check looks at.", fontSize = 12.sp, color = Alp.SubText)
         for (f in res.findings) {
-            val color = when (f.severity) { sev.ERROR -> Alp.RedSoft; sev.WARN -> Alp.Amber; else -> Alp.Cyan }
+            val color = when (f.severity) { es.ea7jrs.aprslorap.core.ConfigCheck.Severity.ERROR -> Alp.RedSoft; es.ea7jrs.aprslorap.core.ConfigCheck.Severity.WARN -> Alp.Amber; else -> Alp.Cyan }
             Column(Modifier.fillMaxWidth().border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(8.dp)) {
-                Text((when (f.severity) { sev.ERROR -> "ERROR"; sev.WARN -> "WARNING"; else -> "NOTE" }) + " · " + f.where, fontSize = 11.sp, color = color)
+                Text((when (f.severity) { es.ea7jrs.aprslorap.core.ConfigCheck.Severity.ERROR -> "ERROR"; es.ea7jrs.aprslorap.core.ConfigCheck.Severity.WARN -> "WARNING"; else -> "NOTE" }) + " · " + f.where, fontSize = 11.sp, color = color)
                 Text(f.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Text(f.why, fontSize = 12.sp, color = Alp.SubText)
                 f.fix?.let { fix -> TextButton(onClick = { applyFixes(listOf(f)) }) { Text(fix.label) } }
