@@ -1668,6 +1668,34 @@ private fun testOfficialAlerts() {
         "  2026 11 17  148    131     560      2    -999   B6.1   5  0  0  0  0  0  0\n  2026 11 18  152    118     610      1    -999   C1.0   3  1  0  0  0  0  0\n"
     eq(O.swpcDailyIndices(daily), 152.0 to 118.0, "daily solar indices: flux and SSN of the last day")
     eq(O.swpcDailyIndices("# nothing"), null, "daily solar indices: no data")
+    // Kp forecast, A index, Dst and the N0NBH backup (2026-11-23)
+    eq(O.swpcKp("[[\"time_tag\",\"Kp\",\"a_running\",\"station_count\"],[\"2026-11-11 21:00:00.000\",\"2.33\",\"9\",\"8\"],[\"2026-11-12 00:00:00.000\",\"5.00\",\"48\",\"8\"]]", SpaceWx())?.aIndex, 48.0, "SWPC Kp: running A index")
+    eq(O.swpcKp("[{\"time_tag\":\"2026-11-12T03:00:00\",\"Kp\":6.67}]", SpaceWx(aIndex = 7.0))?.aIndex, 7.0, "SWPC Kp without A keeps the one it had")
+    val kf0 = O.parseIso("2026-11-23 12:00:00")
+    val kfJson = """[["time_tag","kp","observed","noaa_scale"],["2026-11-23 06:00:00","2.00","observed",null],["2026-11-23 09:00:00","3.00","estimated",null],["2026-11-23 12:00:00","4.33","predicted",null],["2026-11-24 03:00:00","6.00","predicted","G2"],["2026-11-25 00:00:00","3.67","predicted",null]]"""
+    val kf = O.swpcKpForecast(kfJson, kf0)
+    eq(kf.size, 3, "Kp forecast: only the periods still to come, no observations")
+    eq(kf.first().kp, 4.33, "Kp forecast: the period in course comes first")
+    eq(O.kpForecastMax(kf, kf0, kf0 + 86400)?.kp, 6.0, "Kp forecast: highest of the next 24 h")
+    eq(O.kpForecastMax(kf, kf0, kf0 + 86400)?.g, 2, "Kp forecast: Kp 6 is G2")
+    eq(O.kpForecastMax(kf, kf0 + 10 * 86400, kf0 + 11 * 86400), null, "Kp forecast: nothing that far")
+    eq(O.swpcKpForecast("nonsense", kf0).size, 0, "Kp forecast: bad text")
+    val dstW = O.swpcDst("""[{"time_tag":"2026-11-23T10:00:00","dst":-12},{"time_tag":"2026-11-23T11:00:00","dst":-63}]""", SpaceWx())!!
+    eq(dstW.dst, -63.0, "Dst: newest hourly value (objects)")
+    eq(dstW.dstTime, O.parseIso("2026-11-23 11:00:00"), "Dst: its time")
+    eq(O.swpcDst("""[["time_tag","dst"],["2026-11-23 10:00:00","-12"],["2026-11-23 11:00:00","-130"]]""", SpaceWx())?.dst, -130.0, "Dst: rows with a header")
+    eq(O.swpcDst("[]", SpaceWx()), null, "Dst: empty")
+    eq(listOf(-10.0, -35.0, -63.0, -130.0, -300.0).map { O.dstLevel(it) }, listOf(0, 1, 2, 3, 4), "Dst storm levels")
+    eq(O.dstName(-63.0), "moderate storm", "Dst name")
+    val n0 = """<?xml version="1.0"?><solar><solardata><source url="http://www.hamqsl.com/solar.html">N0NBH</source><updated> 23 Nov 2026 1012 GMT</updated><solarflux>148</solarflux><aindex>12</aindex><kindex>3</kindex><xray>C2.4</xray><sunspots>97</sunspots><solarwind>412.5</solarwind><magneticfield> -3.1</magneticfield></solardata></solar>"""
+    val nb = O.n0nbhFill(n0, SpaceWx(g = 0, kp = listOf(2.0), xray = "B9.1"))!!
+    eq(listOf(nb.sfi, nb.ssn, nb.aIndex, nb.bz, nb.windKms), listOf(148.0, 97.0, 12.0, -3.1, 412.5), "N0NBH fills what is missing")
+    eq(nb.xray, "B9.1", "N0NBH never replaces what SWPC gave")
+    eq(nb.kp, listOf(2.0), "N0NBH keeps the SWPC Kp")
+    eq(nb.backup, "SFI SSN A Bz Wind", "N0NBH: what came from the backup")
+    eq(O.n0nbhFill(n0, nb), null, "N0NBH: nothing missing, nothing done")
+    eq(O.n0nbhFill("<html>busy</html>", SpaceWx()), null, "N0NBH: not his feed")
+    check(O.needsBackup(SpaceWx(sfi = 150.0)) && !O.needsBackup(nb.copy(xray = "C1.0")), "needsBackup")
     val rw = O.rtswWind("""[{"time_tag":"2026-11-19T21:39:00","active":false,"source":"ACE","proton_speed":470.0,"proton_density":4.0},
         {"time_tag":"2026-11-19T21:40:00","active":true,"source":"DSCOVR","proton_speed":487.3,"proton_density":5.4,"proton_temperature":110200},
         {"time_tag":"2026-11-19T21:40:00","active":false,"source":"ACE","proton_speed":480.0,"proton_density":5.0}]""", SpaceWx())!!

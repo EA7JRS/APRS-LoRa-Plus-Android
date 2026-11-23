@@ -61,6 +61,7 @@ private val CREDITS = listOf(
     Triple("CQ and ITU zone boundaries (hamradio-zones-geojson)", "HB9HIL, MIT", "https://github.com/HB9HIL/hamradio-zones-geojson"),
     Triple("Earthquakes", "USGS (public domain), EMSC-CSEM SeismicPortal (CC BY 4.0), Raspberry Shake ShakeNet / QuakeLink", "https://quakelink.raspberryshake.org/"),
     Triple("Weather, space and event feeds", "NOAA (AWC, SWPC, NHC, NDBC) and NASA (EONET, GIBS): public domain", "https://www.noaa.gov/"),
+    Triple("Solar-terrestrial data (backup)", "N0NBH, hamqsl.com: only when SWPC does not answer", "https://www.hamqsl.com/solar.html"),
     Triple("Barlow and Share Tech Mono fonts", "Jeremy Tribby (Barlow), Carrois Type Design (Share Tech); SIL Open Font License 1.1", "https://fonts.google.com/"),
 )
 

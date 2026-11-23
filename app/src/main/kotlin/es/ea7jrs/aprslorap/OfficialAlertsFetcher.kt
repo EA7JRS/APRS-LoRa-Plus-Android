@@ -33,6 +33,8 @@ object OfficialAlertsFetcher {
     private val sentToTracker = HashMap<String, Int>()           // tracker id -> level sent
     private val fromTracker = HashSet<String>()                  // SAME alerts the tracker decoded itself (not sent back)
     private var spaceSentMs = 0L
+    private var n0nbhAtMs = 0L
+    private var n0nbhXml: String? = null
     private var ssnValue: Double? = null                         // sunspot number (SWPC; refreshed every 6 h)
     private var ssnAtMs = 0L
     private var dailyFlux: Double? = null                        // 10.7 cm flux of the daily indices (if the summary fails)
@@ -157,6 +159,16 @@ object OfficialAlertsFetcher {
                         if (daily?.first != null) dailyFlux = daily.first
                     }
                     w = w.copy(ssn = ssnValue, sfi = w.sfi ?: dailyFlux)
+                    runCatching { w = w.copy(kpForecast = OfficialAlerts.swpcKpForecast(text(OfficialAlerts.SWPC_KP_FORECAST), nowS)) }
+                    runCatching { OfficialAlerts.swpcDst(text(OfficialAlerts.SWPC_DST), w)?.let { w = it } }
+                    // N0NBH (hamqsl.com) only as a backup for what SWPC did not give, and at most once an hour (what his FAQ asks)
+                    if (OfficialAlerts.needsBackup(w)) {
+                        if (System.currentTimeMillis() - n0nbhAtMs > OfficialAlerts.N0NBH_MIN_INTERVAL_S * 1000) {
+                            n0nbhAtMs = System.currentTimeMillis()
+                            n0nbhXml = runCatching { text(OfficialAlerts.N0NBH_XML) }.getOrNull()
+                        }
+                        n0nbhXml?.let { x -> OfficialAlerts.n0nbhFill(x, w)?.let { w = it } }
+                    }
                     AppState.spaceWx.value = w.copy(updatedMs = System.currentTimeMillis())
                     bySource[AlertSrc.SWPC] = OfficialAlerts.swpcAlerts(text(OfficialAlerts.SWPC_ALERTS), nowS)
                 } else bySource.remove(AlertSrc.SWPC)

@@ -121,7 +121,25 @@ private fun SpaceCard(w: SpaceWx) {
                 .background(if (g >= 1) Color(0xFF000000.toInt() or OfficialAlerts.noaaScaleRgb(g)) else Alp.Green))
         }
         Text("  Kp 24 h", fontSize = 11.sp, color = Alp.Muted)
+        // SWPC forecast: the next 3-hour periods, same scale and colours, dimmed
+        if (w.kpForecast.isNotEmpty()) {
+            Box(Modifier.width(1.dp).height(48.dp).background(Alp.Muted))
+            for (f in w.kpForecast.take(16)) {
+                Box(Modifier.width(8.dp).height((4 + f.kp * 4.5).dp).clip(RoundedCornerShape(2.dp))
+                    .background((if (f.g >= 1) Color(0xFF000000.toInt() or OfficialAlerts.noaaScaleRgb(f.g)) else Alp.Green).copy(alpha = 0.55f)))
+            }
+            Text("  forecast", fontSize = 11.sp, color = Alp.Muted)
+        }
     }
+    val nowS = System.currentTimeMillis() / 1000
+    val fc = listOf("next 24 h" to (nowS to nowS + 86400), "24–48 h" to (nowS + 86400 to nowS + 2 * 86400)).mapNotNull { (n, r) ->
+        OfficialAlerts.kpForecastMax(w.kpForecast, r.first, r.second)?.let { String.format(Locale.US, "%s Kp %.1f", n, it.kp) + if (it.g >= 1) " (G${it.g})" else "" }
+    }
+    val idx = listOfNotNull(w.aIndex?.let { String.format(Locale.US, "A %.0f", it) },
+        w.dst?.let { String.format(Locale.US, "Dst %+.0f nT (%s)", it, OfficialAlerts.dstName(it)) })
+    if (fc.isNotEmpty()) Text("Kp forecast: " + fc.joinToString(" · "), fontSize = 13.sp, color = Alp.Text)
+    if (idx.isNotEmpty()) Text(idx.joinToString(" · "), fontSize = 13.sp, color = Alp.SubText)
+    if (w.backup.isNotEmpty()) Text("${w.backup} from N0NBH (hamqsl.com): SWPC did not answer.", fontSize = 11.sp, color = Alp.Muted)
     // HF now (formulas of sat-aprs, as the tracker's TELEMETRY > HF): MUF / LUF here and the state of each band for DX
     val sfi = w.sfi
     val pos = Own.position()

@@ -49,6 +49,11 @@ data class OfficialAlert(
 }
 
 /** Space weather from the SWPC: today's scales (-1 = no data), the last 8 three-hour Kp values, flux, solar wind and X-ray class. */
+/** One 3-hour period of the SWPC Kp forecast. */
+data class KpForecast(val time: Long, val kp: Double) {
+    val g: Int get() = OfficialAlerts.kpToG(kp)
+}
+
 data class SpaceWx(
     val g: Int = -1, val r: Int = -1, val s: Int = -1, val gMax: Int = -1, val kp: List<Double> = emptyList(), val kpTime: Long = 0,
     val sfi: Double? = null, val bz: Double? = null, val bt: Double? = null, val windKms: Double? = null, val xray: String = "",
@@ -56,6 +61,10 @@ data class SpaceWx(
     val ssn: Double? = null,                                      // sunspot number (SWPC, daily; monthly as a fallback)
     val density: Double? = null, val tempK: Double? = null,       // solar wind: protons / cm3 and K (RTSW, 1 min)
     val windTime: Long = 0,                                       // time of the solar wind reading (Unix s)
+    val aIndex: Double? = null,                                   // running planetary A index (SWPC, with the Kp) or N0NBH's
+    val dst: Double? = null, val dstTime: Long = 0,               // Kyoto Dst (nT) by the SWPC mirror, hourly
+    val kpForecast: List<KpForecast> = emptyList(),               // SWPC 3-day Kp forecast (3-hour periods still to come)
+    val backup: String = "",                                      // what came from the backup source (N0NBH): "SFI SSN ..."; "" = none
 ) {
     val kpNow: Double? get() = kp.lastOrNull()
     val valid: Boolean get() = g >= 0 || kp.isNotEmpty() || sfi != null
@@ -85,6 +94,11 @@ object OfficialAlerts {
     const val SWPC_RTSW_WIND = "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json"
     const val SWPC_RTSW_MAG = "https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json"
     const val SWPC_DAILY_INDICES = "https://services.swpc.noaa.gov/text/daily-solar-indices.txt"
+    const val SWPC_KP_FORECAST = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"
+    const val SWPC_DST = "https://services.swpc.noaa.gov/products/kyoto-dst.json"
+    /** N0NBH's solar-terrestrial XML (hamqsl.com): backup only, at most once an hour (his FAQ), credit asked for. */
+    const val N0NBH_XML = "https://www.hamqsl.com/solarxml.php"
+    const val N0NBH_MIN_INTERVAL_S = 3600L
     const val SWPC_SSN_MONTHLY = "https://services.swpc.noaa.gov/json/solar-cycle/observed-solar-cycle-indices.json"
 
     // ---------------------------------------------------------------- XML
@@ -538,8 +552,81 @@ object OfficialAlerts {
             }
         }.filter { it.second >= 0 && it.first != 0L }.sortedBy { it.first }
         if (rows.isEmpty()) return null
-        return w.copy(kp = rows.takeLast(8).map { it.second }, kpTime = rows.last().first)
+        // the running A index comes in the same product (third column, "a_running"); the newest row that has it
+        val a = arr.asReversed().firstNotNullOfOrNull { r ->
+            when (r) {
+                is List<*> -> if ((r.getOrNull(0) as? String)?.firstOrNull()?.isDigit() == true) numOf(r.getOrNull(2)) else null
+                is Map<*, *> -> numOf(r["a_running"])
+                else -> null
+            }?.takeIf { it >= 0 }
+        }
+        return w.copy(kp = rows.takeLast(8).map { it.second }, kpTime = rows.last().first, aIndex = a ?: w.aIndex)
     }
+
+    /**
+     * SWPC's 3-day Kp forecast (noaa-planetary-k-index-forecast.json): rows "time, kp, observed | estimated | predicted, scale"
+     * (or objects). The periods that end after [nowS] and are not plain observations, oldest first.
+     */
+    fun swpcKpForecast(json: String, nowS: Long): List<KpForecast> {
+        val arr = runCatching { Json.parse(json) as? List<*> }.getOrNull() ?: return emptyList()
+        return arr.mapNotNull { r ->
+            val (t, kp, kind) = when (r) {
+                is List<*> -> Triple(r.getOrNull(0) as? String, numOf(r.getOrNull(1)), r.getOrNull(2) as? String)
+                is Map<*, *> -> Triple(r["time_tag"] as? String, numOf(r["kp"] ?: r["Kp"]), r["observed"] as? String)
+                else -> Triple(null, null, null)
+            }
+            if (t == null || !t[0].isDigit() || kp == null || kp < 0) return@mapNotNull null
+            if (kind != null && kind.equals("observed", true)) return@mapNotNull null
+            val ts = parseIso(t)
+            if (ts == 0L || ts + 3 * 3600 <= nowS) null else KpForecast(ts, kp)
+        }.sortedBy { it.time }
+    }
+
+    /** The highest Kp forecast between two times (Unix s); null if no period falls there. */
+    fun kpForecastMax(f: List<KpForecast>, fromS: Long, toS: Long): KpForecast? =
+        f.filter { it.time + 3 * 3600 > fromS && it.time < toS }.maxByOrNull { it.kp }
+
+    /** Kyoto Dst by the SWPC mirror (kyoto-dst.json): the newest hourly value, objects or rows with a header. */
+    fun swpcDst(json: String, w: SpaceWx): SpaceWx? {
+        val arr = runCatching { Json.parse(json) as? List<*> }.getOrNull() ?: return null
+        for (r in arr.asReversed()) {
+            val (t, v) = when (r) {
+                is List<*> -> (r.getOrNull(0) as? String) to numOf(r.getOrNull(1))
+                is Map<*, *> -> (r["time_tag"] as? String) to numOf(r["dst"])
+                else -> null to null
+            }
+            if (t == null || !t[0].isDigit() || v == null) continue
+            return w.copy(dst = v, dstTime = parseIso(t))
+        }
+        return null
+    }
+
+    /** Storm level by Dst as it is usually read: 0 quiet (> -30 nT), 1 weak, 2 moderate (<= -50), 3 intense (<= -100), 4 super (<= -250). */
+    fun dstLevel(dst: Double) = when { dst <= -250 -> 4; dst <= -100 -> 3; dst <= -50 -> 2; dst <= -30 -> 1; else -> 0 }
+    fun dstName(dst: Double) = listOf("quiet", "weak storm", "moderate storm", "intense storm", "super storm")[dstLevel(dst)]
+
+    /**
+     * N0NBH's XML as a backup: fills only what SWPC did not give (flux, sunspots, A index, X-rays, Bz, solar wind) and says which
+     * in [SpaceWx.backup]. Null if the text is not his feed or nothing was missing.
+     */
+    fun n0nbhFill(xml: String, w: SpaceWx): SpaceWx? {
+        if (!xml.contains("<solardata", true)) return null
+        fun tag(n: String) = Regex("<$n>\\s*([^<]*?)\\s*</$n>", RegexOption.IGNORE_CASE).find(xml)?.groupValues?.get(1)?.takeIf { it.isNotEmpty() }
+        fun num(n: String) = tag(n)?.toDoubleOrNull()
+        var r = w
+        val got = ArrayList<String>()
+        if (r.sfi == null) num("solarflux")?.takeIf { it > 0 }?.let { r = r.copy(sfi = it); got += "SFI" }
+        if (r.ssn == null) num("sunspots")?.takeIf { it >= 0 }?.let { r = r.copy(ssn = it); got += "SSN" }
+        if (r.aIndex == null) num("aindex")?.takeIf { it >= 0 }?.let { r = r.copy(aIndex = it); got += "A" }
+        if (r.xray.isEmpty()) tag("xray")?.takeIf { Regex("[ABCMX]\\d+(\\.\\d+)?").matches(it) }?.let { r = r.copy(xray = it); got += "X-ray" }
+        if (r.bz == null) num("magneticfield")?.let { r = r.copy(bz = it); got += "Bz" }
+        if (r.windKms == null) num("solarwind")?.takeIf { it > 0 }?.let { r = r.copy(windKms = it); got += "Wind" }
+        if (r.kp.isEmpty()) num("kindex")?.takeIf { it >= 0 }?.let { r = r.copy(kp = listOf(it)); got += "Kp" }
+        return if (got.isEmpty()) null else r.copy(backup = got.joinToString(" "))
+    }
+
+    /** True if something the HF estimate or the tracker screen needs is still missing after SWPC. */
+    fun needsBackup(w: SpaceWx) = w.sfi == null || w.ssn == null || w.bz == null || w.windKms == null || w.xray.isEmpty()
 
     fun swpcSummary(json: String, w: SpaceWx): SpaceWx? {
         val v = runCatching { Json.parse(json) }.getOrNull()
