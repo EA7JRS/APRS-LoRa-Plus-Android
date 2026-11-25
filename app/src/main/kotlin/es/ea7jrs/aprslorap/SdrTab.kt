@@ -324,6 +324,7 @@ fun SdrTab() {
         }
         VorSection(kind == Sdr.Kind.RTLTCP && st.connected)
         Beacon406Section(kind == Sdr.Kind.RTLTCP && st.connected)
+        InmarsatSection(kind == Sdr.Kind.RTLTCP && st.connected)
     }
 }
 

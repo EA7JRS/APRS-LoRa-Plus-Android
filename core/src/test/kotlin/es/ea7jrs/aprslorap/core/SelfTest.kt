@@ -3728,4 +3728,28 @@ private fun testInmarsat() {
     }
     val best = maxOf(okA, okB).toDouble() / tot                               // allow the global inversion
     check(best > 0.9, "Inmarsat BPSK demod recovers symbols (${(best * 100).toInt()}%)")
+    // 4) EGC packet parsing: header + two parts assemble into one message (deterministic, no DSP)
+    fun ia5(s: String) = s.map { (it.code and 0x7F).toByte() }.toByteArray()
+    val p0 = "NAVAREA III "; val p1 = "GALE WARNING"
+    val info = byteArrayOf(0xAA.toByte(), 0x34, 0x12, 3, 0x13, 2) +
+        byteArrayOf(0x27, 0x34, 0x12, 0, p0.length.toByte()) + ia5(p0) +
+        byteArrayOf(0x27, 0x34, 0x12, 1, p1.length.toByte()) + ia5(p1)
+    var got: Inmarsat.Egc? = null
+    Inmarsat.parseFrame(info, Inmarsat.EgcAssembler { got = it })
+    check(got != null, "Inmarsat EGC assembles")
+    eq(got!!.id, 0x1234, "Inmarsat EGC id")
+    eq(got!!.priority, 3, "Inmarsat EGC priority")
+    eq(got!!.service, 0x13, "Inmarsat EGC service")
+    eq(got!!.text, p0 + p1, "Inmarsat EGC text")
+    // 5) frame round trip through the whole chain: buildFrame -> modulate -> FrameReader -> EGC
+    val fr = Inmarsat.buildFrame(info)
+    val lead = IntArray(96) { if (rnd.nextInt(2) == 0) 1 else -1 }             // settling lead-in before the UW
+    val all = lead + fr
+    val fbits = IntArray(all.size) { if (all[it] == 1) 0 else 1 }             // symbol +1 -> bit 0 for modulate()
+    val fiq = Inmarsat.modulate(fbits, fs, freqOffHz = 0.0)
+    val fnoisy = FloatArray(fiq.size) { fiq[it] + (rnd.nextGaussian() * 0.03).toFloat() }
+    var got2: Inmarsat.Egc? = null
+    val reader = Inmarsat.FrameReader(fs) { got2 = it }
+    reader.process(fnoisy, fnoisy.size)
+    check(got2 != null && got2!!.text == p0 + p1, "Inmarsat frame round trip (UW sync + decode + EGC)")
 }

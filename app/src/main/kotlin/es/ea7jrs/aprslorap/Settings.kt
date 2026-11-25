@@ -365,6 +365,9 @@ class Settings(ctx: Context) {
     var sdrMode: String
         get() = p.getString("sdr_mode", "NFM")!!
         set(v) { p.edit().putString("sdr_mode", v).apply() }
+    var stdcMhz: String                                                          // Inmarsat-C NCS TDM channel (MHz)
+        get() = p.getString("stdc_mhz", "1537.70")!!
+        set(v) { p.edit().putString("stdc_mhz", v).apply() }
     var sdrBandwidth: Int
         get() = p.getInt("sdr_bw", 0)
         set(v) { p.edit().putInt("sdr_bw", v.coerceAtLeast(0)).apply() }
