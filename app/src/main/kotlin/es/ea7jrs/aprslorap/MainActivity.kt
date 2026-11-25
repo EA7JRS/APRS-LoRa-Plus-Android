@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
         NavtexHub.init(this)
         NavtexNet.apply(Settings(this))                         // NAVTEX from a receiver on the network, if it is set up
         DscHub.init(this)
+        HabHub.init(this)
         Beacon406Hub.init(this)
         LogStore.init(this)
         DxLink.loadCty(this)                          // cty.dat: read it, and a new one if it is more than a week old

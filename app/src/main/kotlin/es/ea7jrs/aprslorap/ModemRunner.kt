@@ -41,6 +41,7 @@ object ModemRunner {
         m.onText = { t ->
             val cur = AppState.modemText.value; AppState.modemText.value = (cur + t).takeLast(6000)
             if (m is Modems.Cw) Spotter.onPhoneCw(t, m.centerHz, m.snrDb, m.wpm, src)        // calls heard -> PSK Reporter, skimmer port
+            if (m is Modems.Rtty) HabHub.feedRtty(t, (AppState.sdr.value.freqHz ?: 0L) / 1000.0)  // telemetria HAB (UKHAS $$...*CRC)
         }
         if (m is es.ea7jrs.aprslorap.core.Navtex.Decoder) m.onMessage = { NavtexHub.onMessage(it) }
         if (m is es.ea7jrs.aprslorap.core.Dsc.Decoder) m.onCall = { DscHub.onCall(it, if (m.vhf) 156_525.0 else Settings.dscKhzNow) }

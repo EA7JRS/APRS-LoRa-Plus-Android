@@ -63,7 +63,7 @@ enum class Tool(val title: String) {
     TRACKER("Tracker"), SENSORS("Sensors"), HEARD("Heard by the tracker"), SAT("Satellites"), ROTOR("Rotor box"), SDR("SDR receivers"),
     MODES("Digital modes"), AIS("AIS ships"), LOG("Log & QSL"), SIGID("Signal ID"), REMOTE("Remote screen"), CONFIG("Tracker configuration"),
     DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"), ADSB("Aircraft (ADS-B)"), BEACONS("Beacons heard (SDR)"),
-    VESSEL("My vessel (AIS)"), ASTRO("Celestial navigation"), WEFAX("Weather fax & HF prediction"),
+    VESSEL("My vessel (AIS)"), ASTRO("Celestial navigation"), WEFAX("Weather fax & HF prediction"), HAB("Balloons (HAB)"),
 }
 
 /** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "IBP", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
@@ -120,6 +120,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
     val aircraftCount = AppState.aircraft.collectAsState().value.size
     val lrfhss by LrFhssLink.state.collectAsState()
     val beaconCount = AppState.beacons.collectAsState().value.size
+    val habCount = HabHub.balloons.collectAsState().value.size
     val wsjt by AppState.wsjt.collectAsState()
     val extra by AppState.extraStatus.collectAsState()
     val spot by AppState.spotter.collectAsState()
@@ -150,6 +151,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
         FKey("ROTOR", "ROTOR", rotorPos?.let { String.format(java.util.Locale.US, "%03.0f° / %.0f°", it.azDeg, it.elDeg ?: 0.0) } ?: "box") { nav.tool(Tool.ROTOR) },
         FKey("CAT", "CAT", phoneCat?.takeIf { it.link }?.let { es.ea7jrs.aprslorap.core.RotorProto.freq(it.freqHz) } ?: "USB radio", if (phoneCat?.link == true) 1 else 0) { nav.tool(Tool.CAT) },
         FKey("BEACONS", "BEACONS", if (beaconCount > 0) "$beaconCount heard" else "LR-FHSS", if (lrfhss.running) 1 else 0) { nav.tool(Tool.BEACONS) },
+        FKey("HAB", "HAB", if (habCount > 0) "$habCount balloons" else "telemetry", if (habCount > 0) 1 else 0) { nav.tool(Tool.HAB) },
         FKey("ADSB", "ADS-B", if (adsb.running) "${aircraftCount} aircraft" else "1090 MHz", if (adsb.running) 1 else 0) { nav.tool(Tool.ADSB) },
         FKey("SDR", "SDR", if (sdr.connected) sdr.device.ifEmpty { "on" } else "receivers", if (sdr.connected) 1 else 0) { nav.tool(Tool.SDR) },
         FKey("MODES", "MODES", if (wsjt.running) "decoding" else "FT8 · CW", if (wsjt.running) 1 else 0) { nav.tool(Tool.MODES) },
@@ -177,7 +179,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 val FMENU_PAGES = listOf(
     "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
     "RADIO" to listOf("DX", "RBN", "IBP", "SAT", "ROTOR", "CAT", "SDR", "MODES", "CWKEY", "BEACONS", "AIS", "ADSB"),
-    "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS", "SPOTS", "ASTRO", "WEFAX"),
+    "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS", "SPOTS", "ASTRO", "WEFAX", "HAB"),
 )
 
 /** The app after the welcome screen: radio-style screens, touch keys, [F] menu and side menu. */
@@ -411,7 +413,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "Spotting" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Aircraft (ADS-B)" to Tool.ADSB, "Beacons (SDR)" to Tool.BEACONS, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null, "About" to Tool.ABOUT,
+                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Aircraft (ADS-B)" to Tool.ADSB, "Beacons (SDR)" to Tool.BEACONS, "Balloons (HAB)" to Tool.HAB, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null, "About" to Tool.ABOUT,
             )
             for (row in grid.chunked(2)) {
                 Row {
@@ -542,6 +544,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.CAT -> CatTab()
                 Tool.ADSB -> AdsbTab()
                 Tool.BEACONS -> BeaconsTab { nav.go("MAP") }
+                Tool.HAB -> HabTab { nav.go("MAP") }
                 Tool.VESSEL -> VesselTab()
                 Tool.ASTRO -> AstroTab()
             }
