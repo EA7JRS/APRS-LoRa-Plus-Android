@@ -200,6 +200,9 @@ fun TrackerTab() {
             Text("The tracker's radio listens on its CW profile frequency and decodes; while it listens it does nothing else (no beacons). It stops by itself after 10 minutes.", fontSize = 11.sp)
         }
 
+        if (mode == TrackerMode.SSDV && i.hasSsdv) SsdvSection()
+        if (i.hasPocsag) PocsagSection()
+
         Section("")
         OutlinedButton(onClick = { c?.control("reboot") }) { Text("Restart tracker") }
     }

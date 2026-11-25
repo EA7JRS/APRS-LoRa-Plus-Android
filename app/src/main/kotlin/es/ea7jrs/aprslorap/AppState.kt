@@ -94,6 +94,9 @@ object AppState {
     val gpsAidBusy = MutableStateFlow(false)                                     // A-GPS going to the tracker
     val gpsAidMessage = MutableStateFlow("")
     val phoneAgpsMessage = MutableStateFlow("")                                  // A-GPS of the phone itself
+    val ssdvState = MutableStateFlow<es.ea7jrs.aprslorap.core.SsdvState?>(null)  // SSDV image mode (status / progress)
+    val ssdvUploadBusy = MutableStateFlow(false)                                 // a JPEG is going to the tracker over BLE
+    val ssdvUploadMessage = MutableStateFlow("")
     // Phone sensors, rotctld, RepeaterBook
     val phoneSensors = MutableStateFlow(PhoneSensors.Reading())
     val attStatus = MutableStateFlow("Off")

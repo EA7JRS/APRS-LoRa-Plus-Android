@@ -32,10 +32,13 @@ object TrackerMode {
     const val M17 = 10                          // LilyGO T-TWR only: APRS in M17 APRS packets; M17 SMS and voice-call callsigns / GNSS heard
     const val FM = 11                           // LilyGO T-TWR only: FM voice radio (APRS beacons on the APRS frequency during voice)
     const val AIS = 12                          // LilyGO T-TWR (VHF module) only: AIS receiver (marine VHF, receive only)
+    const val SSDV = 13                          // SSDV: slow-scan digital video (image) by LoRa or FSK
+    const val RTTY = 14                          // RTTY beacon (radioteletype, FSK)
 
     fun name(m: Int): String = when (m) {
         APRS_LORA -> "APRS LoRa"; APRS_FSK -> "APRS FSK"; MORSE -> "Morse / CW"; WSPR -> "WSPR"; LRFHSS -> "LR-FHSS"
-        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; M17 -> "M17"; FM -> "FM voice"; AIS -> "AIS receiver"; else -> "Mode $m"
+        DAPNET -> "DAPNET"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; SAT -> "SAT"; M17 -> "M17"; FM -> "FM voice"; AIS -> "AIS receiver"
+        SSDV -> "SSDV image"; RTTY -> "RTTY beacon"; else -> "Mode $m"
     }
 
     fun isAprs(m: Int) = m == APRS_LORA || m == APRS_FSK || m == M17 || m == FM
@@ -43,7 +46,8 @@ object TrackerMode {
     /** Modulation of a mode, for firmware that does not send `mod` in `status` ([sa868]: LilyGO T-TWR, APRS in AFSK 1200). */
     fun modulation(m: Int, sa868: Boolean = false): String = when (m) {
         APRS_LORA -> if (sa868) "AFSK" else "LoRa"; APRS_FSK -> "FSK"; MORSE -> "CW"; DAPNET -> "POCSAG"; M17 -> "M17"; FM -> "FM"
-        WSPR -> "WSPR"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; LRFHSS -> "LR-FHSS"; SAT -> "SAT"; AIS -> "AIS"; else -> "?"
+        WSPR -> "WSPR"; FT8 -> "FT8"; FT4 -> "FT4"; FST4W -> "FST4W"; LRFHSS -> "LR-FHSS"; SAT -> "SAT"; AIS -> "AIS"
+        SSDV -> "SSDV"; RTTY -> "RTTY"; else -> "?"
     }
 }
 
@@ -85,6 +89,9 @@ data class TrackerInfo(
     val hasSame: Boolean = false,               // NOAA Weather Radio (SAME) decoded by the T-TWR in FM (event "alert")
     val hasVessel: Boolean = false,             // own vessel data of the nautical AIS profile ("vessel" command and event)
     val isMaprs: Boolean = false,               // APRS LoRa+ MAPRS transponder (class B only)
+    val hasSsdv: Boolean = false,               // SSDV image mode ("ssdv", "ssdvtx", "ssdvimg" to upload a JPEG over BLE)
+    val hasRtty: Boolean = false,               // RTTY beacon mode (configured with cfgset; the mode itself transmits)
+    val hasPocsag: Boolean = false,             // POCSAG pager send ("pocsag")
 )
 
 /** FM radio of the LilyGO T-TWR Plus: board revision (20 / 21), module firmware ("NiceRF" / "OpenRTX"), band, whether it answers,
@@ -203,6 +210,12 @@ data class RotorPointing(
     val actualAzDeg: Double? = null, val actualElDeg: Double? = null,      // what the rotor reports, if known
 )
 
+/** SSDV image mode: whether the mode is active, whether it is transmitting, progress of the current image and received-image counters. */
+data class SsdvState(
+    val inMode: Boolean, val busy: Boolean, val totalPackets: Int, val sentPackets: Int,
+    val rxImages: Int, val rxPackets: Int, val uploading: Boolean, val status: String,
+)
+
 sealed class ControlEvent {
     data class Info(val info: TrackerInfo) : ControlEvent()
     data class Status(val status: TrackerStatus) : ControlEvent()
@@ -258,6 +271,8 @@ sealed class ControlEvent {
         val filter: String = "", val maxAgeMin: Int = 30, val predict: Boolean = true, val predictMaxS: Int = 300,
     ) : ControlEvent()
     data class Fm(val state: FmState) : ControlEvent()
+    data class SsdvEv(val state: SsdvState) : ControlEvent()
+    data class PocsagEv(val ok: Boolean, val address: Long, val freqHz: Long) : ControlEvent()
     data class FmMemories(val max: Int, val items: List<FmChannel>) : ControlEvent()
     data class Bcast(val state: BcastState) : ControlEvent()
     data class Ok(val command: String, val id: Int?) : ControlEvent()
@@ -370,6 +385,13 @@ object Control {
             "aislist" -> ControlEvent.AisList(o.int("tot") ?: 0, o.int("from") ?: 0, o.int("msgs") ?: 0, o.str("src") ?: "", o.str("ch") ?: "",
                 o.objList("items").mapNotNull { AisVessel.parse(it, System.currentTimeMillis()) })
             "cwrx" -> ControlEvent.CwRx(o.bool("on") ?: false, o.str("t"), o.num("dbm"), o.num("snr"), o.int("wpm"), o.long("f"))
+            "ssdv" -> ControlEvent.SsdvEv(
+                SsdvState(
+                    o.bool("on") ?: false, o.bool("busy") ?: false, o.int("tot") ?: 0, o.int("sent") ?: 0,
+                    o.int("rxi") ?: 0, o.int("rxp") ?: 0, o.bool("up") ?: false, o.str("st") ?: "",
+                ),
+            )
+            "pocsag" -> ControlEvent.PocsagEv(o.bool("ok") ?: false, o.long("addr") ?: 0, o.long("f") ?: 0)
             "rf" -> ControlEvent.Rf(o.str("s") ?: "idle", o.int("rssi"), o.num("snr"), o.int("m"), o.long("br"), o.long("f"), o.long("h"))
             "led" -> ControlEvent.Led(o.bool("msg") ?: false, o.int("unread") ?: 0, o.bool("emg") ?: false, o.str("ec") ?: "", o.str("et") ?: "", o.bool("fl") ?: false,
                 o.str("ek") ?: "", o.bool("em") ?: false, o.int("eq") ?: 0, o.bool("eo") ?: false)
@@ -436,6 +458,42 @@ object Control {
 
     const val SAT_DATA_MAX = 64_000
 
+    /** Ask for an SSDV status event. */
+    fun ssdvStatus(): String = command("ssdv")
+
+    /** Start or stop the SSDV transmission (only in SSDV mode; transmits, so the app sends it only with a validated callsign). */
+    fun ssdvTx(start: Boolean): String = command("ssdvtx", "s" to if (start) "start" else "stop")
+
+    /** Upload a JPEG to the tracker over BLE for SSDV source 2: begin, base64 pieces, end. 135 bytes per piece (180 base64 chars). */
+    fun ssdvImage(jpeg: ByteArray): List<String> {
+        val lines = ArrayList<String>()
+        lines.add(command("ssdvimg", "s" to "begin", "n" to jpeg.size))
+        val enc = java.util.Base64.getEncoder()
+        var pos = 0
+        while (pos < jpeg.size) {
+            val end = minOf(jpeg.size, pos + 135)
+            lines.add(command("ssdvimg", "s" to "c", "d" to enc.encodeToString(jpeg.copyOfRange(pos, end))))
+            pos = end
+        }
+        lines.add(command("ssdvimg", "s" to "end"))
+        return lines
+    }
+
+    /** Send a POCSAG page (transmits, so the app sends it only with a validated callsign). Empty overrides fall back to the tracker config. */
+    fun pocsag(address: Long, message: String, numeric: Boolean, freqHz: Long? = null, bps: Int? = null,
+               shiftHz: Int? = null, invert: Boolean? = null, powerDbm: Int? = null): String {
+        val fields = ArrayList<Pair<String, Any?>>()
+        fields.add("addr" to address)
+        fields.add("msg" to message)
+        fields.add("num" to numeric)
+        if (freqHz != null) fields.add("f" to freqHz)
+        if (bps != null) fields.add("bps" to bps)
+        if (shiftHz != null) fields.add("sh" to shiftHz)
+        if (invert != null) fields.add("inv" to invert)
+        if (powerDbm != null) fields.add("pwr" to powerDbm)
+        return command("pocsag", *fields.toTypedArray())
+    }
+
     private fun page(o: Map<String, Any?>) = Page(
         o.long("ric") ?: 0, o.int("f") ?: 0, o.bool("own") ?: false, o.bool("bad") ?: false, o.long("age") ?: 0, o.int("rssi") ?: 0, o.str("t") ?: "",
     )
@@ -477,6 +535,9 @@ object Control {
             caps.bool("same") ?: false,
             caps.bool("vessel") ?: false,
             caps.bool("maprs") ?: false,
+            caps.bool("ssdv") ?: false,
+            caps.bool("rtty") ?: false,
+            caps.bool("pocsag") ?: false,
         )
     }
 }

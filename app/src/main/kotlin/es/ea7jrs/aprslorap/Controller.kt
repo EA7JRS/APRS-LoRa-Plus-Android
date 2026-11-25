@@ -65,6 +65,8 @@ class Controller(
             "cwrx",
             // A-GPS data for the tracker's GNSS receiver: nothing is transmitted
             "gpsaid",
+            // SSDV: asking for status and uploading the image over BLE do not transmit (ssdvtx and pocsag are not here: they transmit)
+            "ssdv", "ssdvimg",
             // broadcast receiver (receive only) and the state of the T-TWR FM radio (tuning it is not here: it transmits)
             "bcast", "bcastset", "fm",
             // weather from the internet for the TELEMETRY page: shown only, not transmitted
@@ -107,6 +109,11 @@ class Controller(
     private var aidDeadlineMs = 0L
     private var aidDoneText = ""
     private var aidCurrent: String? = null
+    private val ssdvLines = ArrayDeque<String>()
+    private var ssdvSteps = 0
+    private var ssdvWriting = false
+    private var ssdvDeadlineMs = 0L
+    private var ssdvStartAfter = false                           // tras subir la imagen, dispara la emision (si hay indicativo validado)
     private var satListLoading = false
     private var phoneLat = 0.0
     private var phoneLon = 0.0
@@ -346,6 +353,8 @@ class Controller(
             }
             is ControlEvent.Screen -> AppState.screen.value = ev.screen
             is ControlEvent.Fm -> AppState.fmState.value = ev.state
+            is ControlEvent.SsdvEv -> AppState.ssdvState.value = ev.state
+            is ControlEvent.PocsagEv -> AppState.notice.value = if (ev.ok) "POCSAG page sent to RIC ${ev.address}" else "POCSAG page failed"
             is ControlEvent.FmMemories -> AppState.fmMemories.value = ev.items
             is ControlEvent.Bcast -> AppState.bcastState.value = ev.state
             is ControlEvent.Actions -> {
@@ -431,6 +440,9 @@ class Controller(
                 "cfgset" -> onConfigStepDone()
                 "satdata" -> onSatDataStepDone()
                 "gpsaid" -> onGpsAidStepDone()
+                "ssdvimg" -> onSsdvImgStepDone()
+                "ssdvtx" -> {}
+                "pocsag" -> AppState.notice.value = "POCSAG page sent"
                 "satsel" -> { AppState.satRxLog.value = emptyList(); sendControlLine(Control.command("sattxlist")) }
                 "act" -> sendControlLine(Control.command("screen"))
                 "msg" -> { AppState.notice.value = "Message queued in the tracker"; sendControlLine(Control.command("msgs", "cnt" to 20)) }
@@ -445,6 +457,7 @@ class Controller(
                 if (ev.command == "satdata") onSatDataFailed(ev.message)
                 if (ev.command == "gpsaid" && ev.message == "busy") { onGpsAidBusy(); return }
                 if (ev.command == "gpsaid") onGpsAidFailed(ev.message)
+                if (ev.command == "ssdvimg") { onSsdvImgFailed(ev.message); return }
                 if (ev.command == "cfgget") { AppState.configBusy.value = false; AppState.configMessage.value = ev.message }
                 AppState.error.value = "Tracker (${ev.command}): ${ev.message}"
             }
@@ -648,6 +661,61 @@ class Controller(
 
     private fun onGpsAidStepDone() { if (aidWriting) gpsAidNextLine() }
 
+    // ---- SSDV: ask for status, start / stop the emission, send a POCSAG page, upload a JPEG over BLE (source 2) ----
+
+    /** Asks for an SSDV status event (not a transmission). */
+    fun ssdvStatus() { exec.execute { safe { if (controlOn) sendControlLine(Control.ssdvStatus()) } } }
+
+    /** Starts or stops the SSDV emission (transmits: the control() gate needs a validated callsign and SSDV mode). */
+    fun ssdvTx(start: Boolean) { control("ssdvtx", "s" to if (start) "start" else "stop") }
+
+    /** Sends a POCSAG page (transmits: validated callsign). Empty overrides fall back to the tracker's config. */
+    fun pocsagSend(address: Long, message: String, numeric: Boolean) {
+        control("pocsag", "addr" to address, "msg" to message, "num" to numeric)
+    }
+
+    /** Uploads a JPEG to the tracker for SSDV source 2 (stop-and-wait, base64 chunks); [startAfter] then triggers the emission. */
+    fun ssdvImageWrite(jpeg: ByteArray, startAfter: Boolean) {
+        exec.execute {
+            safe {
+                if (!controlOn) { AppState.ssdvUploadMessage.value = "No control service"; return@safe }
+                if (AppState.trackerInfo.value?.hasSsdv != true) { AppState.ssdvUploadMessage.value = "The tracker firmware has no SSDV mode"; return@safe }
+                if (ssdvWriting) return@safe
+                if (jpeg.isEmpty()) { AppState.ssdvUploadMessage.value = "Empty image"; return@safe }
+                ssdvLines.clear(); ssdvLines.addAll(Control.ssdvImage(jpeg))
+                ssdvSteps = ssdvLines.size
+                ssdvStartAfter = startAfter
+                ssdvWriting = true
+                AppState.ssdvUploadBusy.value = true
+                ssdvNextLine()
+            }
+        }
+    }
+
+    private fun ssdvNextLine() {
+        val line = ssdvLines.removeFirstOrNull()
+        if (line == null) {
+            ssdvWriting = false
+            AppState.ssdvUploadBusy.value = false
+            AppState.ssdvUploadMessage.value = "Image sent to the tracker"
+            if (ssdvStartAfter) { ssdvStartAfter = false; ssdvTx(true) }
+            return
+        }
+        ssdvDeadlineMs = System.currentTimeMillis() + 8000
+        AppState.ssdvUploadMessage.value = "Uploading image to the tracker... ${(ssdvSteps - ssdvLines.size) * 100 / ssdvSteps} %"
+        sendControlLine(line)
+    }
+
+    private fun onSsdvImgStepDone() { if (ssdvWriting) ssdvNextLine() }
+
+    private fun onSsdvImgFailed(message: String) {
+        if (!ssdvWriting) return
+        ssdvWriting = false; ssdvLines.clear(); ssdvStartAfter = false
+        AppState.ssdvUploadBusy.value = false
+        AppState.ssdvUploadMessage.value = "Tracker refused the image: $message"
+        sendControlLine(Control.command("ssdvimg", "s" to "abort"))
+    }
+
     /** The tracker's buffer for the GNSS port is full (slow UART, 9600 baud): the same piece again a bit later. */
     private fun onGpsAidBusy() {
         val line = aidCurrent ?: return
@@ -758,6 +826,12 @@ class Controller(
             AppState.gpsAidBusy.value = false
             AppState.gpsAidMessage.value = "The tracker did not answer"
             sendControlLine(Control.command("gpsaid", "s" to "abort"))
+        }
+        if (ssdvWriting && now > ssdvDeadlineMs) {
+            ssdvWriting = false; ssdvLines.clear(); ssdvStartAfter = false
+            AppState.ssdvUploadBusy.value = false
+            AppState.ssdvUploadMessage.value = "The tracker did not answer"
+            sendControlLine(Control.command("ssdvimg", "s" to "abort"))
         }
         sendPhonePosition(force = false)
         maybePhoneBeacon(now)
