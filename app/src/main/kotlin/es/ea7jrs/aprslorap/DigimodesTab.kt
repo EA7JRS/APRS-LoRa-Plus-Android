@@ -94,6 +94,10 @@ fun DigimodesTab() {
                 if (m == mode) Button(onClick = go) { Text(m, fontSize = 10.sp) } else OutlinedButton(onClick = go) { Text(m, fontSize = 10.sp) }
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val go = { mode = ModemRunner.SKIMMER; if (st.running) ModemRunner.start(ModemRunner.SKIMMER, source, st.centerHz) }
+            if (mode == ModemRunner.SKIMMER) Button(onClick = go) { Text("CW SKIMMER", fontSize = 10.sp) } else OutlinedButton(onClick = go) { Text("CW SKIMMER", fontSize = 10.sp) }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             for (s in ModemRunner.Source.entries) {
                 val label = if (s == ModemRunner.Source.RECEIVER) "App receiver (USB)" else "Microphone"
@@ -139,6 +143,7 @@ fun DigimodesTab() {
         Text(text.ifEmpty { "—" }, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         if (mode == "NAVTEX") NavtexSection()
         if (mode.startsWith("DSC")) DscSection(mode == "DSC VHF")
+        if (mode == ModemRunner.SKIMMER) CwSkimmerSection()
         WsjtSection(source)
         SpottingSection()
         Text("CW, RTTY and BPSK receive in the manner of fldigi (varicode, Baudot and PSK timing from fldigi, GPL). More fldigi modes come in the next steps.", fontSize = 11.sp)
@@ -205,5 +210,23 @@ private fun WsjtSection(source: ModemRunner.Source) {
         Text(String.format(Locale.US, "%s %+3.0f %+4.1f %s  %s", fmt.format(java.util.Date(d.slotMs)), d.snr, d.dt,
                 d.rfHz?.let { es.ea7jrs.aprslorap.core.Sdr.mhz(it) } ?: String.format(Locale.US, "%4d", d.audioHz), d.message),
             fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = if (hit) Alp.RedSoft else Color.Unspecified)
+    }
+}
+
+/** CW skimmer: the calls resolved across the receiver's passband, newest first (frequency, SNR, WPM, context). */
+@Composable
+private fun CwSkimmerSection() {
+    val spots by ModemRunner.skimmerSpots.collectAsState()
+    Section("CW skimmer")
+    Text("Decodes every CW signal in the receiver's passband at once (App receiver, USB). Calls appear after CQ / DE / QRZ. Within the channel's bandwidth, not the whole band.", fontSize = 11.sp)
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        Text("Calls (${spots.size})", fontSize = 13.sp, modifier = Modifier.weight(1f))
+        if (spots.isNotEmpty()) TextButton(onClick = { ModemRunner.skimmerSpots.value = emptyList() }) { Text("Clear") }
+    }
+    if (spots.isEmpty()) Text("—", fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+    else for (s in spots.take(40)) Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+        Text(s.call, fontSize = 14.sp, fontFamily = FontFamily.Monospace, color = if (s.comment == "CQ") Alp.Green else Color.Unspecified, modifier = Modifier.width(110.dp))
+        Text(if (s.rfHz > 0) String.format(Locale.US, "%.1f kHz", s.rfHz / 1000.0) else String.format(Locale.US, "+%.0f Hz", s.audioHz), fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        Text(String.format(Locale.US, "%d dB %d wpm %s", s.snr, s.wpm, s.comment), fontSize = 11.sp, color = Alp.Muted)
     }
 }

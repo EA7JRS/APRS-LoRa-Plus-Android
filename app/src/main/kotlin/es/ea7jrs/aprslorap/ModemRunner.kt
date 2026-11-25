@@ -9,7 +9,10 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import es.ea7jrs.aprslorap.core.CwSkimmer
 import es.ea7jrs.aprslorap.core.Modems
+import es.ea7jrs.aprslorap.core.Spots
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -22,8 +25,15 @@ object ModemRunner {
     data class State(val running: Boolean = false, val mode: String = "BPSK31", val source: Source = Source.RECEIVER, val centerHz: Double = 1000.0,
                      val quality: Double = 0.0, val afc: Boolean = true, val info: String = "")
 
+    const val SKIMMER = "CW SKIM"                                           // multi-decodificacion CW en todo el audio del receptor
+
+    /** A callsign the CW skimmer resolved, with its audio offset and the absolute RF (dial + offset). */
+    data class SkimEntry(val call: String, val audioHz: Double, val rfHz: Long, val snr: Int, val wpm: Int, val comment: String, val lastMs: Long, val count: Int)
+    val skimmerSpots = MutableStateFlow<List<SkimEntry>>(emptyList())
+
     private val queue = ArrayBlockingQueue<FloatArray>(64)
     @Volatile private var modem: Modems.Modem? = null
+    @Volatile private var skimmer: CwSkimmer? = null
     @Volatile private var worker: Thread? = null
     @Volatile private var mic: Thread? = null
     @Volatile var active = false
@@ -36,19 +46,39 @@ object ModemRunner {
     @Synchronized
     fun start(mode: String, src: Source, centerHz: Double) {
         stop()
-        val m = Modems.create(mode, centerHz)
-        m.afc = AppState.modem.value.afc
-        m.onText = { t ->
-            val cur = AppState.modemText.value; AppState.modemText.value = (cur + t).takeLast(6000)
-            if (m is Modems.Cw) Spotter.onPhoneCw(t, m.centerHz, m.snrDb, m.wpm, src)        // calls heard -> PSK Reporter, skimmer port
-            if (m is Modems.Rtty) HabHub.feedRtty(t, (AppState.sdr.value.freqHz ?: 0L) / 1000.0)  // telemetria HAB (UKHAS $$...*CRC)
+        if (mode == SKIMMER) {
+            val sk = CwSkimmer(CwSkimmer.grid(), ownCall = "")
+            sk.onSpot = { onSkimSpot(it) }
+            skimmer = sk; modem = null
+        } else {
+            val m = Modems.create(mode, centerHz)
+            m.afc = AppState.modem.value.afc
+            m.onText = { t ->
+                val cur = AppState.modemText.value; AppState.modemText.value = (cur + t).takeLast(6000)
+                if (m is Modems.Cw) Spotter.onPhoneCw(t, m.centerHz, m.snrDb, m.wpm, src)        // calls heard -> PSK Reporter, skimmer port
+                if (m is Modems.Rtty) HabHub.feedRtty(t, (AppState.sdr.value.freqHz ?: 0L) / 1000.0)  // telemetria HAB (UKHAS $$...*CRC)
+            }
+            if (m is es.ea7jrs.aprslorap.core.Navtex.Decoder) m.onMessage = { NavtexHub.onMessage(it) }
+            if (m is es.ea7jrs.aprslorap.core.Dsc.Decoder) m.onCall = { DscHub.onCall(it, if (m.vhf) 156_525.0 else Settings.dscKhzNow) }
+            modem = m
         }
-        if (m is es.ea7jrs.aprslorap.core.Navtex.Decoder) m.onMessage = { NavtexHub.onMessage(it) }
-        if (m is es.ea7jrs.aprslorap.core.Dsc.Decoder) m.onCall = { DscHub.onCall(it, if (m.vhf) 156_525.0 else Settings.dscKhzNow) }
-        modem = m; source = src; active = true; queue.clear()
+        source = src; active = true; queue.clear()
         set { it.copy(running = true, mode = mode, source = src, centerHz = centerHz, info = "") }
         worker = Thread({ work() }, "modem").also { it.isDaemon = true; it.start() }
         if (src == Source.MICROPHONE) mic = Thread({ micLoop() }, "modem-mic").also { it.isDaemon = true; it.start() }
+    }
+
+    // Merges a skimmer spot into the list (one per call, newest first, last 80), with the absolute RF from the receiver dial.
+    private fun onSkimSpot(s: CwSkimmer.Spot) {
+        val dial = AppState.sdr.value.freqHz ?: 0L
+        val rf = if (dial > 0) Spots.rfHz(dial, "CW", s.audioHz) else 0L
+        val now = System.currentTimeMillis()
+        synchronized(skimmerSpots) {
+            val old = skimmerSpots.value
+            val i = old.indexOfFirst { it.call == s.call }
+            val e = SkimEntry(s.call, s.audioHz, rf, s.snr, s.wpm, s.comment, now, (if (i >= 0) old[i].count else 0) + 1)
+            skimmerSpots.value = (listOf(e) + old.filterIndexed { k, _ -> k != i }).take(80)
+        }
     }
 
     @Synchronized
@@ -56,7 +86,7 @@ object ModemRunner {
         active = false
         worker?.interrupt(); worker = null
         mic?.interrupt(); mic = null
-        modem = null
+        modem = null; skimmer = null
         set { it.copy(running = false) }
     }
 
@@ -97,14 +127,18 @@ object ModemRunner {
         try {
             while (active) {
                 val x = queue.poll(500, TimeUnit.MILLISECONDS) ?: continue
-                val m = modem ?: break
-                m.process(x, x.size)
+                val sk = skimmer
+                val m = modem
+                if (sk != null) sk.process(x, x.size, System.currentTimeMillis())
+                else if (m != null) m.process(x, x.size)
+                else break
                 spec.push(x, x.size)
                 val now = System.currentTimeMillis()
                 if (now - lastRow >= 120) {
                     lastRow = now
                     AppState.waterfallRow.value = spec.db()
-                    set { it.copy(quality = m.quality, centerHz = m.centerHz, info = if (m is Modems.Cw) "${m.wpm} wpm" else it.info) }
+                    if (m != null) set { it.copy(quality = m.quality, centerHz = m.centerHz, info = if (m is Modems.Cw) "${m.wpm} wpm" else it.info) }
+                    else set { it.copy(info = "${skimmerSpots.value.size} calls") }
                 }
             }
         } catch (_: InterruptedException) {}
