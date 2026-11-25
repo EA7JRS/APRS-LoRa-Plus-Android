@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3660,4 +3660,25 @@ private fun testCwSkimmer() {
     check(spots.any { it.call == "G0ABC" && kotlin.math.abs(it.audioHz - 1500.0) < 60 }, "skimmer resolves G0ABC near 1500 Hz")
     check(spots.all { it.snrDb >= 0 && it.wpm in 10..40 }, "skimmer spots carry snr and wpm")
     eq(CwSkimmer.grid(400.0, 800.0, 100.0), listOf(400.0, 500.0, 600.0, 700.0, 800.0), "skimmer channel grid")
+}
+
+private fun testAfsk1200() {
+    // Bell 202 AFSK round-trip: a cubesat-style AX.25 UI frame, modulated to audio with noise, decoded back
+    val frame = Ax25Frame.create("EA7JRS-11", "CQ", emptyList(), "hello cubesat telemetry 12345")!!.encode()
+    eq(Ax25Frame.decode(frame)?.toTnc2(), "EA7JRS-11>CQ:hello cubesat telemetry 12345", "AFSK1200 AX.25 parse")
+    val fs = 12000.0
+    val clean = Afsk1200.modulate(frame, fs)
+    val rnd = java.util.Random(11)
+    val noisy = FloatArray(clean.size) { clean[it] + (rnd.nextGaussian() * 0.18).toFloat() }
+    val got = ArrayList<ByteArray>()
+    val d = Afsk1200.Decoder(fs) { got.add(it) }
+    d.process(noisy, noisy.size)
+    check(got.any { it.contentEquals(frame) }, "AFSK1200 decode (noisy, got ${got.size})")
+    check(d.badFcs == 0 || got.isNotEmpty(), "AFSK1200 FCS")
+    // also at 48 kHz (the receiver's native audio rate)
+    val clean48 = Afsk1200.modulate(frame, 48000.0)
+    val got48 = ArrayList<ByteArray>()
+    val d48 = Afsk1200.Decoder(48000.0) { got48.add(it) }
+    d48.process(clean48, clean48.size)
+    check(got48.any { it.contentEquals(frame) }, "AFSK1200 decode at 48 kHz (got ${got48.size})")
 }

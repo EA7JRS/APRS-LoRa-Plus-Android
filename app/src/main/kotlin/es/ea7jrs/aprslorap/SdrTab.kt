@@ -209,7 +209,7 @@ fun SdrTab() {
 
         // ---- packet FSK (the tracker's APRS FSK beacons)
         if (kind == Sdr.Kind.RTLTCP) {
-            Section("Packet FSK G3RUH (tracker APRS FSK beacons)")
+            Section("Packet: G3RUH FSK + AFSK 1200 (satellite telemetry)")
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (b in listOf(4800, 9600, 19200)) {
                     val go = {
@@ -219,11 +219,15 @@ fun SdrTab() {
                     }
                     OutlinedButton(onClick = go, enabled = st.connected) { Text("$b bd", fontSize = 11.sp) }
                 }
+                OutlinedButton(onClick = {
+                    settings.sdrMode = "NFM"; settings.sdrBandwidth = 15_000; SdrControl.mode("NFM", 15_000)
+                    PacketRunner.startAfsk1200()
+                }, enabled = st.connected) { Text("1200 AFSK", fontSize = 11.sp) }
                 OutlinedButton(onClick = { PacketRunner.stop() }, enabled = pkStatus != "Off") { Text("Stop", fontSize = 11.sp) }
             }
             Text(pkStatus, fontSize = 12.sp)
             for (l in pkLog.takeLast(10).asReversed()) Text(l, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-            Text("AX.25 with the G3RUH scrambler, as the tracker sends in APRS FSK mode (also FX.25, which carries a normal frame; not IL2P). Frames go to Stations and Messages like those from the tracker. Follow \"Tracker LoRa\" below to tune to its frequency. The CW beacon: Modes tab, CW, with the receiver in CW.", fontSize = 11.sp)
+            Text("G3RUH: AX.25 with the scrambler, as the tracker sends in APRS FSK mode (also FX.25; not IL2P). 1200 AFSK: Bell 202 tones, the APRS-on-FM and most cubesats' 1k2 telemetry (what SatNOGS decodes). Frames go to Stations and Messages like those from the tracker. Follow \"Tracker LoRa\" below to tune, or set a satellite's downlink. The CW beacon: Modes tab, CW, with the receiver in CW.", fontSize = 11.sp)
         }
 
         // ---- digital voice
