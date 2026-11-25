@@ -27,7 +27,7 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: 8.13
+          gradle-version: 8.14.6
       - name: Cache of the digital voice decoder build
         uses: actions/cache@v5
         with:
