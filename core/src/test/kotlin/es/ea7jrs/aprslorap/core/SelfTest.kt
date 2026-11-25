@@ -3529,6 +3529,17 @@ private fun testConfigCheck() {
     val pw = CC.apply(with(listOf("wifiAP", "password"), ""), CC.check(with(listOf("wifiAP", "password"), "")).findings[0].fix!!, java.util.Random(2))
     check(pw.second.length == 12 && pw.first.obj("wifiAP")?.str("password") == pw.second && ids(pw.first).isEmpty(), "config check: a new AP password passes")
     eq(CC.apply(with(listOf("lora", 0, "frequency"), 433900000), CC.check(with(listOf("lora", 0, "frequency"), 433900000)).findings[0].fix!!).first.objList("lora")[0].long("frequency"), 433775000L, "config check: frequency fix")
+    // transmission-mode frequencies against the band plan
+    fun cm(j: String) = Json.parseObject(j)!!
+    eq(CC.bandWarn(1, 432174000L), null, "config check: FT8 432.174 passes the band plan")
+    eq(CC.bandWarn(1, 436000000L)?.first?.contains("satellite"), true, "config check: 436 MHz is the satellite segment")
+    eq(ids(good()).contains("ft8freq"), false, "config check: no mode groups, nothing extra checked")
+    eq(CC.check(cm("""{"ft":{"ft8FreqHz":432174000,"ft8Region":1}}""")).findings.size to CC.check(cm("""{"ft":{"ft8FreqHz":432174000,"ft8Region":1}}""")).passed.size, 0 to 1, "config check: FT8 on 432.174 is fine (one pass)")
+    eq(CC.check(cm("""{"ft":{"ft8FreqHz":432450000,"ft8Region":1}}""")).findings.map { it.id }, listOf("ft8freq"), "config check: FT8 in the R1 beacon segment warns")
+    eq(CC.check(cm("""{"ssdv":{"freqHz":436000000}}""")).findings.map { it.id }, listOf("ssdvfreq"), "config check: SSDV in the satellite segment warns")
+    eq(CC.check(cm("""{"lora":[{"frequency":445000000,"iaruRegion":2,"ais":false}],"rtty":{"freqHz":445000000}}""")).findings.map { it.id }, emptyList<String>(), "config check: mode region inherited from the LoRa profile (R2)")
+    eq(CC.check(cm("""{"sa868":{"m17FreqHz":0,"iaruRegion":1}}""")).findings.size, 0, "config check: M17 0 (board-suggested) is not checked")
+    eq(CC.check(cm("""{"sa868":{"m17FreqHz":436000000,"iaruRegion":1}}""")).findings.map { it.id }, listOf("m17freq"), "config check: M17 in the satellite segment warns")
 }
 
 private fun testWefax() {

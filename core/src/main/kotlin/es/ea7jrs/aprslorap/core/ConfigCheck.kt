@@ -35,6 +35,20 @@ object ConfigCheck {
 
     fun inBand(region: Int, hz: Long): Boolean = (BANDS[region] ?: BANDS[1]!!).any { hz / 1e6 >= it.first && hz / 1e6 <= it.second }
 
+    /** Band-plan warning for a transmit frequency (mirror of IARU_Plan::txWarning of the firmware): (title suffix, why) or null if fine. */
+    fun bandWarn(region: Int, hz: Long): Pair<String, String>? {
+        val r = region.coerceIn(1, 3)
+        if (!inBand(r, hz)) return "is outside the amateur band of IARU Region $r" to
+            "Choose a frequency inside your band plan; national rules always prevail."
+        if (hz in 435_000_000L..438_000_000L) return "is in the 435–438 MHz satellite segment" to
+            "435–438 MHz is for the amateur-satellite service: avoid terrestrial transmission."
+        if (r == 1 && hz in 432_400_000L..432_500_000L) return "is in the 432.400–432.490 MHz beacon segment (IARU R1)" to
+            "Do not transmit here: it is reserved for propagation beacons."
+        if (r == 2 && hz in 432_300_000L..432_400_000L) return "is in the 432.300–432.400 MHz beacon segment (IARU R2)" to
+            "Do not transmit here: it is a beacon segment."
+        return null
+    }
+
     /** Hops a path asks for (WIDEn-N asks for N; anything else counts one) and the largest n of its WIDEn-N. */
     fun pathHops(path: List<String>): Pair<Int, Int> {
         var hops = 0; var worst = 0
@@ -106,6 +120,40 @@ object ConfigCheck {
                     "Only stations with the same settings decode it. The LoRa APRS network on 433.775 uses SF12, 125 kHz, CR 4/5.")
         }
         if (loras.isNotEmpty()) pass("LoRa frequencies within the IARU band plan", n0)
+
+        // Transmission-mode frequencies: IARU band plan segment (FT8 / FT4 / FST4W / SSDV / RTTY / LR-FHSS / DAPNET / M17).
+        // This is the app's equivalent of the WebUI's per-field band-plan widgets (data_embed/script.js, attachModeBandPlan /
+        // bandPlanWarn): the Config tab edits the raw JSON and has no inline widget, so the warning shows here. Same segments as
+        // IARU_Plan::txWarning of the firmware. The region comes from the mode (FT, SA868) or the first LoRa profile. National rules prevail.
+        run {
+            val ft = root.obj("ft"); val ssdv = root.obj("ssdv"); val rtty = root.obj("rtty")
+            val lrf = root.obj("lrfhss"); val dap = root.obj("dapnet"); val sa = root.obj("sa868")
+            if (ft == null && ssdv == null && rtty == null && lrf == null && dap == null && sa == null) return@run
+            n0 = out.size
+            var checked = 0
+            val baseRegion = (loras.firstOrNull { !it.flag("ais") }?.int("iaruRegion") ?: 1).coerceIn(1, 3)
+            fun checkMode(id: String, where: String, hz: Long, region: Int) {
+                if (hz <= 0) return                                  // 0 = sin definir o la sugerida de la placa: no se comprueba
+                checked++
+                val w = bandWarn(region, hz) ?: return
+                out += Finding(id, Severity.WARN, where, String.format(Locale.US, "%.4f", hz / 1e6) + " MHz " + w.first, w.second)
+            }
+            ft?.let {
+                checkMode("ft8freq", "ft · FT8", it.long("ft8FreqHz") ?: 0L, it.int("ft8Region") ?: baseRegion)
+                checkMode("ft4freq", "ft · FT4", it.long("ft4FreqHz") ?: 0L, it.int("ft4Region") ?: baseRegion)
+                checkMode("fstfreq", "ft · FST4W", it.long("fstFreqHz") ?: 0L, it.int("fstRegion") ?: baseRegion)
+            }
+            ssdv?.let { checkMode("ssdvfreq", "ssdv", it.long("freqHz") ?: 0L, baseRegion) }
+            rtty?.let { checkMode("rttyfreq", "rtty", it.long("freqHz") ?: 0L, baseRegion) }
+            lrf?.let { checkMode("lrfhssfreq", "lrfhss", it.long("freqHz") ?: 0L, baseRegion) }
+            dap?.let { checkMode("dapnetfreq", "dapnet", it.long("freqHz") ?: 0L, baseRegion) }
+            sa?.let {
+                val r = it.int("iaruRegion") ?: baseRegion
+                checkMode("m17freq", "sa868 · M17", it.long("m17FreqHz") ?: 0L, r)
+                checkMode("sa868dapnetfreq", "sa868 · DAPNET", it.long("dapnetFreqHz") ?: 0L, r)
+            }
+            if (checked > 0) pass("Transmission-mode frequencies within the band plan", n0)
+        }
 
         // WiFi AP password (WPA2: 8 to 63 characters)
         root.obj("wifiAP")?.takeIf { it.containsKey("password") }?.let { w ->
