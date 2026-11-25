@@ -190,6 +190,7 @@ private fun AlertSettings(s: Settings) {
     var zones by rememberSaveable { mutableStateOf(s.alertZones) }
     var country by rememberSaveable { mutableStateOf(s.alertCountry) }
     var minutes by rememberSaveable { mutableStateOf(s.alertMinutes.toString()) }
+    var radius by rememberSaveable { mutableStateOf(s.alertRadiusKm.toString()) }
     Section("Settings")
     @Composable fun sw(label: String, v: Boolean, set: (Boolean) -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), fontSize = 14.sp); Switch(v, set)
@@ -216,8 +217,11 @@ private fun AlertSettings(s: Settings) {
             singleLine = true, modifier = Modifier.weight(1f))
         OutlinedTextField(minutes, { minutes = it.filter(Char::isDigit).take(3); minutes.toIntOrNull()?.let { m -> s.alertMinutes = m } },
             label = { Text("Every (min, ≥ 10)") }, singleLine = true, modifier = Modifier.weight(1f))
+        OutlinedTextField(radius, { radius = it.filter(Char::isDigit).take(5); s.alertRadiusKm = radius.toIntOrNull() ?: 0 },
+            label = { Text("Radius (km, 0 = all)") }, singleLine = true, modifier = Modifier.weight(1f))
     }
     Text("Spain: AEMET (the alert is shown when its polygon has the position inside). Rest of Europe: MeteoAlarm by country (no polygons: use the zones). " +
-         "US: NWS for the position. Earthquakes: window by magnitude and distance (M5 under 600 km, M6 under 2000 km...), the far ones only in the list.", fontSize = 11.sp, color = Alp.Muted)
+         "US: NWS for the position. Radius: earthquakes and tsunami information messages only notify within that many km of the position (0 = no limit); " +
+         "real tsunami warnings always notify. AEMET / MeteoAlarm / NWS are already filtered by polygon or zone, and space weather has no location.", fontSize = 11.sp, color = Alp.Muted)
     Box(Modifier.size(1.dp))
 }

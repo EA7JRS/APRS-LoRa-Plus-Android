@@ -128,8 +128,9 @@ object OfficialAlertsFetcher {
                 if (settings.alertTsunami) run("tsunami.gov") {
                     val t = (OfficialAlerts.xmlBlocks(text(OfficialAlerts.TSUNAMI_PTWC), "entry") + OfficialAlerts.xmlBlocks(text(OfficialAlerts.TSUNAMI_NTWC), "entry"))
                         .mapNotNull { OfficialAlerts.tsunamiEntry(it) }.filter { it.activeAt(nowS) }
-                    // information messages only near (they are for every quake of M6.5+ around the ocean)
-                    bySource[AlertSrc.TSUNAMI] = t.filter { a -> a.level >= 1 || within(pos, a, 1500.0) }
+                    // real warnings always (a tsunami travels far); information messages (M6.5+ around the ocean) only within the radius
+                    val tsuKm = settings.alertRadiusKm.let { if (it <= 0) 1_000_000.0 else it.toDouble() }
+                    bySource[AlertSrc.TSUNAMI] = t.filter { a -> a.level >= 1 || within(pos, a, tsuKm) }
                 } else bySource.remove(AlertSrc.TSUNAMI)
                 if (settings.alertQuakes) run("earthquakes") {
                     val q = ArrayList<OfficialAlert>()
@@ -137,8 +138,13 @@ object OfficialAlertsFetcher {
                     if (pos != null) runCatching { q.addAll(OfficialAlerts.emsc(text(OfficialAlerts.emscUrl(pos.first, pos.second, nowS - 86400)))) }.onFailure { errors.add("EMSC: ${it.message}") }
                     if (pos != null) runCatching { q.addAll(OfficialAlerts.fdsnText(text(OfficialAlerts.shakeUrl(pos.first, pos.second, nowS - 86400)), AlertSrc.SHAKE)) }.onFailure { errors.add("ShakeNet: ${it.message}") }
                     val all = OfficialAlerts.quakeLevels(q, pos?.first, pos?.second)
-                    // the list keeps the ones that matter here: yellow or more, and the information ones closer than 1000 km
-                    val near = all.filter { a -> a.level >= 1 || within(pos, a, 1000.0) }
+                    // with a position, only the ones within the chosen radius (0 = no limit); without a position, the significant ones worldwide
+                    val radiusKm = settings.alertRadiusKm
+                    val near = when {
+                        pos == null -> all.filter { a -> a.level >= 1 }
+                        radiusKm <= 0 -> all
+                        else -> all.filter { a -> within(pos, a, radiusKm.toDouble()) }
+                    }
                     bySource[AlertSrc.USGS] = near.filter { it.src == AlertSrc.USGS }
                     bySource[AlertSrc.EMSC] = near.filter { it.src == AlertSrc.EMSC }
                     bySource[AlertSrc.SHAKE] = near.filter { it.src == AlertSrc.SHAKE }

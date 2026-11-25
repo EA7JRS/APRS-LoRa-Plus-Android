@@ -588,6 +588,11 @@ class Settings(ctx: Context) {
     var alertMinutes: Int
         get() = p.getInt("oa_min", 15)
         set(v) { p.edit().putInt("oa_min", v.coerceIn(10, 120)).apply() }
+    /** Distance filter for the positioned alerts that need it: earthquakes and tsunami information messages only notify within this many km
+     *  of the position (0 = no limit); real tsunami warnings/advisories always notify because a tsunami travels far. */
+    var alertRadiusKm: Int
+        get() = p.getInt("oa_radius_km", 1000)
+        set(v) { p.edit().putInt("oa_radius_km", if (v <= 0) 0 else v.coerceIn(10, 20000)).apply() }
 
     /** Units of distances, speeds and temperatures: 0 metric, 1 nautical (nm, kn), 2 imperial (mi, mph, °F). */
     var units: Int
