@@ -168,14 +168,16 @@ internal class RtlTcpLink(
                         val m = rx.process(buf, n, audio)
                         val dv = DigitalVoiceRunner.active
                         val pk = PacketRunner.active
+                        val apt = AptRunner.active
                         // NOAA Weather Radio (WX1..WX7 in NFM): SAME headers to the official alerts (EA7JRS)
                         val wx = sameWanted && es.ea7jrs.aprslorap.core.Same.nwrChannel(wantHz / 1e6) != 0
                         if (wx && sameDec == null) sameDec = es.ea7jrs.aprslorap.core.SameDecoder(48_000.0) else if (!wx) sameDec = null
-                        if ((dv || pk || wx) && rx.discriminatorTap == null) rx.discriminatorTap = { x, k ->
+                        if ((dv || pk || wx || apt) && rx.discriminatorTap == null) rx.discriminatorTap = { x, k ->
                             if (DigitalVoiceRunner.active) DigitalVoiceRunner.feed(x, k)
                             if (PacketRunner.active) PacketRunner.feed(x, k)
+                            if (AptRunner.active) AptRunner.feed(x, k)
                             sameDec?.let { d -> d.feed(x, 0, k); while (true) { OfficialAlertsFetcher.onSameHeader(d.poll() ?: break) } }
-                        } else if (!dv && !pk && !wx && rx.discriminatorTap != null) rx.discriminatorTap = null
+                        } else if (!dv && !pk && !wx && !apt && rx.discriminatorTap != null) rx.discriminatorTap = null
                         if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) { ModemRunner.feedReceiver12k(audio, m); WsjtRunner.feedReceiver12k(audio, m) }
                         Dsp.toPcm16(audio, m, pcm)
                         if (!dv) track?.write(pcm, 0, m, AudioTrack.WRITE_NON_BLOCKING)   // if the phone's audio falls behind, samples are dropped, not the IQ

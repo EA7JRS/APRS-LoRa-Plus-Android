@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testApt(); testInmarsat(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3660,4 +3660,96 @@ private fun testCwSkimmer() {
     check(spots.any { it.call == "G0ABC" && kotlin.math.abs(it.audioHz - 1500.0) < 60 }, "skimmer resolves G0ABC near 1500 Hz")
     check(spots.all { it.snrDb >= 0 && it.wpm in 10..40 }, "skimmer spots carry snr and wpm")
     eq(CwSkimmer.grid(400.0, 800.0, 100.0), listOf(400.0, 500.0, 600.0, 700.0, 800.0), "skimmer channel grid")
+}
+
+private fun testAfsk1200() {
+    // Bell 202 AFSK round-trip: a cubesat-style AX.25 UI frame, modulated to audio with noise, decoded back
+    val frame = Ax25Frame.create("EA7JRS-11", "CQ", emptyList(), "hello cubesat telemetry 12345")!!.encode()
+    eq(Ax25Frame.decode(frame)?.toTnc2(), "EA7JRS-11>CQ:hello cubesat telemetry 12345", "AFSK1200 AX.25 parse")
+    val fs = 12000.0
+    val clean = Afsk1200.modulate(frame, fs)
+    val rnd = java.util.Random(11)
+    val noisy = FloatArray(clean.size) { clean[it] + (rnd.nextGaussian() * 0.18).toFloat() }
+    val got = ArrayList<ByteArray>()
+    val d = Afsk1200.Decoder(fs) { got.add(it) }
+    d.process(noisy, noisy.size)
+    check(got.any { it.contentEquals(frame) }, "AFSK1200 decode (noisy, got ${got.size})")
+    check(d.badFcs == 0 || got.isNotEmpty(), "AFSK1200 FCS")
+    // also at 48 kHz (the receiver's native audio rate)
+    val clean48 = Afsk1200.modulate(frame, 48000.0)
+    val got48 = ArrayList<ByteArray>()
+    val d48 = Afsk1200.Decoder(48000.0) { got48.add(it) }
+    d48.process(clean48, clean48.size)
+    check(got48.any { it.contentEquals(frame) }, "AFSK1200 decode at 48 kHz (got ${got48.size})")
+}
+
+private fun testApt() {
+    // NOAA APT round-trip: modulate several identical lines (sync A + a horizontal ramp), demodulate, check sync lock and the ramp
+    val fs = 48000.0
+    val lines = List(8) { Apt.testLine() }
+    val audio = Apt.modulate(lines, fs)
+    val got = ArrayList<IntArray>()
+    val d = Apt.Decoder(fs) { got.add(it) }
+    d.process(audio, audio.size)
+    check(got.size >= 5, "APT decodes several lines (got ${got.size})")
+    val ln = got.last()
+    eq(ln.size, Apt.WORDS_PER_LINE, "APT line length 2080")
+    val hi = (6..7).map { ln[it] }.average(); val lo = (0..3).map { ln[it] }.average()
+    check(hi > lo + 30, "APT sync A recovered (hi ${hi.toInt()} lo ${lo.toInt()})")
+    val left = (200..300).map { ln[it] }.average(); val right = (1800..1900).map { ln[it] }.average()
+    check(right > left + 40, "APT ramp recovered (left ${left.toInt()} right ${right.toInt()})")
+}
+
+private fun testInmarsat() {
+    val rnd = java.util.Random(3)
+    // 1) rate 1/2 K=7 convolutional code + soft Viterbi: clean and noisy
+    val bits = IntArray(200) { rnd.nextInt(2) }
+    val enc = Inmarsat.convEncode(bits + IntArray(Inmarsat.K - 1))             // flush bits
+    val softClean = FloatArray(enc.size) { if (enc[it] == 0) 1f else -1f }
+    check(Inmarsat.viterbi(softClean).copyOf(bits.size).contentEquals(bits), "Inmarsat Viterbi clean")
+    val softN = FloatArray(enc.size) { (if (enc[it] == 0) 1f else -1f) + (rnd.nextGaussian() * 0.5).toFloat() }
+    check(Inmarsat.viterbi(softN).copyOf(bits.size).contentEquals(bits), "Inmarsat Viterbi noisy")
+    // 2) scrambler is symmetric
+    val sc = Inmarsat.scramble(bits)
+    check(Inmarsat.scramble(sc).contentEquals(bits), "Inmarsat scrambler symmetric")
+    // 3) BPSK modulate -> demod recovers the symbols (up to the BPSK 180 deg ambiguity) with a small freq offset and noise
+    val fs = 9600.0
+    val tx = IntArray(400) { rnd.nextInt(2) }
+    val iq = Inmarsat.modulate(tx, fs, freqOffHz = 15.0)
+    val noisy = FloatArray(iq.size) { iq[it] + (rnd.nextGaussian() * 0.12).toFloat() }
+    val sym = Inmarsat.Demod(fs).process(noisy, noisy.size)
+    val m = minOf(sym.size, tx.size)
+    var okA = 0; var okB = 0; var tot = 0
+    for (j in 60 until m) {                                                    // skip the settling part
+        val exp = if (tx[j] == 0) 1 else -1
+        val got = if (sym[j] >= 0) 1 else -1
+        if (got == exp) okA++ else okB++
+        tot++
+    }
+    val best = maxOf(okA, okB).toDouble() / tot                               // allow the global inversion
+    check(best > 0.9, "Inmarsat BPSK demod recovers symbols (${(best * 100).toInt()}%)")
+    // 4) EGC packet parsing: header + two parts assemble into one message (deterministic, no DSP)
+    fun ia5(s: String) = s.map { (it.code and 0x7F).toByte() }.toByteArray()
+    val p0 = "NAVAREA III "; val p1 = "GALE WARNING"
+    val info = byteArrayOf(0xAA.toByte(), 0x34, 0x12, 3, 0x13, 2) +
+        byteArrayOf(0x27, 0x34, 0x12, 0, p0.length.toByte()) + ia5(p0) +
+        byteArrayOf(0x27, 0x34, 0x12, 1, p1.length.toByte()) + ia5(p1)
+    var got: Inmarsat.Egc? = null
+    Inmarsat.parseFrame(info, Inmarsat.EgcAssembler { got = it })
+    check(got != null, "Inmarsat EGC assembles")
+    eq(got!!.id, 0x1234, "Inmarsat EGC id")
+    eq(got!!.priority, 3, "Inmarsat EGC priority")
+    eq(got!!.service, 0x13, "Inmarsat EGC service")
+    eq(got!!.text, p0 + p1, "Inmarsat EGC text")
+    // 5) frame round trip through the whole chain: buildFrame -> modulate -> FrameReader -> EGC
+    val fr = Inmarsat.buildFrame(info)
+    val lead = IntArray(96) { if (rnd.nextInt(2) == 0) 1 else -1 }             // settling lead-in before the UW
+    val all = lead + fr
+    val fbits = IntArray(all.size) { if (all[it] == 1) 0 else 1 }             // symbol +1 -> bit 0 for modulate()
+    val fiq = Inmarsat.modulate(fbits, fs, freqOffHz = 0.0)
+    val fnoisy = FloatArray(fiq.size) { fiq[it] + (rnd.nextGaussian() * 0.03).toFloat() }
+    var got2: Inmarsat.Egc? = null
+    val reader = Inmarsat.FrameReader(fs) { got2 = it }
+    reader.process(fnoisy, fnoisy.size)
+    check(got2 != null && got2!!.text == p0 + p1, "Inmarsat frame round trip (UW sync + decode + EGC)")
 }
