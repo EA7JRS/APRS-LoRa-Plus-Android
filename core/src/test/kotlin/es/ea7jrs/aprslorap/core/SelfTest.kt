@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3643,4 +3643,21 @@ private fun testHab() {
     eq(tr.list().first().count, 2, "hab tracker count")
     eq(tr.list().first().tlm.counter, 43, "hab tracker keeps latest")
     check(tr.onSentence(Hab.parse(bad)!!, 3000L) == null, "hab tracker drops bad crc")
+}
+
+private fun testCwSkimmer() {
+    // two CW signals at the same time on different audio tones; the skimmer must resolve both on their channels
+    val a = genCw("CQ CQ DE EA7JRS EA7JRS K", 22, 700.0, 0.03)
+    val b = genCw("CQ DE G0ABC G0ABC K", 22, 1500.0, 0.03)
+    val len = maxOf(a.size, b.size)
+    val mix = FloatArray(len) { (if (it < a.size) a[it] else 0f) + (if (it < b.size) b[it] else 0f) }
+    val sk = CwSkimmer(CwSkimmer.grid(500.0, 1800.0, 100.0), ownCall = "ZZ9ZZ", wpm = 20)
+    val spots = ArrayList<CwSkimmer.Spot>()
+    sk.onSpot = { spots.add(it) }
+    var i = 0; var t = 0L; val block = 512
+    while (i < len) { val n = minOf(block, len - i); sk.process(mix.copyOfRange(i, i + n), n, t); i += n; t += n * 1000L / Modems.RATE }
+    check(spots.any { it.call == "EA7JRS" && kotlin.math.abs(it.audioHz - 700.0) < 60 }, "skimmer resolves EA7JRS near 700 Hz (got ${spots.map { it.call + "@" + it.audioHz.toInt() }})")
+    check(spots.any { it.call == "G0ABC" && kotlin.math.abs(it.audioHz - 1500.0) < 60 }, "skimmer resolves G0ABC near 1500 Hz")
+    check(spots.all { it.snrDb >= 0 && it.wpm in 10..40 }, "skimmer spots carry snr and wpm")
+    eq(CwSkimmer.grid(400.0, 800.0, 100.0), listOf(400.0, 500.0, 600.0, 700.0, 800.0), "skimmer channel grid")
 }
