@@ -76,7 +76,7 @@ object ModemRunner {
         synchronized(skimmerSpots) {
             val old = skimmerSpots.value
             val i = old.indexOfFirst { it.call == s.call }
-            val e = SkimEntry(s.call, s.audioHz, rf, s.snr, s.wpm, s.comment, now, (if (i >= 0) old[i].count else 0) + 1)
+            val e = SkimEntry(s.call, s.audioHz, rf, s.snrDb, s.wpm, s.comment, now, (if (i >= 0) old[i].count else 0) + 1)
             skimmerSpots.value = (listOf(e) + old.filterIndexed { k, _ -> k != i }).take(80)
         }
     }
