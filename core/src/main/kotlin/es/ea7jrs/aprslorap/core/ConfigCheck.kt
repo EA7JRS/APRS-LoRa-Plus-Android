@@ -130,9 +130,11 @@ object ConfigCheck {
             val lrf = root.obj("lrfhss"); val dap = root.obj("dapnet"); val sa = root.obj("sa868")
             if (ft == null && ssdv == null && rtty == null && lrf == null && dap == null && sa == null) return@run
             n0 = out.size
+            var checked = 0
             val baseRegion = (loras.firstOrNull { !it.flag("ais") }?.int("iaruRegion") ?: 1).coerceIn(1, 3)
             fun checkMode(id: String, where: String, hz: Long, region: Int) {
                 if (hz <= 0) return                                  // 0 = sin definir o la sugerida de la placa: no se comprueba
+                checked++
                 val w = bandWarn(region, hz) ?: return
                 out += Finding(id, Severity.WARN, where, String.format(Locale.US, "%.4f", hz / 1e6) + " MHz " + w.first, w.second)
             }
@@ -150,7 +152,7 @@ object ConfigCheck {
                 checkMode("m17freq", "sa868 · M17", it.long("m17FreqHz") ?: 0L, r)
                 checkMode("sa868dapnetfreq", "sa868 · DAPNET", it.long("dapnetFreqHz") ?: 0L, r)
             }
-            pass("Transmission-mode frequencies within the band plan", n0)
+            if (checked > 0) pass("Transmission-mode frequencies within the band plan", n0)
         }
 
         // WiFi AP password (WPA2: 8 to 63 characters)
