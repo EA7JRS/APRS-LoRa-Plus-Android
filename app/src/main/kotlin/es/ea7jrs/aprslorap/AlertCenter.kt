@@ -54,7 +54,7 @@ object AlertCenter {
     private var torchId: String? = null
     private var torchOn = false
     private var startedMs = 0L
-    private const val MAX_MS = 10 * 60_000L                 // like the tracker: the alarm stops by itself after 10 minutes
+    private const val MAX_MS = 5 * 60_000L                  // like the tracker's emergency flash: the alarm stops by itself after 5 minutes (the 1 W LED / torch warms up)
 
     fun init(c: Context) {
         if (ctx != null) return
