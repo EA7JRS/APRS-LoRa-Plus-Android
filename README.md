@@ -6,7 +6,7 @@ Android companion for the [APRS LoRa+](https://github.com/EA7JRS/APRS-LoRa-Plus)
 
 **Documentation**: [user manual](docs/USER_MANUAL_EN.md) ([español](docs/MANUAL_ES.md)), [quick guide](docs/QUICK_GUIDE_EN.md) ([español](docs/GUIA_RAPIDA.md)), [tracker BLE protocol](docs/BLE_CONTROL.md), [coverage of the tracker functions](docs/APP_COVERAGE.md), [Google Play notes](docs/GOOGLE_PLAY.md).
 
-Status: **5.4.9** (the Android app now has its own version, ahead of the rest of the ecosystem). The pure Kotlin core is tested on the PC (about 2100 checks); the Android app builds in the CI (debug APK and Google Play bundle) and is in Google Play internal testing. Most features have not been tried yet on a phone with real hardware.
+Status: **5.5.0** (the whole APRS LoRa+ ecosystem is unified at this number again). New in 5.5.0: HAB balloon telemetry, a CW skimmer, and control of the tracker's SSDV image mode and POCSAG from the Tracker tab. The pure Kotlin core is tested on the PC (about 2100 checks); the Android app builds in the CI (debug APK and Google Play bundle) and is in Google Play internal testing. Most features have not been tried yet on a phone with real hardware.
 
 The interface works like a radio: a main screen with band A (the tracker) and band B (the CAT radio or the SDR), soft keys [F] with three pages (APRS / RADIO / SYSTEM), and a side menu with every tool.
 

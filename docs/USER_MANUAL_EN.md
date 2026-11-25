@@ -1,6 +1,6 @@
 # APRS LoRa+ for Android — user manual
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.4.9** (the Android app now has its own version; the rest of the ecosystem is on 5.4.7). Earlier it matched the tracker, the rotor box, the
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.5.0** (the whole APRS LoRa+ ecosystem is unified at this number again). Earlier it matched the tracker, the rotor box, the
 Display and the plotter).
 
 The app is the companion of the **APRS LoRa+** tracker: it shows everything the tracker hears and measures, and controls
@@ -169,3 +169,11 @@ Messages and alerts come as conversation notifications: the car reads them aloud
 - **Remote:** ◀ ▶ and *Back* do what the device button does (needs the rebuilt 5.4.8 firmware or later).
 - **Official alerts:** GFZ Hp30 (every half hour) in the HF estimate and the geomagnetic storm alerts, Kp forecast, A index and Dst.
 - **NAVTEX and Wefax:** messages from a Navtex receiver on the network (TCP / UDP), no manual deletion (IMO MSC.508(105)); charts, schedule with reliability and an HF circuit prediction from the Wefax program.
+
+## 15. New in 5.5.0
+
+The whole APRS LoRa+ ecosystem is unified again at 5.5.0 (needs the 5.5.0 tracker firmware for what it controls over BLE).
+
+- **HAB telemetry (balloons):** decodes UKHAS telemetry (`$$CALL,counter,time,lat,lon,alt,…*CRC`) from the RTTY decoder; a **Balloons** tool with the list, *GO TO* and *ROTOR*.
+- **CW skimmer:** multi-channel CW decoder in the Digimodes tab (several signals at once, each with its audio frequency, callsign, SNR and WPM).
+- **SSDV image and POCSAG** (with the 5.5.0 firmware): **SSDV** section in the Tracker tab (SSDV mode): status and progress, **upload a JPEG from the phone** over BLE, transmit / stop; the image source and radio parameters stay in Config (group `ssdv`). **POCSAG** section: send a page to a RIC (numeric or alphanumeric). Transmitting needs a validated callsign.

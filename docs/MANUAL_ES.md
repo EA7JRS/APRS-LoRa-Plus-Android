@@ -1,6 +1,6 @@
 # APRS LoRa+ para Android — manual de usuario
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Versión **5.4.9** (la app Android ya lleva su propia versión; el resto del ecosistema va por la 5.4.7). Antes coincidía con el tracker, la caja del rotor, la
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Versión **5.5.0** (todo el ecosistema APRS LoRa+ vuelve a ir unificado en este número). Antes coincidía con el tracker, la caja del rotor, la
 Display y el plotter).
 
 La app es la compañera del tracker **APRS LoRa+**: enseña todo lo que el tracker oye y mide, y maneja todas sus funciones.
@@ -172,3 +172,11 @@ Los mensajes y las alertas llegan como notificaciones de conversación: el coche
 - **Remote:** ◀ ▶ y *Back* hacen lo mismo que el botón del equipo (necesita el firmware 5.4.8 rehecho o posterior).
 - **Official alerts:** Hp30 de GFZ (cada media hora) en la estimación de HF y en los avisos de tormenta geomagnética, Kp previsto, índice A y Dst.
 - **NAVTEX y Wefax:** mensajes de un receptor Navtex de la red (TCP / UDP), sin borrado a mano (OMI MSC.508(105)); cartas, horario con fiabilidad y predicción de un circuito de HF del programa Wefax.
+
+## 15. Novedades de la 5.5.0
+
+Todo el ecosistema APRS LoRa+ vuelve a ir unificado en la 5.5.0 (necesita el firmware 5.5.0 del tracker para lo que controla por BLE).
+
+- **Telemetría HAB (globos):** decodifica la telemetría UKHAS (`$$INDICATIVO,contador,hora,lat,lon,alt,…*CRC`) del decodificador RTTY; herramienta **Balloons** con la lista, *GO TO* y *ROTOR*.
+- **CW skimmer:** decodificador de varios canales de CW a la vez en la pestaña Digimodes (varias señales simultáneas, cada una con su frecuencia de audio, indicativo, SNR y velocidad).
+- **Imagen SSDV y POCSAG** (con el firmware 5.5.0): sección **SSDV** en la pestaña Tracker (modo SSDV): estado y progreso, **subir un JPEG del móvil** por BLE, emitir / parar; el origen de la imagen y los parámetros de radio siguen en Config (grupo `ssdv`). Sección **POCSAG**: aviso a un RIC (numérico o alfanumérico). Lo que emite exige indicativo validado.
