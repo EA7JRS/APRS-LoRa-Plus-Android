@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testApt(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3681,4 +3681,21 @@ private fun testAfsk1200() {
     val d48 = Afsk1200.Decoder(48000.0) { got48.add(it) }
     d48.process(clean48, clean48.size)
     check(got48.any { it.contentEquals(frame) }, "AFSK1200 decode at 48 kHz (got ${got48.size})")
+}
+
+private fun testApt() {
+    // NOAA APT round-trip: modulate several identical lines (sync A + a horizontal ramp), demodulate, check sync lock and the ramp
+    val fs = 48000.0
+    val lines = List(8) { Apt.testLine() }
+    val audio = Apt.modulate(lines, fs)
+    val got = ArrayList<IntArray>()
+    val d = Apt.Decoder(fs) { got.add(it) }
+    d.process(audio, audio.size)
+    check(got.size >= 5, "APT decodes several lines (got ${got.size})")
+    val ln = got.last()
+    eq(ln.size, Apt.WORDS_PER_LINE, "APT line length 2080")
+    val hi = (6..7).map { ln[it] }.average(); val lo = (0..3).map { ln[it] }.average()
+    check(hi > lo + 30, "APT sync A recovered (hi ${hi.toInt()} lo ${lo.toInt()})")
+    val left = (200..300).map { ln[it] }.average(); val right = (1800..1900).map { ln[it] }.average()
+    check(right > left + 40, "APT ramp recovered (left ${left.toInt()} right ${right.toInt()})")
 }

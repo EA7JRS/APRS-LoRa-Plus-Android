@@ -7,10 +7,13 @@ package es.ea7jrs.aprslorap
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -228,6 +231,23 @@ fun SdrTab() {
             Text(pkStatus, fontSize = 12.sp)
             for (l in pkLog.takeLast(10).asReversed()) Text(l, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
             Text("G3RUH: AX.25 with the scrambler, as the tracker sends in APRS FSK mode (also FX.25; not IL2P). 1200 AFSK: Bell 202 tones, the APRS-on-FM and most cubesats' 1k2 telemetry (what SatNOGS decodes). Frames go to Stations and Messages like those from the tracker. Follow \"Tracker LoRa\" below to tune, or set a satellite's downlink. The CW beacon: Modes tab, CW, with the receiver in CW.", fontSize = 11.sp)
+        }
+
+        // ---- NOAA APT weather image
+        if (kind == Sdr.Kind.RTLTCP) {
+            val aptStatus by AppState.aptStatus.collectAsState()
+            val aptVer by AppState.aptVersion.collectAsState()
+            Section("NOAA APT weather image (137 MHz)")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    settings.sdrMode = "NFM"; settings.sdrBandwidth = 40_000; SdrControl.mode("NFM", 40_000)
+                    AptRunner.start()
+                }, enabled = st.connected) { Text("Start") }
+                OutlinedButton(onClick = { AptRunner.stop() }, enabled = aptStatus != "Off") { Text("Stop") }
+            }
+            Text(aptStatus, fontSize = 12.sp)
+            aptVer.let { _ -> AptRunner.bitmap?.let { bm -> Image(bm.asImageBitmap(), "APT image", modifier = Modifier.fillMaxWidth().height(260.dp)) } }
+            Text("NOAA 15 / 18 / 19, NFM. Needs a 137 MHz antenna (V-dipole or QFH). Tune the satellite's downlink as it passes; the picture builds top to bottom over the ~10-15 min pass. Two video channels: A (left) and B (right).", fontSize = 11.sp)
         }
 
         // ---- digital voice

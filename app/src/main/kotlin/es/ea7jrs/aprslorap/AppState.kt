@@ -150,6 +150,8 @@ object AppState {
     val trackerLeds = MutableStateFlow<ControlEvent.Led?>(null)                   // MSG / EMG lights and the white flash of the tracker
     val packetStatus = MutableStateFlow("Off")                                   // packet FSK (G3RUH) from the app receiver
     val packetLog = MutableStateFlow<List<String>>(emptyList())
+    val aptStatus = MutableStateFlow("Off")                                      // NOAA APT image decoder
+    val aptVersion = MutableStateFlow(0)                                         // bumped per decoded line to recompose the image
     val dvStatus = MutableStateFlow("Off")                                       // digital voice decoder (dsd-fme)
     val dvLog = MutableStateFlow<List<String>>(emptyList())                               // SDR program / server under control
     val rbMessage = MutableStateFlow("")
