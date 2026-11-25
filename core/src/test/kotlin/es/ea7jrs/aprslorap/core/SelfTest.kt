@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3596,4 +3596,51 @@ private fun testWefax() {
     eq(Wefax.goodHours(List(24) { 1.0 }), "all day", "wefax: all day"); eq(Wefax.goodHours(List(24) { 0.0 }), "", "wefax: never")
     val no = Wefax.parseCircuit("""{"ok":false,"why":"no sunspot number"}""")
     check(no != null && !no.ok && no.hours == null && Wefax.whyText(no.why).contains("sunspot"), "wefax: why there is no prediction")
+}
+
+private fun testHab() {
+    // UKHAS sentence with a correct CRC16-CCITT (built with the same routine the tracker uses)
+    val body = "ICARUS,42,10:34:56,51.12345,-0.54321,345,7"
+    val line = "\$\$$body*" + String.format("%04X", Hab.crc16(body))
+    val t = Hab.parse(line)!!
+    check(t.crcOk, "hab crc ok")
+    eq(t.callsign, "ICARUS", "hab callsign")
+    eq(t.counter, 42, "hab counter")
+    eq(t.timeUtc, "10:34:56", "hab time")
+    near(t.lat ?: 0.0, 51.12345, 1e-5, "hab lat")
+    near(t.lon ?: 0.0, -0.54321, 1e-5, "hab lon")
+    near(t.altM ?: 0.0, 345.0, 1e-6, "hab alt")
+    eq(t.extra, listOf("7"), "hab extra fields (sats)")
+    check(t.hasPosition, "hab has position")
+
+    // a flipped CRC must be rejected
+    val bad = "\$\$$body*0000"
+    check(Hab.parse(bad)?.crcOk == false, "hab crc rejected")
+
+    // four leading $ and a known reference CRC value for a fixed body
+    eq(Hab.crc16("TEST"), 0x8CCA, "hab crc16 of TEST")
+    val multi = "\$\$\$\$HORUS,1,00:00:01,0.0,0.0,0*" + String.format("%04X", Hab.crc16("HORUS,1,00:00:01,0.0,0.0,0"))
+    check(Hab.parse(multi)?.crcOk == true, "hab 4-dollar sentence")
+
+    // not a HAB sentence
+    check(Hab.parse("hello world") == null, "hab non-sentence null")
+    check(Hab.parse("\$\$NOSTAR,1,2") == null, "hab missing star null")
+
+    // the assembler rebuilds a sentence from the RTTY character stream, dropping the noise before it, with no newline
+    var got: Hab.Telemetry? = null
+    val asm = Hab.Assembler { got = it }
+    asm.feed("qrm noise ")
+    asm.feed(line)                 // no trailing newline: must auto-emit after the 4 CRC chars
+    check(got != null && got!!.crcOk && got!!.callsign == "ICARUS", "hab assembler stream + resync")
+
+    // a second sentence after a newline, and the tracker keeps the latest per callsign
+    val tr = Hab.Tracker()
+    val b2 = "ICARUS,43,10:35:10,51.2,-0.5,400"
+    val l2 = "\$\$$b2*" + String.format("%04X", Hab.crc16(b2))
+    tr.onSentence(Hab.parse(line)!!, 1000L)
+    tr.onSentence(Hab.parse(l2)!!, 2000L)
+    eq(tr.size(), 1, "hab tracker one balloon")
+    eq(tr.list().first().count, 2, "hab tracker count")
+    eq(tr.list().first().tlm.counter, 43, "hab tracker keeps latest")
+    check(tr.onSentence(Hab.parse(bad)!!, 3000L) == null, "hab tracker drops bad crc")
 }
