@@ -2412,7 +2412,7 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testApt(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testApt(); testInmarsat(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
 }
@@ -3698,4 +3698,34 @@ private fun testApt() {
     check(hi > lo + 30, "APT sync A recovered (hi ${hi.toInt()} lo ${lo.toInt()})")
     val left = (200..300).map { ln[it] }.average(); val right = (1800..1900).map { ln[it] }.average()
     check(right > left + 40, "APT ramp recovered (left ${left.toInt()} right ${right.toInt()})")
+}
+
+private fun testInmarsat() {
+    val rnd = java.util.Random(3)
+    // 1) rate 1/2 K=7 convolutional code + soft Viterbi: clean and noisy
+    val bits = IntArray(200) { rnd.nextInt(2) }
+    val enc = Inmarsat.convEncode(bits + IntArray(Inmarsat.K - 1))             // flush bits
+    val softClean = FloatArray(enc.size) { if (enc[it] == 0) 1f else -1f }
+    check(Inmarsat.viterbi(softClean).copyOf(bits.size).contentEquals(bits), "Inmarsat Viterbi clean")
+    val softN = FloatArray(enc.size) { (if (enc[it] == 0) 1f else -1f) + (rnd.nextGaussian() * 0.5).toFloat() }
+    check(Inmarsat.viterbi(softN).copyOf(bits.size).contentEquals(bits), "Inmarsat Viterbi noisy")
+    // 2) scrambler is symmetric
+    val sc = Inmarsat.scramble(bits)
+    check(Inmarsat.scramble(sc).contentEquals(bits), "Inmarsat scrambler symmetric")
+    // 3) BPSK modulate -> demod recovers the symbols (up to the BPSK 180 deg ambiguity) with a small freq offset and noise
+    val fs = 9600.0
+    val tx = IntArray(400) { rnd.nextInt(2) }
+    val iq = Inmarsat.modulate(tx, fs, freqOffHz = 15.0)
+    val noisy = FloatArray(iq.size) { iq[it] + (rnd.nextGaussian() * 0.12).toFloat() }
+    val sym = Inmarsat.Demod(fs).process(noisy, noisy.size)
+    val m = minOf(sym.size, tx.size)
+    var okA = 0; var okB = 0; var tot = 0
+    for (j in 60 until m) {                                                    // skip the settling part
+        val exp = if (tx[j] == 0) 1 else -1
+        val got = if (sym[j] >= 0) 1 else -1
+        if (got == exp) okA++ else okB++
+        tot++
+    }
+    val best = maxOf(okA, okB).toDouble() / tot                               // allow the global inversion
+    check(best > 0.9, "Inmarsat BPSK demod recovers symbols (${(best * 100).toInt()}%)")
 }
