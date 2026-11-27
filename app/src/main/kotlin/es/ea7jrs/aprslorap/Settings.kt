@@ -585,6 +585,10 @@ class Settings(ctx: Context) {
     var alertSame: Boolean
         get() = p.getBoolean("oa_same", true)
         set(v) { p.edit().putBoolean("oa_same", v).apply() }
+    /** Download the nearest ionosonde (GIRO via KC2G) for the measured foF2 / MUF in HF & propagation. */
+    var ionosondesOn: Boolean
+        get() = p.getBoolean("hf_iono", true)
+        set(v) { p.edit().putBoolean("hf_iono", v).apply() }
     var alertPopupLevel: Int
         get() = p.getInt("oa_popup", 1)
         set(v) { p.edit().putInt("oa_popup", v.coerceIn(1, 4)).apply() }

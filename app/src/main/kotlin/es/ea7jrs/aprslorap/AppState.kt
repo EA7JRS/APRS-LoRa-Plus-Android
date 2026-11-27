@@ -72,6 +72,8 @@ object AppState {
     /** Official alerts in force (OfficialAlertsFetcher + SAME), the most severe first; space weather; status line. */
     val officialAlerts = MutableStateFlow<List<es.ea7jrs.aprslorap.core.OfficialAlert>>(emptyList())
     val spaceWx = MutableStateFlow<es.ea7jrs.aprslorap.core.SpaceWx?>(null)
+    /** Nearest trustworthy ionosonde (GIRO via KC2G) to the tracker's / phone's position, with the measured foF2 / MUF. */
+    val ionosonde = MutableStateFlow<es.ea7jrs.aprslorap.core.HfProp.Ionosonde?>(null)
     val officialMessage = MutableStateFlow("")
     /** AIS vessels received by the tracker (by MMSI) and the state of its receiver. */
     val aisVessels = MutableStateFlow<Map<Long, es.ea7jrs.aprslorap.core.AisVessel>>(emptyMap())

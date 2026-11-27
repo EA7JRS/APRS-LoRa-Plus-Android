@@ -1973,6 +1973,32 @@ private fun testOfficialAlerts() {
     eq(HfProp.effectiveKp(2.0, -10.0, 500.0), 5.0, "effectiveKp takes the wind when worse")
     eq(HfProp.effectiveKp(7.0, -10.0, 500.0), 7.0, "effectiveKp keeps the measured when worse")
     near(HfProp.estimate(150.0, 30.0, 0.0, -20.0, 600.0).luf - HfProp.estimate(150.0, 30.0, 0.0).luf, 1.5, 1e-6, "L1 storm raises the LUF")
+    // HF band-conditions cards (13 bands), same assessment as sat-aprs calculateBandStatus
+    val hfCards = HfProp.bandCards(148.0, 29.0, 3.8, 3.3)
+    eq(hfCards.size, 13, "HF band grid has 13 bands")
+    eq(hfCards[0].quality, HfProp.Quality.SLATE, "HF 160 m absorbed below LUF"); eq(hfCards[0].pct, 100, "HF 160 m suitability full")
+    eq(hfCards[5].quality, HfProp.Quality.EMERALD, "HF 20 m fully operational"); eq(hfCards[5].status, "Fully operational", "HF 20 m status")
+    eq(hfCards[10].quality, HfProp.Quality.CYAN, "HF 10 m optimum"); eq(hfCards[10].icon, HfProp.BandIcon.PEAK, "HF 10 m peak icon")
+    eq(hfCards[12].status, "Sporadic-E opening", "HF 6 m sporadic-E above MUF")
+    eq(HfProp.bandCard(HfProp.BAND_GRID[5], 148.0, 29.0, 3.8, 5.0).quality, HfProp.Quality.RED, "HF 20 m storm noise")
+    eq(HfProp.bandCard(HfProp.BAND_GRID[5], 148.0, 29.0, 3.8, 4.0).status, "Operational (severe fading)", "HF 20 m minor storm fading")
+    // Ionosondes (KC2G): tolerant read, 0..360 longitudes, nearest recent and trustworthy
+    val ionoJson = """[
+      {"station":{"name":"El Arenosillo","code":"EA036","latitude":"37.1","longitude":"353.3"},"time":"2026-11-14T12:45:00","cs":"85","fof2":"8.4","mufd":"26.1","hmf2":"262"},
+      {"station":{"name":"Roquetes","code":"EB040","latitude":"40.8","longitude":"0.5"},"time":"2026-11-14T12:50:00","cs":100,"fof2":7.9,"mufd":25.0,"hmf2":250},
+      {"station":{"name":"Antigua","code":"XX001","latitude":"37.2","longitude":"353.4"},"time":"2026-11-14T06:00:00","cs":"90","fof2":"4.0","mufd":"12"},
+      {"station":{"name":"Dudosa","code":"XX002","latitude":"37.3","longitude":"354.0"},"time":"2026-11-14T12:55:00","cs":"10","fof2":"15.0","mufd":"40"},
+      {"station":{"name":"Boulder","code":"BC840","latitude":"40.0","longitude":"254.7"},"time":"2026-11-14T12:55:00","cs":"90","fof2":"6.0","mufd":"20"},
+      {"station":{"name":"Sin foF2","code":"XX003","latitude":"37.0","longitude":"354.0"},"time":"2026-11-14T12:55:00","cs":"90","fof2":null,"mufd":null},
+      {"basura":true}
+    ]"""
+    val iono = HfProp.readIonosondes(ionoJson)
+    eq(iono.size, 5, "ionosondes: tolerant read drops no-foF2 and junk")
+    near(iono[0].lon, 353.3 - 360, 1e-9, "ionosonde longitude 0..360 to -180..180")
+    near(iono[0].fof2, 8.4, 1e-9, "ionosonde foF2"); near(iono[0].muf3000 ?: 0.0, 26.1, 1e-9, "ionosonde MUF")
+    val ionoNow = java.time.Instant.parse("2026-11-14T13:00:00Z").toEpochMilli()
+    eq(HfProp.nearestIonosonde(iono, 37.3891, -5.9845, ionoNow)?.code, "EA036", "nearest ionosonde: recent and trustworthy")
+    check(HfProp.nearestIonosonde(iono, 37.3891, -5.9845, ionoNow + 6 * 3600_000L) == null, "nearest ionosonde: all stale")
     eq(O.spaceCommand(SpaceWx(ssn = 118.4))["sn"], 118L, "spacewx command carries the SSN")
     check(w.sfi == 182.0 && w.bz == -12.0 && w.bt == 14.0, "SWPC summaries")
     eq(O.swpcXray("[{\"flux\":1.2e-6,\"energy\":\"0.1-0.8nm\"},{\"flux\":2.4e-5,\"energy\":\"0.1-0.8nm\"},{\"flux\":1e-7,\"energy\":\"0.05-0.4nm\"}]", w)?.xray, "M2.4", "X-ray class")

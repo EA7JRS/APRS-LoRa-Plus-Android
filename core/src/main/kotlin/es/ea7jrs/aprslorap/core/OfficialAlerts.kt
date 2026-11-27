@@ -823,7 +823,11 @@ object OfficialAlerts {
 
     fun trackerId(a: OfficialAlert): String = command(a)["id"] as String
 
-    fun spaceCommand(w: SpaceWx): Map<String, Any?> = linkedMapOf<String, Any?>("g" to w.g, "r" to w.r, "s" to w.s, "gm" to w.gMax,
+    /**
+     * The "spacewx" command for the tracker. With [iono] (the nearest trustworthy ionosonde) it also carries the measured
+     * foF2 ("fo"), MUF 3000 ("mu") and station name ("io"), which the tracker prefers over its estimated MUF for TELEMETRY > HF.
+     */
+    fun spaceCommand(w: SpaceWx, iono: HfProp.Ionosonde? = null): Map<String, Any?> = linkedMapOf<String, Any?>("g" to w.g, "r" to w.r, "s" to w.s, "gm" to w.gMax,
         "kp" to w.kp.map { (it * 100).roundToLong() / 100.0 }, "kt" to w.kpTime).apply {
         w.sfi?.let { put("sfi", it.roundToLong()) }
         w.bz?.let { put("bz", (it * 10).roundToLong() / 10.0) }
@@ -832,6 +836,11 @@ object OfficialAlerts {
         if (w.xray.isNotEmpty()) put("xr", w.xray)
         w.ssn?.let { put("sn", it.roundToLong()) }
         if (w.hp30.isNotEmpty() && w.hp30Time != 0L) { put("hp", (w.hp30.last() * 10).roundToLong() / 10.0); put("ht", w.hp30Time) }
+        if (iono != null) {
+            put("fo", (iono.fof2 * 10).roundToLong() / 10.0)
+            iono.muf3000?.let { put("mu", (it * 10).roundToLong() / 10.0) }
+            put("io", iono.name)
+        }
     }
 
     /** An alert sent by the tracker (event "alert": SAME decoded by the T-TWR) or in its "alerts" list. */

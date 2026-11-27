@@ -70,6 +70,7 @@ enum class Tool(val title: String) {
     DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"), ADSB("Aircraft (ADS-B)"), BEACONS("Beacons heard (SDR)"),
     VESSEL("My vessel (AIS)"), ASTRO("Celestial navigation"), WEFAX("Weather fax & HF prediction"), HAB("Balloons (HAB)"),
     SSDV("SSDV image"),
+    HF("HF & propagation"),
     SETTINGS("App settings"),
 }
 
@@ -167,6 +168,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
         FKey("AIS", "AIS", if (ais.isEmpty()) "ships" else "${ais.size} ships", if (ais.isNotEmpty()) 1 else 0) { nav.tool(Tool.AIS) },
         FKey("ALERTS", "ALERTS", if (oa.isEmpty()) "official" else "${oa.size} in force", if ((oa.maxOfOrNull { it.level } ?: 0) >= 2) 1 else 0) { nav.tool(Tool.ALERTS) },
         FKey("WEFAX", "WEFAX", "charts · VOACAP") { nav.tool(Tool.WEFAX) },
+        FKey("HF", "HF", "band conditions") { nav.tool(Tool.HF) },
         FKey("RXPLUS", "RX+", "${extra.size} receivers") { nav.tool(Tool.CONNECT) },
         FKey("REMOTE", "REMOTE", "screen") { nav.tool(Tool.REMOTE) },
         FKey("CONFIG", "CONFIG", "tracker") { nav.tool(Tool.CONFIG) },
@@ -185,7 +187,7 @@ private fun functionKeys(nav: Navigator, ctx: Context): Map<String, FKey> {
 
 val FMENU_PAGES = listOf(
     "APRS" to listOf("SLIST", "MSG", "BEACON", "BCN", "GPS", "LOG", "IGATE", "DAPNET", "WX", "MAP", "DISP", "HEARD"),
-    "RADIO" to listOf("DX", "RBN", "IBP", "SAT", "ROTOR", "CAT", "SDR", "MODES", "CWKEY", "BEACONS", "AIS", "ADSB"),
+    "RADIO" to listOf("DX", "RBN", "IBP", "HF", "SAT", "ROTOR", "CAT", "SDR", "MODES", "CWKEY", "BEACONS", "AIS", "ADSB"),
     "SYSTEM" to listOf("REMOTE", "CONFIG", "FIRMWARE", "CONNECT", "SENSORS", "SIGID", "RXPLUS", "ABOUT", "ALERTS", "SPOTS", "ASTRO", "WEFAX", "HAB"),
 )
 
@@ -413,6 +415,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             MenuItem("Messages", badge = unread, active = nav.kind == "MESSAGES") { open("MESSAGES") }
             MenuItem("DAPNET / POCSAG", indent = true) { tool(Tool.DAPNET) }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
+            MenuItem("HF & propagation", indent = true) { tool(Tool.HF) }
             MenuItem("Log & QSL") { tool(Tool.LOG) }
             MenuItem("SSDV image") { tool(Tool.SSDV) }
         }
@@ -650,6 +653,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.VESSEL -> VesselTab()
                 Tool.ASTRO -> AstroTab()
                 Tool.SSDV -> SsdvTab()
+                Tool.HF -> HfTab { freqHz -> SdrControl.tune(freqHz) }
                 Tool.SETTINGS -> AppSettingsScreen()
             }
         }

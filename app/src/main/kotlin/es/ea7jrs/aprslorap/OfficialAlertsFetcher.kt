@@ -33,6 +33,7 @@ object OfficialAlertsFetcher {
     private val sentToTracker = HashMap<String, Int>()           // tracker id -> level sent
     private val fromTracker = HashSet<String>()                  // SAME alerts the tracker decoded itself (not sent back)
     private var spaceSentMs = 0L
+    internal var ionoSentKey = ""                                // "code@whenMs" of the ionosonde last sent with the spacewx
     private var n0nbhAtMs = 0L
     private var n0nbhXml: String? = null
     private var ssnValue: Double? = null                         // sunspot number (SWPC; refreshed every 6 h)
@@ -254,9 +255,12 @@ object OfficialAlertsFetcher {
         for (id in sentToTracker.keys - now.keys) c.sendOfficial(Control.command("alertdel", "id" to id))
         sentToTracker.keys.retainAll(now.keys)
         val w = AppState.spaceWx.value
-        if (w != null && w.valid && w.updatedMs != spaceSentMs) {
-            c.sendOfficial(Control.command("spacewx", *OfficialAlerts.spaceCommand(w).toList().toTypedArray()))
+        val iono = AppState.ionosonde.value
+        val ionoKey = iono?.let { "${it.code}@${it.whenMs}" } ?: ""
+        if (w != null && w.valid && (w.updatedMs != spaceSentMs || ionoKey != ionoSentKey)) {
+            c.sendOfficial(Control.command("spacewx", *OfficialAlerts.spaceCommand(w, iono).toList().toTypedArray()))
             spaceSentMs = w.updatedMs
+            ionoSentKey = ionoKey
         }
     }
 
