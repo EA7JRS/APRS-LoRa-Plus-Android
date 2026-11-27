@@ -1359,6 +1359,24 @@ private fun testModems() {
     val cIm2 = FloatArray(1024) { Math.sin(-2 * Math.PI * (1024 / 4) * it / 1024.0).toFloat() }
     iq.push(cRe2, cIm2, 1024); val idb2 = iq.db(); val ipeak2 = idb2.indices.maxByOrNull { idb2[it] }!!
     eq(ipeak2, 1024 / 2 - 1024 / 4, "iq peak at -rate/4 (bin 256)")
+
+    // ---- signal identification (identify by decoding) ----  the waterfall tap gives the measured width as a hint
+    val cwAudio = genCw("VVV CQ DE EA7JRS TEST", 20, 700.0, 0.1)
+    val idCw = SignalIdentify.identify(cwAudio, 700.0, bandwidthHz = 100.0)
+    check(idCw.isNotEmpty() && idCw.first().mode == "CW", "identify: CW on top (got ${idCw.map { it.mode }})")
+    val rttyAudio = genRtty("RYRY THE QUICK BROWN FOX EA7JRS", 45.45, 170.0, 1500.0, 0.2)
+    val idRtty = SignalIdentify.identify(rttyAudio, 1500.0, bandwidthHz = 270.0)
+    check(idRtty.isNotEmpty() && idRtty.first().mode.startsWith("RTTY 45/170"), "identify: RTTY 45/170 on top (got ${idRtty.map { it.mode }})")
+    val pskAudio = genPsk("CQ CQ DE EA7JRS K", 31.25, 1500.0, 0.15)
+    val idPsk = SignalIdentify.identify(pskAudio, 1500.0, bandwidthHz = 31.0)
+    check(idPsk.isNotEmpty() && idPsk.first().mode == "BPSK31", "identify: BPSK31 on top (got ${idPsk.map { it.mode }})")
+    // SigID (Artemis) database cross-reference by RF frequency
+    val sigs = listOf(
+        SigId.Signal(1, "PSK31", "", "", listOf(14070000L), listOf(31L), listOf("PSK"), listOf("BPSK"), emptyList(), emptyList()),
+        SigId.Signal(2, "RTTY", "", "", listOf(7040000L), listOf(170L), listOf("RTTY"), listOf("FSK"), emptyList(), emptyList()),
+    )
+    val sigDb = SignalIdentify.database(sigs, 14070000L)
+    check(sigDb.isNotEmpty() && sigDb.first().name == "PSK31", "identify: SigID database match by RF frequency (got ${sigDb.map { it.name }})")
 }
 
 private fun testG3ruh() {
