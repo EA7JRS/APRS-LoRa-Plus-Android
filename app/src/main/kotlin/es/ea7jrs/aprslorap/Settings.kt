@@ -356,6 +356,15 @@ class Settings(ctx: Context) {
     var sdrBiasTee: Boolean
         get() = p.getBoolean("sdr_biast", false)
         set(v) { p.edit().putBoolean("sdr_biast", v).apply() }
+    var sdrNoiseBlanker: Boolean                              // zero impulse noise on the IQ before demod
+        get() = p.getBoolean("sdr_nb", false)
+        set(v) { p.edit().putBoolean("sdr_nb", v).apply() }
+    var sdrNoiseReduction: Boolean                            // adaptive de-noise on the audio
+        get() = p.getBoolean("sdr_nr", false)
+        set(v) { p.edit().putBoolean("sdr_nr", v).apply() }
+    var sdrAutoNotch: Boolean                                 // adaptive notch: remove steady carriers/heterodynes
+        get() = p.getBoolean("sdr_anf", false)
+        set(v) { p.edit().putBoolean("sdr_anf", v).apply() }
     var sdrGainPercent: Int                                   // -1 = automatic; default 40 %: the RTL-SDR hardware AGC overloads on an antenna
         get() = p.getInt("sdr_gain", 40)
         set(v) { p.edit().putInt("sdr_gain", v.coerceIn(-1, 100)).apply() }

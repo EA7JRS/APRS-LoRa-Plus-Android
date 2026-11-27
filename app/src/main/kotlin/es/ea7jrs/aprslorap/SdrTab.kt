@@ -70,6 +70,9 @@ fun SdrTab() {
     var ppm by rememberSaveable { mutableStateOf(settings.sdrPpm.toString()) }
     var biasT by remember { mutableStateOf(settings.sdrBiasTee) }
     var sql by remember { mutableStateOf(settings.sdrSquelchDb.toFloat()) }
+    var nbOn by remember { mutableStateOf(settings.sdrNoiseBlanker) }
+    var nrOn by remember { mutableStateOf(settings.sdrNoiseReduction) }
+    var anfOn by remember { mutableStateOf(settings.sdrAutoNotch) }
     var driverMissing by remember { mutableStateOf(false) }
     var dvMode by remember { mutableStateOf(settings.dvMode) }
     val dvStatus by AppState.dvStatus.collectAsState()
@@ -163,6 +166,12 @@ fun SdrTab() {
         if (kind == Sdr.Kind.RTLTCP) {
             Text(if (sql <= -100f) "Squelch (NFM): open" else String.format(Locale.US, "Squelch (NFM): %.0f dB", sql), fontSize = 13.sp)
             Slider(sql, { sql = it }, valueRange = -100f..0f, onValueChangeFinished = { val v = if (sql <= -100f) -200 else sql.toInt(); settings.sdrSquelchDb = v; SdrControl.squelch(v.toDouble()) })
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val applyNoise = { SdrControl.rtl()?.noise(nbOn, nrOn, anfOn) }
+                Text("NB", fontSize = 13.sp); Switch(nbOn, { nbOn = it; settings.sdrNoiseBlanker = it; applyNoise() })
+                Text("NR", fontSize = 13.sp); Switch(nrOn, { nrOn = it; settings.sdrNoiseReduction = it; applyNoise() })
+                Text("Notch", fontSize = 13.sp); Switch(anfOn, { anfOn = it; settings.sdrAutoNotch = it; applyNoise() })
+            }
         }
         if (!st.canControl) Text("This program does not let the app control the device.", fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

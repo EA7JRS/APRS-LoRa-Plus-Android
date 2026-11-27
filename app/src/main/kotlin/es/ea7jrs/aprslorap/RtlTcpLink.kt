@@ -47,8 +47,12 @@ internal class RtlTcpLink(
 
     init {
         rx.squelchDb = squelchDb
+        Settings(ctx).let { rx.noiseBlanker = it.sdrNoiseBlanker; rx.noiseReduction = it.sdrNoiseReduction; rx.autoNotch = it.sdrAutoNotch }
         Thread({ run() }, "sdr-rtltcp").also { it.isDaemon = true; it.priority = Thread.MAX_PRIORITY - 1; it.start() }
     }
+
+    /** Live toggle of the noise tools (blanker, de-noise, auto-notch). */
+    fun noise(nb: Boolean, nr: Boolean, anf: Boolean) { rx.noiseBlanker = nb; rx.noiseReduction = nr; rx.autoNotch = anf }
 
     @Volatile private var sameDec: es.ea7jrs.aprslorap.core.SameDecoder? = null
     private val sameWanted: Boolean get() = AppState.appContext?.let { Settings(it).alertSame } ?: false
