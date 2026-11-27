@@ -399,7 +399,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             MenuItem("IBP beacons", active = nav.kind == "IBP", indent = true) { open("IBP") }
             MenuItem("RBN map", active = nav.kind == "RBN", indent = true) { open("RBN") }
             MenuItem("Stations", right = "${stations.size}", active = nav.kind == "STATIONS") { open("STATIONS") }
-            MenuItem("Weather stations", right = "${stations.count { it.wx != null }}", active = nav.kind == "WX") { open("WX") }
+            MenuItem("Weather stations", right = "${stations.count { it.wx != null }}", active = nav.kind == "WX", indent = true) { open("WX") }
             MenuItem("Messages", badge = unread, active = nav.kind == "MESSAGES") { open("MESSAGES") }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
             MenuItem("Log & QSL") { tool(Tool.LOG) }
