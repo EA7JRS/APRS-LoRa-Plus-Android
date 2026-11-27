@@ -89,6 +89,7 @@ object SdrControl {
 
     @Synchronized
     fun disconnect() {
+        scanning = false
         DigitalVoiceRunner.stop()
         PacketRunner.stop()
         link?.close(); link = null
@@ -105,6 +106,29 @@ object SdrControl {
     }
 
     fun tune(hz: Long) { lastSentHz = hz; link?.tune(hz) }
+
+    // ---- band scanner: steps the frequency, pausing while a signal stays above the threshold ----
+    @Volatile private var scanning = false
+    val isScanning: Boolean get() = scanning
+    fun stopScan() { scanning = false }
+    fun scan(startHz: Long, stopHz: Long, stepHz: Long, thresholdDb: Double) {
+        if (scanning || link == null) return
+        val lo = minOf(startHz, stopHz); val hi = maxOf(startHz, stopHz); val step = stepHz.coerceAtLeast(100)
+        scanning = true
+        Thread({
+            var f = lo
+            while (scanning) {
+                tune(f)
+                Thread.sleep(300)
+                if ((AppState.sdr.value.signalDb ?: -200.0) > thresholdDb) {
+                    while (scanning && (AppState.sdr.value.signalDb ?: -200.0) > thresholdDb) Thread.sleep(400)
+                } else {
+                    f += step; if (f > hi) f = lo
+                }
+            }
+        }, "sdr-scan").also { it.isDaemon = true; it.start() }
+    }
+
     /** The app's own RTL-SDR receiver when it is the link (VOR calibration). */
     internal fun rtl(): RtlTcpLink? = link as? RtlTcpLink
     fun mode(mode: String, bwHz: Int) { link?.mode(mode, bwHz) }

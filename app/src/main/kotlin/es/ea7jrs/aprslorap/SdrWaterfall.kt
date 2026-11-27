@@ -64,6 +64,7 @@ fun SdrWaterfall(onTune: (Long) -> Unit) {
     val bmp = remember { Bitmap.createBitmap(bins, rows, Bitmap.Config.ARGB_8888) }
     val pix = remember { IntArray(bins * rows) }
     val avg = remember { FloatArray(bins) { -120f } }
+    val peak = remember { FloatArray(bins) { -200f } }         // max-hold with slow decay
     val floorCeil = remember { floatArrayOf(-80f, -20f) }      // displayed dB window, slowly adapted
     var frame by remember { mutableIntStateOf(0) }
 
@@ -80,6 +81,7 @@ fun SdrWaterfall(onTune: (Long) -> Unit) {
         for (i in 0 until bins) {
             pix[base + i] = waterfallColor((row[i] - fl) / sp)
             avg[i] = 0.6f * avg[i] + 0.4f * row[i]
+            peak[i] = if (row[i] > peak[i]) row[i] else peak[i] - 0.25f      // max-hold, ~5 dB/s decay
         }
         bmp.setPixels(pix, 0, bins, 0, 0, bins, rows)
         frame++
@@ -117,6 +119,14 @@ fun SdrWaterfall(onTune: (Long) -> Unit) {
                     if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 }
                 drawPath(path, Alp.Green, style = Stroke(1.5f))
+                // peak hold (faint amber, max-hold with slow decay)
+                val pk = Path()
+                for (i in 0 until bins) {
+                    val x = i / (bins - 1f) * w
+                    val y = specH - ((peak[i] - fl) / sp).coerceIn(0f, 1f) * (specH - 2f)
+                    if (i == 0) pk.moveTo(x, y) else pk.lineTo(x, y)
+                }
+                drawPath(pk, Alp.Amber.copy(alpha = 0.5f), style = Stroke(1f))
                 // colour waterfall below, stretched to the width
                 drawImage(bmp.asImageBitmap(),
                     srcOffset = IntOffset.Zero, srcSize = IntSize(bins, rows),

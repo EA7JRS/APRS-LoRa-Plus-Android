@@ -75,6 +75,7 @@ fun SdrTab() {
     var nrOn by remember { mutableStateOf(settings.sdrNoiseReduction) }
     var anfOn by remember { mutableStateOf(settings.sdrAutoNotch) }
     var idClicked by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(SdrControl.isScanning) }
     var driverMissing by remember { mutableStateOf(false) }
     var dvMode by remember { mutableStateOf(settings.dvMode) }
     val dvStatus by AppState.dvStatus.collectAsState()
@@ -185,6 +186,15 @@ fun SdrTab() {
                 }
                 idClicked -> Text("Identifying… (5 s)", fontSize = 12.sp)
             }
+            // Band scanner: steps ±1 MHz around the current frequency and pauses on a signal above the squelch.
+            Button(onClick = {
+                if (scanning) { SdrControl.stopScan(); scanning = false }
+                else {
+                    val c = st.freqHz ?: settings.sdrLastHz
+                    val th = if (sql <= -100f) -45.0 else sql.toDouble()
+                    SdrControl.scan(c - 1_000_000L, c + 1_000_000L, settings.sdrStepHz.toLong(), th); scanning = true
+                }
+            }, enabled = st.connected) { Text(if (scanning) "Stop scan" else "Scan ±1 MHz (stops on signal)") }
         }
         if (!st.canControl) Text("This program does not let the app control the device.", fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
