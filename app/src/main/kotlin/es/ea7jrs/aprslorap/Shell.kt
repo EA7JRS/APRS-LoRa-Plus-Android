@@ -404,6 +404,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             MenuItem("Aircraft (ADS-B)", indent = true) { tool(Tool.ADSB) }
             MenuItem("Balloons (HAB)", indent = true) { tool(Tool.HAB) }
             MenuItem("Messages", badge = unread, active = nav.kind == "MESSAGES") { open("MESSAGES") }
+            MenuItem("DAPNET / POCSAG", indent = true) { tool(Tool.DAPNET) }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
             MenuItem("Log & QSL") { tool(Tool.LOG) }
         }
@@ -417,7 +418,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "Spotting" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Beacons (SDR)" to Tool.BEACONS, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null,
+                "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Beacons (SDR)" to Tool.BEACONS, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null,
             )
             for (row in grid.chunked(2)) {
                 Row {
