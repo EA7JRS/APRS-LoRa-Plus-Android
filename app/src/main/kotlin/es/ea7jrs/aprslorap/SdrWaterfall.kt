@@ -75,8 +75,8 @@ fun SdrWaterfall(onTune: (Long) -> Unit) {
         floorCeil[1] += 0.08f * ((mx + 4f) - floorCeil[1])
         if (floorCeil[1] - floorCeil[0] < 18f) floorCeil[1] = floorCeil[0] + 18f
         val fl = floorCeil[0]; val sp = (floorCeil[1] - fl).coerceAtLeast(1f)
-        System.arraycopy(pix, bins, pix, 0, bins * (rows - 1))             // scroll up one row
-        val base = bins * (rows - 1)
+        System.arraycopy(pix, 0, pix, bins, bins * (rows - 1))             // scroll down one row: newest line on top
+        val base = 0                                                        // write the new line at the top (standard waterfall: new at top, scrolls down)
         for (i in 0 until bins) {
             pix[base + i] = waterfallColor((row[i] - fl) / sp)
             avg[i] = 0.6f * avg[i] + 0.4f * row[i]
