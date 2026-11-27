@@ -54,6 +54,17 @@ internal class RtlTcpLink(
     /** Live toggle of the noise tools (blanker, de-noise, auto-notch). */
     fun noise(nb: Boolean, nr: Boolean, anf: Boolean) { rx.noiseBlanker = nb; rx.noiseReduction = nr; rx.autoNotch = anf }
 
+    // ---- signal identification (identify by decoding), captured on the SDR thread
+    private val idRes = es.ea7jrs.aprslorap.core.Modems.Resampler12to8()
+    @Volatile private var idCapturing = false
+    private var idBuf = FloatArray(0); private var idPos = 0; private var idCenter = 1000.0; private var idBw: Double? = null
+
+    /** Capture [seconds] of the demodulated audio and identify the mode; the result is posted to AppState.signalId. */
+    fun identify(seconds: Double = 5.0, centerHz: Double = 1000.0, bwHz: Double? = null) {
+        idBuf = FloatArray((seconds * es.ea7jrs.aprslorap.core.Modems.RATE).toInt()); idPos = 0
+        idCenter = centerHz; idBw = bwHz; idCapturing = true                                                 // the UI clears/sets AppState.signalId
+    }
+
     @Volatile private var sameDec: es.ea7jrs.aprslorap.core.SameDecoder? = null
     private val sameWanted: Boolean get() = AppState.appContext?.let { Settings(it).alertSame } ?: false
 
@@ -183,6 +194,17 @@ internal class RtlTcpLink(
                             sameDec?.let { d -> d.feed(x, 0, k); while (true) { OfficialAlertsFetcher.onSameHeader(d.poll() ?: break) } }
                         } else if (!dv && !pk && !wx && !apt && rx.discriminatorTap != null) rx.discriminatorTap = null
                         if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) { ModemRunner.feedReceiver12k(audio, m); WsjtRunner.feedReceiver12k(audio, m) }
+                        if (idCapturing && rx.audioRate == Dsp.NARROW_AUDIO_RATE) {
+                            val y = FloatArray(m * 2 / 3 + 2)
+                            val k = idRes.process(audio, m, y)
+                            val take = minOf(k, idBuf.size - idPos)
+                            System.arraycopy(y, 0, idBuf, idPos, take); idPos += take
+                            if (idPos >= idBuf.size) {
+                                idCapturing = false
+                                val b = idBuf; val c = idCenter; val bw = idBw
+                                Thread({ AppState.signalId.value = es.ea7jrs.aprslorap.core.SignalIdentify.Report(es.ea7jrs.aprslorap.core.SignalIdentify.identify(b, c, bw), emptyList()) }, "sdr-identify").also { it.isDaemon = true; it.start() }
+                            }
+                        }
                         Dsp.toPcm16(audio, m, pcm)
                         if (!dv) track?.write(pcm, 0, m, AudioTrack.WRITE_NON_BLOCKING)   // if the phone's audio falls behind, samples are dropped, not the IQ
                         synchronized(this) {

@@ -56,6 +56,7 @@ fun SdrTab() {
     val txs by AppState.satTransmitters.collectAsState()
     val sat by AppState.satState.collectAsState()
     val info by AppState.trackerInfo.collectAsState()
+    val sigId by AppState.signalId.collectAsState()
     var kind by remember { mutableStateOf(runCatching { Sdr.Kind.valueOf(settings.sdrKind) }.getOrDefault(Sdr.Kind.RIGCTL)) }
     var host by rememberSaveable { mutableStateOf(settings.sdrHost) }
     var port by rememberSaveable { mutableStateOf(settings.sdrPort.toString()) }
@@ -73,6 +74,7 @@ fun SdrTab() {
     var nbOn by remember { mutableStateOf(settings.sdrNoiseBlanker) }
     var nrOn by remember { mutableStateOf(settings.sdrNoiseReduction) }
     var anfOn by remember { mutableStateOf(settings.sdrAutoNotch) }
+    var idClicked by remember { mutableStateOf(false) }
     var driverMissing by remember { mutableStateOf(false) }
     var dvMode by remember { mutableStateOf(settings.dvMode) }
     val dvStatus by AppState.dvStatus.collectAsState()
@@ -171,6 +173,16 @@ fun SdrTab() {
                 Text("NB", fontSize = 13.sp); Switch(nbOn, { nbOn = it; settings.sdrNoiseBlanker = it; applyNoise() })
                 Text("NR", fontSize = 13.sp); Switch(nrOn, { nrOn = it; settings.sdrNoiseReduction = it; applyNoise() })
                 Text("Notch", fontSize = 13.sp); Switch(anfOn, { anfOn = it; settings.sdrAutoNotch = it; applyNoise() })
+            }
+            // Identify the tuned signal by decoding (CW / RTTY / PSK); tune the signal into the passband first.
+            OutlinedButton(onClick = { idClicked = true; AppState.signalId.value = null; SdrControl.rtl()?.identify() }, enabled = st.connected) { Text("Identify signal") }
+            when {
+                sigId != null -> {
+                    val r = sigId!!
+                    if (r.modes.isEmpty()) Text("No mode decoded — tune the signal into the passband and retry.", fontSize = 12.sp)
+                    else r.modes.take(3).forEach { Text("${it.mode} · ${(it.confidence * 100).toInt()} %   ${it.text.take(40)}", fontSize = 13.sp) }
+                }
+                idClicked -> Text("Identifying… (5 s)", fontSize = 12.sp)
             }
         }
         if (!st.canControl) Text("This program does not let the app control the device.", fontSize = 12.sp)

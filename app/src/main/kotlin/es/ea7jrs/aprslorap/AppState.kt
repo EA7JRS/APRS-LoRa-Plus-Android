@@ -128,6 +128,7 @@ object AppState {
     val sigIdMessage = MutableStateFlow("")
     val modem = MutableStateFlow(ModemRunner.State())                           // text modes (CW, RTTY, PSK)
     val modemText = MutableStateFlow("")
+    val signalId = MutableStateFlow<es.ea7jrs.aprslorap.core.SignalIdentify.Report?>(null)   // "Identify" in the SDR tab: null = idle; empty modes = running/none
     val waterfallRow = MutableStateFlow<FloatArray?>(null)
     /** Panadapter row of the app's RTL-SDR receiver (null = no receiver): dB per bin, centre = tuner, span = input rate. */
     class SdrSpectrum(val row: FloatArray, val centerHz: Long, val spanHz: Int, val markerHz: Long, val t: Long = System.nanoTime())
