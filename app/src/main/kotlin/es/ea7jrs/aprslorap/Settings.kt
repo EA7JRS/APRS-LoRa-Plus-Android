@@ -295,8 +295,8 @@ class Settings(ctx: Context) {
 
     // SDR program or server under control
     /** SDRconnect: ask for its audio (decoders of the app) and play it on the phone. */
-    var sdrConnectAudio: Boolean
-        get() = p.getBoolean("sdrconnect_audio", false)
+    var sdrConnectAudio: Boolean                             // on by default: SDRconnect feeds its audio to the decoders (CW/RTTY/PSK/WSJT) out of the box
+        get() = p.getBoolean("sdrconnect_audio", true)
         set(v) { p.edit().putBoolean("sdrconnect_audio", v).apply() }
     var sdrConnectPlay: Boolean
         get() = p.getBoolean("sdrconnect_play", true)
