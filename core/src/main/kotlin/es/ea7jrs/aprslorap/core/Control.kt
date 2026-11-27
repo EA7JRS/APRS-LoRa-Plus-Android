@@ -272,6 +272,8 @@ sealed class ControlEvent {
     ) : ControlEvent()
     data class Fm(val state: FmState) : ControlEvent()
     data class SsdvEv(val state: SsdvState) : ControlEvent()
+    /** Download of the last received SSDV image: "info" reply (have/len) or a piece (off, base64 data, last). */
+    data class SsdvRxEv(val have: Boolean, val len: Int?, val off: Int?, val data: String?, val last: Boolean) : ControlEvent()
     data class PocsagEv(val ok: Boolean, val address: Long, val freqHz: Long) : ControlEvent()
     data class FmMemories(val max: Int, val items: List<FmChannel>) : ControlEvent()
     data class Bcast(val state: BcastState) : ControlEvent()
@@ -391,6 +393,7 @@ object Control {
                     o.int("rxi") ?: 0, o.int("rxp") ?: 0, o.bool("up") ?: false, o.str("st") ?: "",
                 ),
             )
+            "ssdvrx" -> ControlEvent.SsdvRxEv(o.bool("have") ?: (o.str("d") != null), o.int("len"), o.int("off"), o.str("d"), o.bool("last") ?: false)
             "pocsag" -> ControlEvent.PocsagEv(o.bool("ok") ?: false, o.long("addr") ?: 0, o.long("f") ?: 0)
             "rf" -> ControlEvent.Rf(o.str("s") ?: "idle", o.int("rssi"), o.num("snr"), o.int("m"), o.long("br"), o.long("f"), o.long("h"))
             "led" -> ControlEvent.Led(o.bool("msg") ?: false, o.int("unread") ?: 0, o.bool("emg") ?: false, o.str("ec") ?: "", o.str("et") ?: "", o.bool("fl") ?: false,
@@ -478,6 +481,12 @@ object Control {
         lines.add(command("ssdvimg", "s" to "end"))
         return lines
     }
+
+    /** Ask whether the tracker has a received SSDV image and its size (event "ssdvrx" {have,len}). */
+    fun ssdvRxInfo(): String = command("ssdvrx", "s" to "info")
+
+    /** Ask for a piece of the received SSDV image from [off] (event "ssdvrx" {off, d, last}). */
+    fun ssdvRxGet(off: Int): String = command("ssdvrx", "s" to "get", "off" to off)
 
     /** Send a POCSAG page (transmits, so the app sends it only with a validated callsign). Empty overrides fall back to the tracker config. */
     fun pocsag(address: Long, message: String, numeric: Boolean, freqHz: Long? = null, bps: Int? = null,

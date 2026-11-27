@@ -65,8 +65,8 @@ class Controller(
             "cwrx",
             // A-GPS data for the tracker's GNSS receiver: nothing is transmitted
             "gpsaid",
-            // SSDV: asking for status and uploading the image over BLE do not transmit (ssdvtx and pocsag are not here: they transmit)
-            "ssdv", "ssdvimg",
+            // SSDV: asking for status, uploading the image and downloading a received one over BLE do not transmit (ssdvtx and pocsag are not here: they transmit)
+            "ssdv", "ssdvimg", "ssdvrx",
             // broadcast receiver (receive only) and the state of the T-TWR FM radio (tuning it is not here: it transmits)
             "bcast", "bcastset", "fm",
             // weather from the internet for the TELEMETRY page: shown only, not transmitted
@@ -114,6 +114,11 @@ class Controller(
     private var ssdvWriting = false
     private var ssdvDeadlineMs = 0L
     private var ssdvStartAfter = false                           // tras subir la imagen, dispara la emision (si hay indicativo validado)
+    private var ssdvRxDownloading = false                        // descargando la imagen recibida desde el tracker
+    private var ssdvRxBuf: ByteArray? = null
+    private var ssdvRxLen = 0
+    private var ssdvRxGot = 0
+    private var ssdvRxDeadlineMs = 0L
     private var satListLoading = false
     private var phoneLat = 0.0
     private var phoneLon = 0.0
@@ -354,6 +359,7 @@ class Controller(
             is ControlEvent.Screen -> AppState.screen.value = ev.screen
             is ControlEvent.Fm -> AppState.fmState.value = ev.state
             is ControlEvent.SsdvEv -> AppState.ssdvState.value = ev.state
+            is ControlEvent.SsdvRxEv -> onSsdvRxEvent(ev)
             is ControlEvent.PocsagEv -> AppState.notice.value = if (ev.ok) "POCSAG page sent to RIC ${ev.address}" else "POCSAG page failed"
             is ControlEvent.FmMemories -> AppState.fmMemories.value = ev.items
             is ControlEvent.Bcast -> AppState.bcastState.value = ev.state
@@ -458,6 +464,7 @@ class Controller(
                 if (ev.command == "gpsaid" && ev.message == "busy") { onGpsAidBusy(); return }
                 if (ev.command == "gpsaid") onGpsAidFailed(ev.message)
                 if (ev.command == "ssdvimg") { onSsdvImgFailed(ev.message); return }
+                if (ev.command == "ssdvrx") { if (ssdvRxDownloading) ssdvRxFail(ev.message); return }
                 if (ev.command == "cfgget") { AppState.configBusy.value = false; AppState.configMessage.value = ev.message }
                 AppState.error.value = "Tracker (${ev.command}): ${ev.message}"
             }
@@ -716,6 +723,58 @@ class Controller(
         sendControlLine(Control.command("ssdvimg", "s" to "abort"))
     }
 
+    /** Download the last SSDV image the tracker received, to view / save / share it. */
+    fun ssdvRxDownload() {
+        exec.execute {
+            safe {
+                if (!controlOn) { AppState.ssdvRxMessage.value = "No control service"; return@safe }
+                if (AppState.trackerInfo.value?.hasSsdv != true) { AppState.ssdvRxMessage.value = "The tracker firmware has no SSDV mode"; return@safe }
+                if (ssdvRxDownloading) return@safe
+                ssdvRxDownloading = true; ssdvRxBuf = null; ssdvRxLen = 0; ssdvRxGot = 0
+                ssdvRxDeadlineMs = System.currentTimeMillis() + 8000
+                AppState.ssdvRxBusy.value = true
+                AppState.ssdvRxMessage.value = "Asking the tracker for the received image..."
+                sendControlLine(Control.ssdvRxInfo())
+            }
+        }
+    }
+
+    private fun onSsdvRxEvent(ev: ControlEvent.SsdvRxEv) {
+        if (!ssdvRxDownloading) return
+        ssdvRxDeadlineMs = System.currentTimeMillis() + 8000
+        if (ev.data == null) {                                   // reply to "info": whether there is an image and its size
+            val len = ev.len ?: 0
+            if (!ev.have || len <= 0) { ssdvRxDownloading = false; AppState.ssdvRxBusy.value = false; AppState.ssdvRxMessage.value = "No received image on the tracker yet"; return }
+            if (len > 400 * 1024) { ssdvRxFail("image too big"); return }
+            ssdvRxLen = len; ssdvRxBuf = ByteArray(len); ssdvRxGot = 0
+            AppState.ssdvRxMessage.value = "Downloading the received image... 0 %"
+            sendControlLine(Control.ssdvRxGet(0))
+            return
+        }
+        val buf = ssdvRxBuf ?: return                            // a piece
+        val off = ev.off ?: ssdvRxGot
+        val bytes = try { java.util.Base64.getDecoder().decode(ev.data) } catch (_: Exception) { ssdvRxFail("bad data"); return }
+        if (off in 0..buf.size) {
+            val n = minOf(bytes.size, buf.size - off)
+            System.arraycopy(bytes, 0, buf, off, n)
+            ssdvRxGot = maxOf(ssdvRxGot, off + n)
+        }
+        if (ev.last || ssdvRxGot >= ssdvRxLen) {
+            ssdvRxDownloading = false
+            AppState.ssdvRxBusy.value = false
+            AppState.ssdvRxImage.value = buf
+            AppState.ssdvRxMessage.value = "Received image downloaded ($ssdvRxLen bytes)"
+        } else {
+            AppState.ssdvRxMessage.value = "Downloading the received image... ${ssdvRxGot * 100 / ssdvRxLen} %"
+            sendControlLine(Control.ssdvRxGet(ssdvRxGot))
+        }
+    }
+
+    private fun ssdvRxFail(msg: String) {
+        ssdvRxDownloading = false; AppState.ssdvRxBusy.value = false
+        AppState.ssdvRxMessage.value = "Download failed: $msg"
+    }
+
     /** The tracker's buffer for the GNSS port is full (slow UART, 9600 baud): the same piece again a bit later. */
     private fun onGpsAidBusy() {
         val line = aidCurrent ?: return
@@ -832,6 +891,11 @@ class Controller(
             AppState.ssdvUploadBusy.value = false
             AppState.ssdvUploadMessage.value = "The tracker did not answer"
             sendControlLine(Control.command("ssdvimg", "s" to "abort"))
+        }
+        if (ssdvRxDownloading && now > ssdvRxDeadlineMs) {
+            ssdvRxDownloading = false
+            AppState.ssdvRxBusy.value = false
+            AppState.ssdvRxMessage.value = "The tracker did not answer"
         }
         sendPhonePosition(force = false)
         maybePhoneBeacon(now)

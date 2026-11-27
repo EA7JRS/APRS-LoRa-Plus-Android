@@ -69,6 +69,7 @@ enum class Tool(val title: String) {
     MODES("Digital modes"), AIS("AIS ships"), LOG("Log & QSL"), SIGID("Signal ID"), REMOTE("Remote screen"), CONFIG("Tracker configuration"),
     DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"), ADSB("Aircraft (ADS-B)"), BEACONS("Beacons heard (SDR)"),
     VESSEL("My vessel (AIS)"), ASTRO("Celestial navigation"), WEFAX("Weather fax & HF prediction"), HAB("Balloons (HAB)"),
+    SSDV("SSDV image"),
     SETTINGS("App settings"),
 }
 
@@ -413,6 +414,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
             MenuItem("DAPNET / POCSAG", indent = true) { tool(Tool.DAPNET) }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
             MenuItem("Log & QSL") { tool(Tool.LOG) }
+            MenuItem("SSDV image") { tool(Tool.SSDV) }
         }
         MenuGroup("DEVICES") {
             MenuItem("Tracker", right = info?.board ?: if (running) ble else "off", lamp = running) { tool(Tool.TRACKER) }
@@ -647,6 +649,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.HAB -> HabTab { nav.go("MAP") }
                 Tool.VESSEL -> VesselTab()
                 Tool.ASTRO -> AstroTab()
+                Tool.SSDV -> SsdvTab()
                 Tool.SETTINGS -> AppSettingsScreen()
             }
         }
