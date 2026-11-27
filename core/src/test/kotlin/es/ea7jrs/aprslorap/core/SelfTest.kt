@@ -2470,9 +2470,32 @@ private fun testWxExtras() {
 
 fun main() {
     testNetWeather();
-    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testApt(); testInmarsat(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer()
+    testKiss(); testAx25(); testAprs(); testMessaging(); testIGate(); testGeoStations(); testJson(); testControl(); testSat(); testJsonEdit(); testDapnet(); testNmea(); testCallsignCheck(); testCw(); testFirmware(); testUbx(); testRotator(); testRotorProto(); testRotorFollow(); testSdr(); testDsp(); testSigId(); testModems(); testG3ruh(); testAfsk1200(); testApt(); testInmarsat(); testReceivers(); testWsjt(); testSpots(); testLogbook(); testRadioUi(); testDxCluster(); testGnssSky(); testStatusRadio(); testSun(); testRtlUsb(); testHeardSymbol(); testLights(); testAlerts(); testWxRadar(); testAprsWx(); testWxExtras(); testFormulas(); testRepeaterBookConnect(); testCtyFiles(); testMapData(); testOfficialAlerts(); testSame(); testAviation(); testHamLayers(); testRbn(); testCat(); testRateLimiter(); testAdsb(); testFlags(); testLrFhss(); testBeacons(); testVessel(); testMtCheckApp(); testAisRx(); testCelnav(); testLatitude(); testCurrent(); testBearingFix(); testRadiotel(); testDeviation(); testNavtex(); testNavaids(); testDsc(); testBeacon406(); testCarText(); testEphem(); testWefax(); testConfigCheck(); testHab(); testCwSkimmer(); testSsdv()
     println("$checks checks, $failures failures")
     if (failures > 0) kotlin.system.exitProcess(1)
+}
+
+private fun testSsdv() {
+    // every offered format is a valid SSDV size (multiples of 16)
+    for (f in Ssdv.FORMATS) check(Ssdv.isValid(f.w, f.h), "SSDV format ${f.name} is valid")
+    check(!Ssdv.isValid(321, 240), "321 is not a multiple of 16")
+    check(!Ssdv.isValid(320, 0), "zero height invalid")
+    eq(Ssdv.round16(330), 320, "round16 down")
+    eq(Ssdv.round16(10), 16, "round16 floor is 16")
+    // centre-crop: a wide 1000x500 source to 4:3 trims the sides, keeps full height
+    val cw = Ssdv.centreCrop(1000, 500, 320, 240)
+    eq(cw[3], 500, "wide source keeps full height")
+    eq(cw[2], 667, "wide source cropped width for 4:3")
+    eq(cw[1], 0, "wide source top at 0")
+    // a tall 500x1000 source to 4:3 trims top and bottom, keeps full width
+    val ch = Ssdv.centreCrop(500, 1000, 320, 240)
+    eq(ch[2], 500, "tall source keeps full width")
+    eq(ch[3], 375, "tall source cropped height for 4:3")
+    eq(ch[0], 0, "tall source left at 0")
+    // a source already at the target aspect is kept whole
+    val ce = Ssdv.centreCrop(640, 480, 320, 240)
+    eq(ce[2], 640, "matching aspect keeps width"); eq(ce[3], 480, "matching aspect keeps height")
+    eq(Ssdv.QUALITY_DEFAULT in Ssdv.QUALITY_MIN..Ssdv.QUALITY_MAX, true, "default quality in range")
 }
 
 private fun testRadioUi() {
