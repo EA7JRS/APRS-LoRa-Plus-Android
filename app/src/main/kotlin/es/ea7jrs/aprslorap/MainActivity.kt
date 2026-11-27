@@ -144,7 +144,6 @@ fun ConnectTab() {
     val settings = remember { Settings(ctx) }
     var call by rememberSaveable { mutableStateOf(settings.callsign) }
     var trackerCall by rememberSaveable { mutableStateOf(settings.trackerCallsign) }
-    var path by rememberSaveable { mutableStateOf(settings.path) }
     var device by rememberSaveable { mutableStateOf(settings.deviceAddress) }
     var deviceName by rememberSaveable { mutableStateOf(settings.deviceName) }
     var igate by rememberSaveable { mutableStateOf(settings.igateEnabled) }
@@ -197,7 +196,6 @@ fun ConnectTab() {
     fun save() {
         settings.callsign = call
         settings.trackerCallsign = trackerCall
-        settings.path = path
         settings.deviceAddress = device
         settings.deviceName = deviceName
         settings.igateEnabled = igate
@@ -239,14 +237,7 @@ fun ConnectTab() {
             else "Different or not set: the app sends the ACKs",
             fontSize = 12.sp,
         )
-        OutlinedTextField(path, { path = it.uppercase() }, label = { Text("Path (WIDE1-1,WIDE2-1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        es.ea7jrs.aprslorap.core.AprsConventions.pathAdvice(path).let { (level, text) ->
-            Text(text, fontSize = 12.sp, color = when (level) {
-                es.ea7jrs.aprslorap.core.AprsConventions.PathLevel.BAD -> Alp.RedSoft
-                es.ea7jrs.aprslorap.core.AprsConventions.PathLevel.NOTE -> Alp.Amber
-                else -> Alp.SubText
-            })
-        }
+        Text("APRS path is in App settings > TNC.", fontSize = 11.sp, color = Alp.SubText)
 
         Text("Tracker (Bluetooth LE, KISS)", fontWeight = FontWeight.Bold)
         Text(if (device.isEmpty()) "No tracker chosen" else "Chosen: " + (if (deviceName.isNotEmpty()) "$deviceName  ($device)" else device))

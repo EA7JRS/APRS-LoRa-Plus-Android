@@ -35,6 +35,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -504,6 +505,22 @@ private fun AppSettingsScreen() {
                         android.net.Uri.parse("package:" + ctx.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 } catch (_: Exception) { AppState.error.value = "Open Android Settings > Apps > APRS LoRa+ > Notifications to allow full-screen alerts" }
             }
+        }
+        MenuGroup("TNC") {
+            var path by remember { mutableStateOf(settings.path) }
+            OutlinedTextField(path, { path = it.uppercase(); settings.path = it.uppercase() },
+                label = { Text("APRS path (WIDE1-1,WIDE2-1)") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp))
+            es.ea7jrs.aprslorap.core.AprsConventions.pathAdvice(path).let { (level, text) ->
+                Text(text, fontSize = 12.sp, color = when (level) {
+                    es.ea7jrs.aprslorap.core.AprsConventions.PathLevel.BAD -> Alp.RedSoft
+                    es.ea7jrs.aprslorap.core.AprsConventions.PathLevel.NOTE -> Alp.Amber
+                    else -> Alp.Muted
+                }, modifier = Modifier.padding(start = 8.dp))
+            }
+            Text("The APRS digipeater path for the frames the app transmits (position beacons, messages). " +
+                "Radio timing (TXDELAY, persistence, slot time) is set in the tracker.",
+                fontSize = 11.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 2.dp))
         }
         MenuGroup("SIGNAL DATABASE") {
             val info by AppState.sigIdInfo.collectAsState()
