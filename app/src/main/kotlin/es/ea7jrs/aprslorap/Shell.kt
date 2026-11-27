@@ -418,7 +418,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "Spotting" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Beacons (SDR)" to Tool.BEACONS, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null,
+                "Signal ID" to Tool.SIGID, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Beacons (SDR)" to Tool.BEACONS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null,
             )
             for (row in grid.chunked(2)) {
                 Row {
@@ -431,6 +431,8 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         }
         MenuGroup("APP") {
             MenuItem("Settings (theme, units, alerts)") { tool(Tool.SETTINGS) }
+            MenuItem("Sensors") { tool(Tool.SENSORS) }
+            MenuItem("Official alerts") { tool(Tool.ALERTS) }
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
