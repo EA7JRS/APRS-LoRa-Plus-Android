@@ -50,13 +50,11 @@ import es.ea7jrs.aprslorap.core.Geo
 import es.ea7jrs.aprslorap.core.HamLayers
 import es.ea7jrs.aprslorap.core.Rbn
 import es.ea7jrs.aprslorap.core.Spots
-import es.ea7jrs.aprslorap.core.Terminator
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
-import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import java.util.Locale
 
@@ -153,11 +151,7 @@ fun RbnScreen(nav: Navigator) {
             AndroidView({ map }, Modifier.fillMaxSize()) { m ->
                 m.overlays.removeAll(dynamic.toSet()); dynamic.clear()
                 val d = m.context.resources.displayMetrics.density
-                dynamic.add(Polygon(m).apply {
-                    points = Terminator.nightPolygon(now).map { GeoPoint(it.first, it.second) }
-                    fillPaint.color = 0x55050A10; outlinePaint.color = 0x99FFB347.toInt(); outlinePaint.strokeWidth = 1.2f * d
-                    setOnClickListener { _, _, _ -> false }
-                })
+                dynamic.add(NightOverlay(now, 0x55050A10))                 // custom night shade, immune to osmdroid polygon inversion
                 val skimmers = HashMap<String, Pair<Double, Double>>()
                 val targets = HashMap<String, Pair<Double, Double>>()
                 for (h in list) {

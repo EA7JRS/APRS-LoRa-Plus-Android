@@ -286,6 +286,48 @@ internal object MarkerArt {
 internal data class MapCard(val title: String, val color: Int, val rows: List<Pair<String, String>>, val source: String,
                            val lat: Double? = null, val lon: Double? = null, val mono: List<Pair<String, String>> = emptyList())
 
+/**
+ * Day/night shade drawn directly, immune to osmdroid's polygon-fill of a world-spanning band (which shaded the wrong
+ * side on real devices). For every screen column it takes the longitude there, computes the terminator latitude and
+ * projects it, then fills from that curve to the edge on the dark-pole side (top when the sun is south, bottom when
+ * north). All-day and all-night views fall out of the same fill.
+ */
+internal class NightOverlay(private val timeMs: Long, fillColor: Int) : Overlay() {
+    private val fill = android.graphics.Paint().apply { style = android.graphics.Paint.Style.FILL; color = fillColor; isAntiAlias = true }
+    private val stroke = android.graphics.Paint().apply {
+        style = android.graphics.Paint.Style.STROKE; color = 0xCCFFB347.toInt(); strokeWidth = 2f; isAntiAlias = true
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(4f, 10f), 0f)
+    }
+
+    // osmdroid 6.1.x calls draw(Canvas, Projection); keep the deprecated 3-arg too, delegating, for other versions.
+    override fun draw(c: android.graphics.Canvas, mapView: MapView, shadow: Boolean) { if (!shadow) draw(c, mapView.projection) }
+
+    override fun draw(c: android.graphics.Canvas, proj: org.osmdroid.views.Projection) {
+        val w = c.width; val h = c.height
+        if (w == 0 || h == 0) return
+        val (dec0, sunLon) = Terminator.subsolar(timeMs)
+        val dec = if (kotlin.math.abs(dec0) < 0.01) 0.01 else dec0
+        val n = 128
+        val xs = FloatArray(n + 1); val ys = FloatArray(n + 1)
+        val pt = android.graphics.Point()
+        for (i in 0..n) {
+            val x = w.toFloat() * i / n
+            val lon = proj.fromPixels(x.toInt(), h / 2).longitude
+            val termLat = Math.toDegrees(kotlin.math.atan(-kotlin.math.cos(Math.toRadians(lon - sunLon)) / kotlin.math.tan(Math.toRadians(dec))))
+            proj.toPixels(GeoPoint(termLat.coerceIn(-85.0, 85.0), lon), pt)
+            xs[i] = x; ys[i] = pt.y.toFloat()
+        }
+        val edgeY = if (dec < 0) 0f else h.toFloat()                           // dark pole: north when the sun is south
+        val path = android.graphics.Path(); path.moveTo(xs[0], ys[0])
+        for (i in 1..n) path.lineTo(xs[i], ys[i])
+        path.lineTo(xs[n], edgeY); path.lineTo(xs[0], edgeY); path.close()
+        c.drawPath(path, fill)
+        val curve = android.graphics.Path(); curve.moveTo(xs[0], ys[0])
+        for (i in 1..n) curve.lineTo(xs[i], ys[i])
+        c.drawPath(curve, stroke)
+    }
+}
+
 private class MapHolder(val map: MapView) {
     var layerId = ""
     var esriKey = ""
@@ -398,12 +440,9 @@ fun MapScreen(nav: Navigator) {
             }
             map.overlays.removeAll(holder.dynamic.toSet()); holder.dynamic.clear()
             val nowMs = System.currentTimeMillis()
-            if ("night" in ovOn) holder.dynamic.add(Polygon(map).apply {
-                points = Terminator.nightPolygon(nowMs).map { GeoPoint(it.first, it.second) }
-                fillPaint.color = android.graphics.Color.argb(opacity("night") * 255 / 100, 5, 9, 14)
-                outlinePaint.color = 0xCCFFB347.toInt(); outlinePaint.strokeWidth = 2f; outlinePaint.pathEffect = DashPathEffect(floatArrayOf(4f, 10f), 0f)
-                setOnClickListener { _, _, _ -> false }
-            })
+            // Night shade: a custom overlay that fills from the terminator curve to the dark pole edge, column by column.
+            // osmdroid's Polygon fill of a world-spanning band shaded the wrong side on real devices; this cannot invert.
+            if ("night" in ovOn) holder.dynamic.add(NightOverlay(nowMs, android.graphics.Color.argb(opacity("night") * 255 / 100, 5, 9, 14)))
             if ("alerts" in ovOn) for (a in official.filter { !it.src.quake && it.lat != null && it.lon != null && it.activeAt(nowMs / 1000) }) {
                 val bg = when (a.level) { 3 -> 0xFFE53935.toInt(); 2 -> 0xFFFF8C1A.toInt(); 1 -> 0xFFFDD835.toInt(); else -> 0xFF28B5E1.toInt() }
                 holder.dynamic.add(Marker(map).apply {

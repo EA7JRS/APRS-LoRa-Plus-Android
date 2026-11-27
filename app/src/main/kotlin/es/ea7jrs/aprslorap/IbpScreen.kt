@@ -6,7 +6,6 @@
 package es.ea7jrs.aprslorap
 
 import android.content.Context
-import android.graphics.DashPathEffect
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,7 +50,6 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
-import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import java.util.Locale
 
@@ -136,12 +134,7 @@ fun IbpScreen(nav: Navigator) {
             AndroidView({ map }, Modifier.fillMaxSize()) { m ->
                 m.overlays.removeAll(dynamic.toSet()); dynamic.clear()
                 val d = m.context.resources.displayMetrics.density
-                dynamic.add(Polygon(m).apply {
-                    points = Terminator.nightPolygon(now).map { GeoPoint(it.first, it.second) }
-                    fillPaint.color = 0x66050A10; outlinePaint.color = 0xCCFFB347.toInt(); outlinePaint.strokeWidth = 1.5f * d
-                    outlinePaint.pathEffect = DashPathEffect(floatArrayOf(4f * d, 6f * d), 0f)
-                    setOnClickListener { _, _, _ -> false }
-                })
+                dynamic.add(NightOverlay(now, 0x66050A10))                 // custom night shade, immune to osmdroid polygon inversion
                 if (me != null) onAir.forEachIndexed { i, (_, b) ->
                     for (seg in HamLayers.greatCircle(me.first, me.second, b.lat, b.lon, 60)) dynamic.add(Polyline(m).apply {
                         setPoints(seg.map { GeoPoint(it.first.coerceIn(-85.0, 85.0), it.second) })
