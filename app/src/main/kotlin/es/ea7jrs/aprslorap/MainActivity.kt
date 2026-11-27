@@ -142,8 +142,6 @@ internal fun bluetoothGranted(ctx: Context): Boolean = requiredPermissions()
 fun ConnectTab() {
     val ctx = LocalContext.current
     val settings = remember { Settings(ctx) }
-    var call by rememberSaveable { mutableStateOf(settings.callsign) }
-    var trackerCall by rememberSaveable { mutableStateOf(settings.trackerCallsign) }
     var device by rememberSaveable { mutableStateOf(settings.deviceAddress) }
     var deviceName by rememberSaveable { mutableStateOf(settings.deviceName) }
     var igate by rememberSaveable { mutableStateOf(settings.igateEnabled) }
@@ -163,8 +161,6 @@ fun ConnectTab() {
     var nmeaOn by rememberSaveable { mutableStateOf(settings.nmeaServer) }
     var nmeaPort by rememberSaveable { mutableStateOf(settings.nmeaPort.toString()) }
     var mockOn by rememberSaveable { mutableStateOf(settings.mockLocation) }
-    var licence by remember { mutableStateOf(Licence.summary(settings)) }
-    var checking by remember { mutableStateOf(false) }
     val found = remember { mutableStateListOf<Pair<String, String>>() }
     var extras by remember { mutableStateOf(settings.extraReceivers) }
     var rxAddr by rememberSaveable { mutableStateOf("") }
@@ -194,8 +190,6 @@ fun ConnectTab() {
         }
     }
     fun save() {
-        settings.callsign = call
-        settings.trackerCallsign = trackerCall
         settings.deviceAddress = device
         settings.deviceName = deviceName
         settings.igateEnabled = igate
@@ -211,33 +205,10 @@ fun ConnectTab() {
         settings.nmeaServer = nmeaOn
         settings.nmeaPort = nmeaPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 10110
         settings.mockLocation = mockOn
-        licence = Licence.summary(settings)
-    }
-    fun validate() {
-        save()
-        checking = true
-        Licence.validate(settings) { err ->
-            checking = false
-            licence = Licence.summary(settings)
-            if (err != null) AppState.error.value = err else AppState.notice.value = licence
-        }
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(call, { call = it.uppercase() }, label = { Text("Your callsign with SSID (EA7JRS-7)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(licence, Modifier.weight(1f), fontSize = 12.sp)
-            Spacer(Modifier.width(8.dp))
-            OutlinedButton(enabled = !checking, onClick = { validate() }) { Text(if (checking) "Checking..." else "Validate") }
-        }
-        Text("The callsign needs a DMR ID / CCS7 in RadioID.net. Until it is validated the app only listens.", fontSize = 11.sp)
-        OutlinedTextField(trackerCall, { trackerCall = it.uppercase() }, label = { Text("Tracker callsign (as in its WebUI)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Text(
-            if (MessageEngine.trackerSendsAcks(call, trackerCall)) "Same as yours: the tracker sends the ACKs, the app does not"
-            else "Different or not set: the app sends the ACKs",
-            fontSize = 12.sp,
-        )
-        Text("APRS path is in App settings > TNC.", fontSize = 11.sp, color = Alp.SubText)
+        Text("Your callsign, validation, tracker callsign and APRS path are in App settings > User and TNC.", fontSize = 11.sp, color = Alp.SubText)
 
         Text("Tracker (Bluetooth LE, KISS)", fontWeight = FontWeight.Bold)
         Text(if (device.isEmpty()) "No tracker chosen" else "Chosen: " + (if (deviceName.isNotEmpty()) "$deviceName  ($device)" else device))
@@ -326,7 +297,7 @@ fun ConnectTab() {
             }
             Text(if (beaconMin == 0) "SmartBeaconing: every 30 min when still, down to 90 s at 100 km/h, and at once on a turn."
                  else "A beacon every $beaconMin min, moving or not.", fontSize = 12.sp, color = Alp.SubText)
-            if (MessageEngine.trackerSendsAcks(call, trackerCall))
+            if (MessageEngine.trackerSendsAcks(settings.callsign, settings.trackerCallsign))
                 Text("Same callsign and SSID as the tracker: the tracker already sends its own beacons with it. Use another SSID here (-7 handheld, -9 car) or turn the tracker's beacon off.",
                     fontSize = 12.sp, color = Alp.Amber)
             Text(if (running) beaconState else "Applies when the link is restarted.", fontSize = 12.sp, color = Alp.SubText)

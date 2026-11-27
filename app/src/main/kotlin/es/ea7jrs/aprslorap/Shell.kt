@@ -456,6 +456,36 @@ private fun AppSettingsScreen() {
     val ctx = LocalContext.current
     val settings = remember { Settings(ctx) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        MenuGroup("USER") {
+            var call by remember { mutableStateOf(settings.callsign) }
+            var trackerCall by remember { mutableStateOf(settings.trackerCallsign) }
+            var licence by remember { mutableStateOf(Licence.summary(settings)) }
+            var checking by remember { mutableStateOf(false) }
+            OutlinedTextField(call, { call = it.uppercase(); settings.callsign = it.uppercase() },
+                label = { Text("Your callsign with SSID (EA7JRS-7)") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
+                Text(licence, Modifier.weight(1f), fontSize = 12.sp, color = Alp.Muted)
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(enabled = !checking, onClick = {
+                    settings.callsign = call; settings.trackerCallsign = trackerCall
+                    checking = true
+                    Licence.validate(settings) { err ->
+                        checking = false; licence = Licence.summary(settings)
+                        if (err != null) AppState.error.value = err else AppState.notice.value = licence
+                    }
+                }) { Text(if (checking) "Checking..." else "Validate") }
+            }
+            Text("The callsign needs a DMR ID / CCS7 in RadioID.net. Until it is validated the app only listens.",
+                fontSize = 11.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp))
+            OutlinedTextField(trackerCall, { trackerCall = it.uppercase(); settings.trackerCallsign = it.uppercase() },
+                label = { Text("Tracker callsign (as in its WebUI)") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp))
+            Text(if (es.ea7jrs.aprslorap.core.MessageEngine.trackerSendsAcks(call, trackerCall))
+                "Same as yours: the tracker sends the ACKs, the app does not"
+                else "Different or not set: the app sends the ACKs",
+                fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp))
+        }
         MenuGroup("THEME") {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
                 for ((id, label) in ThemeMode.MODES) Chip(label, ThemeMode.mode == id, Modifier.weight(1f), height = 34.dp) { ThemeMode.set(settings, id) }
