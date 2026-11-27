@@ -55,7 +55,6 @@ import kotlinx.coroutines.withContext
 fun SigIdTab() {
     val ctx = LocalContext.current
     val info by AppState.sigIdInfo.collectAsState()
-    val busy by AppState.sigIdBusy.collectAsState()
     val msg by AppState.sigIdMessage.collectAsState()
     val sdr by AppState.sdr.collectAsState()
     var text by rememberSaveable { mutableStateOf("") }
@@ -64,7 +63,6 @@ fun SigIdTab() {
     var bw by rememberSaveable { mutableStateOf("") }
     var cat by rememberSaveable { mutableStateOf("") }
     var openId by rememberSaveable { mutableStateOf(-1) }
-    var askDownload by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { if (AppState.sigIdInfo.value == null) withContext(Dispatchers.IO) { SigIdDb.load(ctx) } }
 
     val open = SigIdDb.signals.firstOrNull { it.id == openId }
@@ -81,22 +79,7 @@ fun SigIdTab() {
         item {
             Section("Signal identification")
             Text(info?.let { "Database version ${it.version} (${it.date}), ${it.signals} signals" }
-                ?: "Optional: the signal database is not part of the app. Download it if you want to use this tab (about 1 MB).", fontSize = 13.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { if (info == null) askDownload = true else SigIdDb.update(ctx) }, enabled = !busy) { Text(if (info == null) "Download" else "Check for update") }
-                if (info != null) OutlinedButton(onClick = { SigIdDb.update(ctx, force = true) }, enabled = !busy) { Text("Download again") }
-                if (info != null) OutlinedButton(onClick = { SigIdDb.delete(ctx) }, enabled = !busy) { Text("Remove") }
-            }
-            if (askDownload) AlertDialog(
-                onDismissRequest = { askDownload = false },
-                title = { Text("Signal database (optional)") },
-                text = {
-                    Text("The database comes from the Artemis project (AresValley), with the signals of sigidwiki.com. It is not part of APRS LoRa+ and " +
-                        "has no explicit licence: it is downloaded from Artemis' own servers to your phone, for your own use. You can remove it at any time.")
-                },
-                confirmButton = { TextButton(onClick = { askDownload = false; SigIdDb.update(ctx) }) { Text("Download") } },
-                dismissButton = { TextButton(onClick = { askDownload = false }) { Text("Cancel") } },
-            )
+                ?: "The signal database is not downloaded. Download it in App settings > Signal database.", fontSize = 13.sp)
             if (msg.isNotBlank()) Text(msg, fontSize = 12.sp)
             Text("${SigId.ATTRIBUTION}. Images and audio are downloaded when you open them.", fontSize = 11.sp)
             HorizontalDivider(Modifier.padding(vertical = 8.dp))

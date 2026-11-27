@@ -30,9 +30,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -56,7 +58,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** The screens that existed before the radio-style interface: all of them stay, opened from [F], the side menu or a touch key. */
 enum class Tool(val title: String) {
@@ -500,6 +504,35 @@ private fun AppSettingsScreen() {
                 } catch (_: Exception) { AppState.error.value = "Open Android Settings > Apps > APRS LoRa+ > Notifications to allow full-screen alerts" }
             }
         }
+        MenuGroup("SIGNAL DATABASE") {
+            val info by AppState.sigIdInfo.collectAsState()
+            val busy by AppState.sigIdBusy.collectAsState()
+            val sigMsg by AppState.sigIdMessage.collectAsState()
+            var askDownload by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { if (AppState.sigIdInfo.value == null) withContext(Dispatchers.IO) { SigIdDb.load(ctx) } }
+            Text(info?.let { "Database version ${it.version} (${it.date}), ${it.signals} signals" }
+                ?: "Optional, for the Signal ID tool. The signal database is not part of the app. Download it (about 1 MB) to identify signals.",
+                fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+                Button(onClick = { if (info == null) askDownload = true else SigIdDb.update(ctx) }, enabled = !busy) { Text(if (info == null) "Download" else "Check for update") }
+                if (info != null) OutlinedButton(onClick = { SigIdDb.update(ctx, force = true) }, enabled = !busy) { Text("Download again") }
+                if (info != null) OutlinedButton(onClick = { SigIdDb.delete(ctx) }, enabled = !busy) { Text("Remove") }
+            }
+            if (sigMsg.isNotBlank()) Text(sigMsg, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
+            Text("${es.ea7jrs.aprslorap.core.SigId.ATTRIBUTION}. Images and audio are downloaded when you open them.",
+                fontSize = 11.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp))
+            if (askDownload) AlertDialog(
+                onDismissRequest = { askDownload = false },
+                title = { Text("Signal database (optional)") },
+                text = {
+                    Text("The database comes from the Artemis project (AresValley), with the signals of sigidwiki.com. It is not part of APRS LoRa+ and " +
+                        "has no explicit licence: it is downloaded from Artemis' own servers to your phone, for your own use. You can remove it at any time.")
+                },
+                confirmButton = { TextButton(onClick = { askDownload = false; SigIdDb.update(ctx) }) { Text("Download") } },
+                dismissButton = { TextButton(onClick = { askDownload = false }) { Text("Cancel") } },
+            )
+        }
+        RepeaterBookSearch { _, _ -> }
     }
 }
 

@@ -307,7 +307,6 @@ fun SatTab() {
                 },
                 enabled = newName.isNotBlank() && lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0,
             ) { Text("Store and follow") }
-            RepeaterBookSearch { name, mhz -> newName = name; newMhz = mhz }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             RotorPhoneTools()
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
