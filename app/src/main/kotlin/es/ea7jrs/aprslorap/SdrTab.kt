@@ -49,7 +49,7 @@ import java.util.Locale
 
 /** SDR tab: control of SDR++ / gqrx (rigctl), SDRconnect (SDRplay) or SpyServer (Airspy), and following the tracker. */
 @Composable
-fun SdrTab() {
+fun SdrTab(onBeacons: () -> Unit = {}) {
     val ctx = LocalContext.current
     val settings = remember { Settings(ctx) }
     val st by AppState.sdr.collectAsState()
@@ -357,6 +357,9 @@ fun SdrTab() {
         VorSection(kind == Sdr.Kind.RTLTCP && st.connected)
         Beacon406Section(kind == Sdr.Kind.RTLTCP && st.connected)
         InmarsatSection(kind == Sdr.Kind.RTLTCP && st.connected)
+        Section("Beacons heard")
+        Text("Beacons decoded with the SDR (LR-FHSS, WSPR, FST4W, FT8, FT4, CW) with list, map, rotor and spotting.", fontSize = 12.sp)
+        OutlinedButton(onClick = onBeacons, modifier = Modifier.fillMaxWidth()) { Text("Open Beacons heard (SDR)") }
     }
 }
 

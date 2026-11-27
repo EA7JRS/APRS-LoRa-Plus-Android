@@ -423,7 +423,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "Signal ID" to Tool.SIGID, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Beacons (SDR)" to Tool.BEACONS, "Weather fax · VOACAP" to Tool.WEFAX,
+                "Signal ID" to Tool.SIGID, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Weather fax · VOACAP" to Tool.WEFAX,
             )
             for (row in grid.chunked(2)) {
                 Row {
@@ -581,7 +581,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.HEARD -> HeardTab()
                 Tool.SAT -> SatTab()
                 Tool.ROTOR -> RotorTab()
-                Tool.SDR -> SdrTab()
+                Tool.SDR -> SdrTab { nav.tool(Tool.BEACONS) }
                 Tool.MODES -> DigimodesTab()
                 Tool.AIS -> AisTab()
                 Tool.LOG -> LogTab { nav.tool(Tool.WEFAX) }
