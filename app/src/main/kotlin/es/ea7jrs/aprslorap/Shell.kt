@@ -64,6 +64,7 @@ enum class Tool(val title: String) {
     MODES("Digital modes"), AIS("AIS ships"), LOG("Log & QSL"), SIGID("Signal ID"), REMOTE("Remote screen"), CONFIG("Tracker configuration"),
     DAPNET("DAPNET"), FIRMWARE("Firmware"), CONNECT("Connect"), ABOUT("About"), ALERTS("Official alerts"), CAT("Radio (CAT)"), ADSB("Aircraft (ADS-B)"), BEACONS("Beacons heard (SDR)"),
     VESSEL("My vessel (AIS)"), ASTRO("Celestial navigation"), WEFAX("Weather fax & HF prediction"), HAB("Balloons (HAB)"),
+    SETTINGS("App settings"),
 }
 
 /** Where the app is: "RADIO", "DISP", "MAP", "STATIONS", "WX", "IBP", "STATION:<call>", "MESSAGES", "THREAD:<call>", "DX", "FMENU", "TOOL:<name>". */
@@ -424,6 +425,24 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
                 }
             }
         }
+        MenuGroup("APP") {
+            MenuItem("Settings (theme, units, alerts)") { tool(Tool.SETTINGS) }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for ((label, t) in listOf("Remote" to Tool.REMOTE, "Config" to Tool.CONFIG, "Firmware" to Tool.FIRMWARE, "About" to Tool.ABOUT)) {
+                RadioKey(label, Modifier.weight(1f).height(44.dp), bg = Color.Transparent, labelSize = 14) { tool(t) }
+            }
+        }
+    }
+}
+
+/** App settings (theme, units, emergency alerts): moved out of the side menu into their own screen (EA7JRS). */
+@Composable
+private fun AppSettingsScreen() {
+    val ctx = LocalContext.current
+    val settings = remember { Settings(ctx) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         MenuGroup("THEME") {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
                 for ((id, label) in ThemeMode.MODES) Chip(label, ThemeMode.mode == id, Modifier.weight(1f), height = 34.dp) { ThemeMode.set(settings, id) }
@@ -458,7 +477,6 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
                 fontSize = 12.sp, color = Alp.Muted, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
             // Android 14+: full-screen alerts over the lock screen only if the user allows them (Google grants them by default
             // only to calling and alarm apps); without it the alert is an ordinary notification
-            val ctx = LocalContext.current
             var fsiOk by remember { mutableStateOf(true) }
             LaunchedEffect(Unit) {
                 while (true) {
@@ -473,12 +491,6 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
                     ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
                         android.net.Uri.parse("package:" + ctx.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 } catch (_: Exception) { AppState.error.value = "Open Android Settings > Apps > APRS LoRa+ > Notifications to allow full-screen alerts" }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for ((label, t) in listOf("Remote" to Tool.REMOTE, "Config" to Tool.CONFIG, "Firmware" to Tool.FIRMWARE, "About" to Tool.ABOUT)) {
-                RadioKey(label, Modifier.weight(1f).height(44.dp), bg = Color.Transparent, labelSize = 14) { tool(t) }
             }
         }
     }
@@ -547,6 +559,7 @@ private fun ToolScreen(nav: Navigator, tool: Tool) {
                 Tool.HAB -> HabTab { nav.go("MAP") }
                 Tool.VESSEL -> VesselTab()
                 Tool.ASTRO -> AstroTab()
+                Tool.SETTINGS -> AppSettingsScreen()
             }
         }
     }
