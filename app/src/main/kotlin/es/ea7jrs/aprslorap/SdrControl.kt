@@ -35,6 +35,7 @@ object SdrControl {
         val gain: Int? = null, val gainMin: Int = 0, val gainMax: Int = 0,
         val signalDb: Double? = null, val snrDb: Double? = null, val recording: Boolean = false,
         val followHz: Long? = null, val dopplerHz: Long? = null,
+        val ctcssTone: Double? = null,                                           // detected CTCSS tone in NFM, null = none
     )
 
     internal interface LinkApi {

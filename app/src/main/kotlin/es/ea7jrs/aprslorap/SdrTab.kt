@@ -165,6 +165,7 @@ fun SdrTab() {
         Field("Frequency", st.freqHz?.let { Sdr.mhz(it) + " MHz" } ?: "—")
         Field("Mode / filter", (st.mode ?: "—") + (st.bandwidthHz?.let { " / ${it} Hz" } ?: ""))
         if (st.signalDb != null) Field("Signal", String.format(Locale.US, "%.1f " + (if (kind == Sdr.Kind.RTLTCP) "dBFS" else "dB"), st.signalDb) + (st.snrDb?.let { String.format(Locale.US, ", SNR %.1f dB", it) } ?: ""))
+        st.ctcssTone?.let { Field("CTCSS", String.format(Locale.US, "%.1f Hz", it)) }
         if (kind == Sdr.Kind.RTLTCP) {
             Text(if (sql <= -100f) "Squelch (NFM): open" else String.format(Locale.US, "Squelch (NFM): %.0f dB", sql), fontSize = 13.sp)
             Slider(sql, { sql = it }, valueRange = -100f..0f, onValueChangeFinished = { val v = if (sql <= -100f) -200 else sql.toInt(); settings.sdrSquelchDb = v; SdrControl.squelch(v.toDouble()) })

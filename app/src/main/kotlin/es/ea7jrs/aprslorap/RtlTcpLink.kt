@@ -54,6 +54,10 @@ internal class RtlTcpLink(
     /** Live toggle of the noise tools (blanker, de-noise, auto-notch). */
     fun noise(nb: Boolean, nr: Boolean, anf: Boolean) { rx.noiseBlanker = nb; rx.noiseReduction = nr; rx.autoNotch = anf }
 
+    // ---- CTCSS sub-audible tone detector (NFM)
+    private val ctcss = es.ea7jrs.aprslorap.core.Ctcss.Detector(Dsp.NARROW_AUDIO_RATE.toDouble())
+    @Volatile private var lastTone = -1.0
+
     // ---- signal identification (identify by decoding), captured on the SDR thread
     private val idRes = es.ea7jrs.aprslorap.core.Modems.Resampler12to8()
     @Volatile private var idCapturing = false
@@ -194,6 +198,10 @@ internal class RtlTcpLink(
                             sameDec?.let { d -> d.feed(x, 0, k); while (true) { OfficialAlertsFetcher.onSameHeader(d.poll() ?: break) } }
                         } else if (!dv && !pk && !wx && !apt && rx.discriminatorTap != null) rx.discriminatorTap = null
                         if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) { ModemRunner.feedReceiver12k(audio, m); WsjtRunner.feedReceiver12k(audio, m) }
+                        if (rx.mode == "NFM") {
+                            ctcss.feed(audio, m)
+                            if (ctcss.tone != lastTone) { lastTone = ctcss.tone; SdrControl.update { it.copy(ctcssTone = if (ctcss.tone > 0) ctcss.tone else null) } }
+                        } else if (lastTone != -1.0) { lastTone = -1.0; SdrControl.update { it.copy(ctcssTone = null) } }
                         if (idCapturing && rx.audioRate == Dsp.NARROW_AUDIO_RATE) {
                             val y = FloatArray(m * 2 / 3 + 2)
                             val k = idRes.process(audio, m, y)

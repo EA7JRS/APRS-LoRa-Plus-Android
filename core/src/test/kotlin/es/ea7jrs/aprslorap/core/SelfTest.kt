@@ -1245,6 +1245,17 @@ private fun testDsp() {
     check(Dsp.goertzel(nfSig.copyOfRange(4000, 8000), 4000, 1000.0, 8000.0) < 0.3 * toneBefore, "auto-notch removes the steady tone")
     val rxNR = Dsp.Receiver(); rxNR.setOffset(off); rxNR.setMode("NFM", 0); rxNR.noiseBlanker = true; rxNR.noiseReduction = true
     check(toneRatio(runRx(rxNR, fm), rxNR.audioRate, 1000.0, 2300.0) > 5, "NFM still demodulates with NB + NR on")
+    // ---- CTCSS detector ----
+    val ctRnd = java.util.Random(9)
+    val ctSig = FloatArray(2400) { (0.3 * Math.sin(pi2 * 100.0 * it / 8000.0) + 0.5 * Math.sin(pi2 * 1200.0 * it / 8000.0) + 0.1 * ctRnd.nextGaussian()).toFloat() }
+    val ctDet = Ctcss.Detector(8000.0); ctDet.feed(ctSig, ctSig.size)
+    check(Math.abs(ctDet.tone - 100.0) < 0.1, "CTCSS detects 100.0 Hz under voice (got ${ctDet.tone})")
+    val ctNo = FloatArray(2400) { (0.5 * Math.sin(pi2 * 1200.0 * it / 8000.0) + 0.2 * ctRnd.nextGaussian()).toFloat() }
+    val ctDet2 = Ctcss.Detector(8000.0); ctDet2.feed(ctNo, ctNo.size)
+    check(ctDet2.tone == 0.0, "CTCSS none without a sub-audible tone (got ${ctDet2.tone})")
+    val ct88 = FloatArray(2400) { (0.35 * Math.sin(pi2 * 88.5 * it / 8000.0) + 0.1 * ctRnd.nextGaussian()).toFloat() }
+    val ctDet3 = Ctcss.Detector(8000.0); ctDet3.feed(ct88, ct88.size)
+    check(Math.abs(ctDet3.tone - 88.5) < 0.1, "CTCSS detects 88.5 Hz (got ${ctDet3.tone})")
 }
 
 private fun testSigId() {
