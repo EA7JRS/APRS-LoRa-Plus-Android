@@ -1225,6 +1225,26 @@ private fun testDsp() {
     eq(Sdr.RtlTcp.greeting(ByteArray(12)), null, "rtl_tcp bad greeting")
     eq(Sdr.RtlTcp.driverUri(14423, 960000, 145800000, 1, true), "iqsrc://-a 127.0.0.1 -p 14423 -s 960000 -f 145800000 -P 1 -T 1", "driver intent")
     val w = Dsp.wavHeader(12000, 2400); eq(String(w, 0, 4), "RIFF", "WAV header"); eq(w.size, 44, "WAV header size")
+    // ---- SDR noise tools: blanker, noise reduction, auto-notch ----
+    val nbN = 4096
+    val nbRe = FloatArray(nbN) { Math.cos(pi2 * 0.05 * it).toFloat() }
+    val nbIm = FloatArray(nbN) { Math.sin(pi2 * 0.05 * it).toFloat() }
+    for (k in intArrayOf(800, 1800, 2800)) { nbRe[k] = 20f; nbIm[k] = 20f }                 // impulses
+    Dsp.NoiseBlanker().process(nbRe, nbIm, nbN)
+    check(Math.abs(nbRe[800]) < 1f && Math.abs(nbRe[1800]) < 1f && Math.abs(nbRe[2800]) < 1f, "noise blanker zeroes impulses")
+    check(Math.hypot(nbRe[801].toDouble(), nbIm[801].toDouble()) > 0.5, "noise blanker keeps the signal")
+    val lmsRnd = java.util.Random(5)
+    fun toneSnr(a: FloatArray): Double { val t = Dsp.goertzel(a, a.size, 1000.0, 8000.0); var e = 0.0; for (v in a) e += (v * v).toDouble(); return t / (e - t + 1e-9) }
+    val nrSig = FloatArray(8000) { (0.3 * Math.sin(pi2 * 1000 * it / 8000.0) + 0.6 * lmsRnd.nextGaussian()).toFloat() }
+    val nrBefore = toneSnr(nrSig.copyOfRange(4000, 8000))
+    Dsp.Lms(delay = 1).process(nrSig, nrSig.size, false)                                     // noise reduction (line enhancer)
+    check(toneSnr(nrSig.copyOfRange(4000, 8000)) > nrBefore, "noise reduction improves the tone/noise ratio")
+    val nfSig = FloatArray(8000) { (0.5 * Math.sin(pi2 * 1000 * it / 8000.0) + 0.2 * lmsRnd.nextGaussian()).toFloat() }
+    val toneBefore = Dsp.goertzel(nfSig.copyOfRange(4000, 8000), 4000, 1000.0, 8000.0)
+    Dsp.Lms(delay = 5).process(nfSig, nfSig.size, true)                                      // auto-notch
+    check(Dsp.goertzel(nfSig.copyOfRange(4000, 8000), 4000, 1000.0, 8000.0) < 0.3 * toneBefore, "auto-notch removes the steady tone")
+    val rxNR = Dsp.Receiver(); rxNR.setOffset(off); rxNR.setMode("NFM", 0); rxNR.noiseBlanker = true; rxNR.noiseReduction = true
+    check(toneRatio(runRx(rxNR, fm), rxNR.audioRate, 1000.0, 2300.0) > 5, "NFM still demodulates with NB + NR on")
 }
 
 private fun testSigId() {

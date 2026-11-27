@@ -121,12 +121,49 @@ object Dsp {
         }
     }
 
+    /** Impulse noise blanker on a complex stream: a sample whose magnitude exceeds [threshold]× the running average is zeroed. */
+    class NoiseBlanker(var threshold: Float = 4f) {
+        private var avg = 1e-3f
+        fun process(re: FloatArray, im: FloatArray, n: Int) {
+            for (i in 0 until n) {
+                val mag = sqrt(re[i] * re[i] + im[i] * im[i])
+                avg += 0.01f * (mag - avg)
+                if (mag > threshold * avg) { re[i] = 0f; im[i] = 0f }
+            }
+        }
+    }
+
+    /**
+     * Adaptive line filter (normalized LMS predictor with a decorrelation [delay]). Used two ways on the audio:
+     * noise reduction keeps the prediction (the correlated/tonal part, white noise averaged out), and an automatic notch
+     * keeps the error (the predictable carrier/heterodyne removed). Processes in place.
+     */
+    class Lms(val taps: Int = 32, val delay: Int = 2, var mu: Float = 0.3f) {
+        private val w = FloatArray(taps)
+        private val d = FloatArray(taps + delay + 1)                       // delay line, d[0] = newest
+        /** [notch] false writes the enhanced (de-noised) signal, true writes the notched signal (steady tones removed). */
+        fun process(x: FloatArray, n: Int, notch: Boolean) {
+            for (i in 0 until n) {
+                System.arraycopy(d, 0, d, 1, d.size - 1); d[0] = x[i]
+                var y = 0f; var pw = 1e-6f
+                for (k in 0 until taps) { val r = d[delay + k]; y += w[k] * r; pw += r * r }
+                val e = x[i] - y
+                val step = mu * e / pw
+                for (k in 0 until taps) w[k] += step * d[delay + k]
+                x[i] = if (notch) e else y
+            }
+        }
+    }
+
     class Receiver {
         var mode = "NFM"
             private set
         var bandwidthHz = 12_500
             private set
         var squelchDb = -200.0                         // NFM: below this channel level the audio is muted
+        var noiseBlanker = false                       // zero impulse noise on the IQ before demod
+        var noiseReduction = false                     // adaptive de-noise on the audio (LMS line enhancer)
+        var autoNotch = false                          // adaptive notch: remove steady carriers/heterodynes (SSB/AM)
         /** Channel level in dBFS (last block). */
         var levelDb = -120.0
             private set
@@ -144,6 +181,14 @@ object Dsp {
         private var audioNarrow = RFir(lowPass(33, 3_500.0, 48_000.0), 4)          // NFM / AM audio: 48 -> 12 kHz
         private val audioWide = RFir(lowPass(33, 15_000.0, 192_000.0), 4)
         private val agc = Agc(rate = NARROW_AUDIO_RATE.toDouble())
+        private val nbFilter = NoiseBlanker()
+        private val nr = Lms(delay = 1)                                            // de-noise (line enhancer)
+        private val anf = Lms(delay = 5)                                           // auto-notch (longer delay)
+        /** Auto-notch (if on) then noise reduction (if on), on the demodulated audio, in place. */
+        private fun denoise(out: FloatArray, n: Int) {
+            if (autoNotch) anf.process(out, n, true)
+            if (noiseReduction) nr.process(out, n, false)
+        }
         private var lastRe = 1f; private var lastIm = 0f
         private var deemph = 0f
         private var dc = 0f
@@ -213,6 +258,7 @@ object Dsp {
                 return m
             }
             val nb = firB.process(aRe, aIm, na, cRe, cIm)                     // 48 kS/s channel
+            if (noiseBlanker) nbFilter.process(cRe, cIm, nb)                  // impulse blanking before demod
             basebandTap?.invoke(cRe, cIm, nb)
             var p = 0.0
             for (i in 0 until nb) p += cRe[i] * cRe[i] + cIm[i] * cIm[i]
@@ -227,6 +273,7 @@ object Dsp {
                     }
                     discriminatorTap?.invoke(r1, nb)
                     val m = audioNarrow.process(r1, nb, out)
+                    denoise(out, m)
                     val mute = levelDb < squelchDb
                     for (i in 0 until m) { dc += 0.002f * (out[i] - dc); out[i] = if (mute) 0f else ((out[i] - dc) * 0.8f).coerceIn(-1f, 1f) }
                     return m
@@ -235,6 +282,7 @@ object Dsp {
                     for (i in 0 until nb) r1[i] = sqrt(cRe[i] * cRe[i] + cIm[i] * cIm[i])
                     val m = audioNarrow.process(r1, nb, out)
                     for (i in 0 until m) { dc += 0.002f * (out[i] - dc); out[i] = out[i] - dc }
+                    denoise(out, m)
                     agc.process(out, m)
                     for (i in 0 until m) out[i] = out[i].coerceIn(-1f, 1f)
                     return m
@@ -246,6 +294,7 @@ object Dsp {
                     val nd = sideband.process(dRe, dIm, nc, dRe, dIm)
                     if (mode == "CW") rotate(dRe, dIm, nd, CW_TONE) else rotate(dRe, dIm, nd, -shift)
                     for (i in 0 until nd) out[i] = dRe[i]
+                    denoise(out, nd)
                     agc.process(out, nd)
                     for (i in 0 until nd) out[i] = out[i].coerceIn(-1f, 1f)
                     return nd
