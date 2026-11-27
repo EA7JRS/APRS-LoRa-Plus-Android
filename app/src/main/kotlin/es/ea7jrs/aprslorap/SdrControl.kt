@@ -254,6 +254,7 @@ object SdrControl {
             if (n <= 0) return
             ModemRunner.feedReceiver12k(pcmF, n)
             WsjtRunner.feedReceiver12k(pcmF, n)
+            SsdvRxRunner.feedReceiver12k(pcmF, n)
             if (down.peak > 0.98f) { if (++clipped == 20) SdrControl.set { it.copy(status = "SDRconnect audio is clipping: turn its AGC on") } } else if (clipped > 0) clipped--
             if (play) {
                 val t = track ?: try {

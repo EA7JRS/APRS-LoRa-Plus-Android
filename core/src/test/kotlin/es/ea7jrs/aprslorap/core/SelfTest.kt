@@ -2496,6 +2496,23 @@ private fun testSsdv() {
     val ce = Ssdv.centreCrop(640, 480, 320, 240)
     eq(ce[2], 640, "matching aspect keeps width"); eq(ce[3], 480, "matching aspect keeps height")
     eq(Ssdv.QUALITY_DEFAULT in Ssdv.QUALITY_MIN..Ssdv.QUALITY_MAX, true, "default quality in range")
+
+    // 2-FSK demod + packet framer: modulate a 256-byte SSDV packet and recover it
+    run {
+        val payload = ByteArray(Ssdv.PKT_SIZE) { (it * 7 + 3).toByte() }
+        payload[0] = Ssdv.SYNC.toByte(); payload[1] = Ssdv.TYPE_FEC.toByte()
+        val preamble = ByteArray(8) { Ssdv.SYNC.toByte() }                    // clock warm-up
+        val audio = SsdvFsk.modulate(preamble + payload)
+        val pkts = SsdvFsk().feed(audio, audio.size)
+        check(pkts.isNotEmpty(), "SSDV-FSK recovers a packet")
+        if (pkts.isNotEmpty()) check(pkts[0].contentEquals(payload), "SSDV-FSK packet bytes match")
+        // the no-FEC type is recognised too
+        val p2 = ByteArray(Ssdv.PKT_SIZE) { (it xor 0x5A).toByte() }
+        p2[0] = Ssdv.SYNC.toByte(); p2[1] = Ssdv.TYPE_NOFEC.toByte()
+        val a2 = SsdvFsk.modulate(ByteArray(8) { Ssdv.SYNC.toByte() } + p2)
+        val r2 = SsdvFsk().feed(a2, a2.size)
+        check(r2.isNotEmpty() && r2[0].contentEquals(p2), "SSDV-FSK no-FEC packet recovered")
+    }
 }
 
 private fun testRadioUi() {

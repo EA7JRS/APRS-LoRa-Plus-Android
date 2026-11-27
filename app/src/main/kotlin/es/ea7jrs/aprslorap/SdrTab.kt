@@ -357,6 +357,7 @@ fun SdrTab(onBeacons: () -> Unit = {}) {
         VorSection(kind == Sdr.Kind.RTLTCP && st.connected)
         Beacon406Section(kind == Sdr.Kind.RTLTCP && st.connected)
         InmarsatSection(kind == Sdr.Kind.RTLTCP && st.connected)
+        SsdvSdrSection(st.connected)
         Section("Beacons heard")
         Text("Beacons decoded with the SDR (LR-FHSS, WSPR, FST4W, FT8, FT4, CW) with list, map, rotor and spotting.", fontSize = 12.sp)
         OutlinedButton(onClick = onBeacons, modifier = Modifier.fillMaxWidth()) { Text("Open Beacons heard (SDR)") }

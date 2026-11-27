@@ -197,7 +197,7 @@ internal class RtlTcpLink(
                             if (AptRunner.active) AptRunner.feed(x, k)
                             sameDec?.let { d -> d.feed(x, 0, k); while (true) { OfficialAlertsFetcher.onSameHeader(d.poll() ?: break) } }
                         } else if (!dv && !pk && !wx && !apt && rx.discriminatorTap != null) rx.discriminatorTap = null
-                        if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) { ModemRunner.feedReceiver12k(audio, m); WsjtRunner.feedReceiver12k(audio, m) }
+                        if (rx.audioRate == Dsp.NARROW_AUDIO_RATE) { ModemRunner.feedReceiver12k(audio, m); WsjtRunner.feedReceiver12k(audio, m); SsdvRxRunner.feedReceiver12k(audio, m) }
                         if (rx.mode == "NFM") {
                             ctcss.feed(audio, m)
                             if (ctcss.tone != lastTone) { lastTone = ctcss.tone; SdrControl.update { it.copy(ctcssTone = if (ctcss.tone > 0) ctcss.tone else null) } }

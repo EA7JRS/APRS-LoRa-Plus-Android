@@ -177,6 +177,49 @@ fun SsdvTab() {
     }
 }
 
+/** SSDV reception with the phone's SDR (FSK). Shown in the SDR tab when the RTL-SDR receiver is connected. */
+@Composable
+fun SsdvSdrSection(connected: Boolean) {
+    val ctx = LocalContext.current
+    val running by AppState.ssdvSdrRunning.collectAsState()
+    val status by AppState.ssdvSdrStatus.collectAsState()
+    val img by AppState.ssdvSdrImage.collectAsState()
+    var baud by rememberSaveable { mutableStateOf("2000") }
+    var markHz by rememberSaveable { mutableStateOf("2000") }
+    var spaceHz by rememberSaveable { mutableStateOf("1000") }
+    var invert by rememberSaveable { mutableStateOf(false) }
+
+    Section("SSDV images (SDR, FSK)")
+    Text("Decode SSDV images from the SDR audio (the tracker's SSDV-FSK mode; SSDV over LoRa cannot be received with an RTL-SDR). " +
+        "Tune baud and tone spacing to the sender; defaults are 2000 Bd, 1000/2000 Hz.", fontSize = 11.sp)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(baud, { baud = it.filter { ch -> ch.isDigit() }.take(6) }, label = { Text("Baud") }, singleLine = true, modifier = Modifier.weight(1f))
+        OutlinedTextField(markHz, { markHz = it.filter { ch -> ch.isDigit() }.take(5) }, label = { Text("Mark Hz") }, singleLine = true, modifier = Modifier.weight(1f))
+        OutlinedTextField(spaceHz, { spaceHz = it.filter { ch -> ch.isDigit() }.take(5) }, label = { Text("Space Hz") }, singleLine = true, modifier = Modifier.weight(1f))
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(invert, { invert = it }); Text("invert", fontSize = 13.sp)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!running) Button(onClick = {
+            SsdvRxRunner.start(ctx, baud.toDoubleOrNull() ?: 2000.0, markHz.toDoubleOrNull() ?: 2000.0, spaceHz.toDoubleOrNull() ?: 1000.0, invert)
+        }, enabled = connected) { Text("Start decoding") }
+        else OutlinedButton(onClick = { SsdvRxRunner.stop() }) { Text("Stop") }
+        OutlinedButton(onClick = { SsdvRxRunner.decodeNow() }, enabled = running) { Text("Decode now") }
+    }
+    if (!connected) Text("Connect the RTL-SDR receiver first.", fontSize = 11.sp, color = Alp.Amber)
+    if (status.isNotBlank()) Text(status, fontSize = 12.sp)
+    val bytes = img
+    val bmp = remember(bytes) { bytes?.let { runCatching { BitmapFactory.decodeByteArray(it, 0, it.size) }.getOrNull() } }
+    if (bmp != null && bytes != null) {
+        Image(bmp.asImageBitmap(), contentDescription = "SSDV image from the SDR", modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { if (SsdvImg.saveToGallery(ctx, bytes)) AppState.notice.value = "Saved to the gallery" else AppState.error.value = "Could not save" }) { Text("Save") }
+            OutlinedButton(onClick = { SsdvImg.share(ctx, bytes) }) { Text("Share") }
+        }
+    }
+}
+
 /** eQSL-style QSL card form: the contact details go onto a card the tracker transmits as SSDV. */
 @Composable
 private fun QslDialog(settings: Settings, onDismiss: () -> Unit, onSend: (toCall: String, rst: String, band: String, mode: String, comment: String) -> Unit) {

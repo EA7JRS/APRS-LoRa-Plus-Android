@@ -51,6 +51,12 @@ object Ssdv {
         }
     }
 
+    // On-air SSDV packet (UKHAS, the format the tracker / RadioLib use): 256 bytes starting with the sync byte and a type byte.
+    const val PKT_SIZE = 256
+    const val SYNC = 0x55
+    const val TYPE_FEC = 0x66            // normal mode, RS(255,223) FEC
+    const val TYPE_NOFEC = 0x67          // no-FEC mode
+
     /** SSDV JPEG quality index 0..7 (the tracker maps it to JPEG 13..100). */
     const val QUALITY_MIN = 0
     const val QUALITY_MAX = 7

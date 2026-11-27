@@ -100,6 +100,9 @@ object AppState {
     val ssdvRxImage = MutableStateFlow<ByteArray?>(null)                         // last received SSDV image downloaded from the tracker (JPEG)
     val ssdvRxBusy = MutableStateFlow(false)                                     // downloading a received image from the tracker
     val ssdvRxMessage = MutableStateFlow("")
+    val ssdvSdrRunning = MutableStateFlow(false)                                 // the app's SDR is decoding SSDV-FSK
+    val ssdvSdrImage = MutableStateFlow<ByteArray?>(null)                        // last SSDV image decoded from the SDR (JPEG)
+    val ssdvSdrStatus = MutableStateFlow("")
     // Phone sensors, rotctld, RepeaterBook
     val phoneSensors = MutableStateFlow(PhoneSensors.Reading())
     val attStatus = MutableStateFlow("Off")
