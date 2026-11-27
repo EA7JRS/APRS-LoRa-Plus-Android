@@ -1091,6 +1091,15 @@ private fun testSdr() {
         check(Sdr.SdrConnect.audioStream(true) == """{"event_type":"audio_stream_enable","property":"","value":"true"}""", "SDRconnect: audio stream on")
         check(Sdr.SdrConnect.binaryType(byteArrayOf(1, 0, 5)) == Sdr.SdrConnect.BIN_AUDIO && Sdr.SdrConnect.binaryType(byteArrayOf(2, 0)) == Sdr.SdrConnect.BIN_IQ &&
             Sdr.SdrConnect.binaryType(byteArrayOf(1)) == -1, "SDRconnect: kind of a binary message")
+        check(Sdr.SdrConnect.iqStream(true) == """{"event_type":"iq_stream_enable","property":"","value":"true"}""", "SDRconnect: iq stream on")
+        // type 2 IQ frame: 2-byte LE kind + int16 LE interleaved I,Q (±32767 = ±1): I=+32767/Q=-32767, then I=0/Q=16384
+        val iqMsg = byteArrayOf(2, 0, 0xFF.toByte(), 0x7F, 0x01, 0x80.toByte(), 0, 0, 0, 0x40)
+        val iqRe = FloatArray(4); val iqIm = FloatArray(4)
+        val iqN = Sdr.SdrConnect.decodeIq(iqMsg, iqRe, iqIm)
+        eq(iqN, 2, "SDRconnect IQ: 2 complex samples")
+        check(Math.abs(iqRe[0] - 1f) < 1e-3f && Math.abs(iqIm[0] + 1f) < 1e-3f, "SDRconnect IQ sample 0 (+1, -1)")
+        check(Math.abs(iqRe[1]) < 1e-3f && Math.abs(iqIm[1] - 16384f / 32767f) < 1e-3f, "SDRconnect IQ sample 1 (0, +0.5)")
+        check(Sdr.SdrConnect.decodeIq(byteArrayOf(1, 0, 4, 4), iqRe, iqIm) == 0, "SDRconnect decodeIq ignores non-IQ frames")
         fun tone(hz: Double, n: Int, amp: Double): ByteArray {
             val b = ByteArray(2 + n * 4); b[0] = 1
             for (i in 0 until n) {

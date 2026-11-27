@@ -79,11 +79,30 @@ object Sdr {
         fun setGain(lnaState: Int) = setProperty("lna_state", lnaState.toString())
         /** The demodulated audio as binary messages (48 kHz, stereo, 16 bits), on or off. */
         fun audioStream(on: Boolean) = event("audio_stream_enable", if (on) "true" else "false")
+        /** The raw I/Q as binary messages (type 2: 16-bit little-endian, interleaved I,Q; rate from device_sample_rate), on or off. */
+        fun iqStream(on: Boolean) = event("iq_stream_enable", if (on) "true" else "false")
         const val BIN_AUDIO = 1
         const val BIN_IQ = 2
         const val BIN_SPECTRUM = 3
         /** Kind of a binary message: its first two bytes, little-endian; -1 if it is too short. */
         fun binaryType(payload: ByteArray): Int = if (payload.size < 2) -1 else (payload[0].toInt() and 0xFF) or ((payload[1].toInt() and 0xFF) shl 8)
+
+        /**
+         * Decodes an IQ binary message (type 2): after the 2 bytes of the kind, 16-bit little-endian samples interleaved
+         * I, Q, full scale ±32767. Writes floats (−1..1) into [outRe] / [outIm]; returns the number of complex samples.
+         */
+        fun decodeIq(payload: ByteArray, outRe: FloatArray, outIm: FloatArray): Int {
+            if (binaryType(payload) != BIN_IQ) return 0
+            val n = minOf((payload.size - 2) / 4, outRe.size, outIm.size)               // two int16 per complex sample
+            var p = 2
+            for (i in 0 until n) {
+                val iI = (payload[p].toInt() and 0xFF) or (payload[p + 1].toInt() shl 8)
+                val iQ = (payload[p + 2].toInt() and 0xFF) or (payload[p + 3].toInt() shl 8)
+                outRe[i] = iI / 32767f; outIm[i] = iQ / 32767f
+                p += 4
+            }
+            return n
+        }
 
         /**
          * Audio of SDRconnect (after the 2 bytes of the kind: 16-bit little-endian samples, left and right, 48 kHz) down to
