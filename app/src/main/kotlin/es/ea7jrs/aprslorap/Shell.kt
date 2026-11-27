@@ -396,12 +396,12 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("OPERATE") {
             MenuItem("Radio", active = nav.kind == "RADIO") { open("RADIO") }
             MenuItem("Map", active = nav.kind == "MAP") { open("MAP") }
+            MenuItem("IBP beacons", active = nav.kind == "IBP", indent = true) { open("IBP") }
+            MenuItem("RBN map", active = nav.kind == "RBN", indent = true) { open("RBN") }
             MenuItem("Stations", right = "${stations.size}", active = nav.kind == "STATIONS") { open("STATIONS") }
             MenuItem("Weather stations", right = "${stations.count { it.wx != null }}", active = nav.kind == "WX") { open("WX") }
             MenuItem("Messages", badge = unread, active = nav.kind == "MESSAGES") { open("MESSAGES") }
             MenuItem("DX cluster", right = if (dx.connected) "${dx.spots.size}" else "", active = nav.kind == "DX") { open("DX") }
-            MenuItem("IBP beacons", active = nav.kind == "IBP") { open("IBP") }
-            MenuItem("RBN map", active = nav.kind == "RBN") { open("RBN") }
             MenuItem("Log & QSL") { tool(Tool.LOG) }
         }
         MenuGroup("DEVICES") {
@@ -414,7 +414,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "Spotting" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Aircraft (ADS-B)" to Tool.ADSB, "Beacons (SDR)" to Tool.BEACONS, "Balloons (HAB)" to Tool.HAB, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null, "About" to Tool.ABOUT,
+                "DAPNET" to Tool.DAPNET, "Signal ID" to Tool.SIGID, "Sensors" to Tool.SENSORS, "Heard" to Tool.HEARD, "AIS ships" to Tool.AIS, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Aircraft (ADS-B)" to Tool.ADSB, "Beacons (SDR)" to Tool.BEACONS, "Balloons (HAB)" to Tool.HAB, "Official alerts" to Tool.ALERTS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null,
             )
             for (row in grid.chunked(2)) {
                 Row {
@@ -510,14 +510,14 @@ private fun MenuGroup(title: String, content: @Composable ColumnScope.() -> Unit
 }
 
 @Composable
-private fun MenuItem(label: String, right: String = "", badge: Int = 0, lamp: Boolean? = null, active: Boolean = false, onClick: () -> Unit) {
+private fun MenuItem(label: String, right: String = "", badge: Int = 0, lamp: Boolean? = null, active: Boolean = false, indent: Boolean = false, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(10.dp)).background(if (active) Alp.Key else Color.Transparent)
             .clickable(onClick = onClick).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (lamp != null) Lamp(lamp)
-        Text(label, fontSize = 16.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal, color = if (active) Alp.Green else Alp.Text,
+        Text((if (indent) "   " else "") + label, fontSize = 16.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal, color = if (active) Alp.Green else Alp.Text,
             modifier = Modifier.weight(1f))
         if (right.isNotEmpty()) Text(right, fontSize = 14.sp, color = Alp.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(120.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.End)
