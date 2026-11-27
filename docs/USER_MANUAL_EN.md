@@ -1,6 +1,6 @@
 # APRS LoRa+ for Android — user manual
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.5.0** (the whole APRS LoRa+ ecosystem is unified at this number again). Earlier it matched the tracker, the rotor box, the
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.5.1** (the Android app's own version since 5.4.8; the rest of the ecosystem is at 5.5.0). Earlier it matched the tracker, the rotor box, the
 Display and the plotter).
 
 The app is the companion of the **APRS LoRa+** tracker: it shows everything the tracker hears and measures, and controls
@@ -177,3 +177,10 @@ The whole APRS LoRa+ ecosystem is unified again at 5.5.0 (needs the 5.5.0 tracke
 - **HAB telemetry (balloons):** decodes UKHAS telemetry (`$$CALL,counter,time,lat,lon,alt,…*CRC`) from the RTTY decoder; a **Balloons** tool with the list, *GO TO* and *ROTOR*.
 - **CW skimmer:** multi-channel CW decoder in the Digimodes tab (several signals at once, each with its audio frequency, callsign, SNR and WPM).
 - **SSDV image and POCSAG** (with the 5.5.0 firmware): **SSDV** section in the Tracker tab (SSDV mode): status and progress, **upload a JPEG from the phone** over BLE, transmit / stop; the image source and radio parameters stay in Config (group `ssdv`). **POCSAG** section: send a page to a RIC (numeric or alphanumeric). Transmitting needs a validated callsign.
+
+## 16. New in 5.5.1
+
+- **SSDV image tool** in OPERATE: **send** the tracker a **photo** (phone camera), a **gallery image** or an **eQSL-style QSL card** (call sign, correspondent, UTC date and time, RST, band, mode, comment). Pick the **size** (multiples of 16: QVGA, VGA, QSL landscape / wide, square, postcard) and the **quality** (0–7); the app crops, scales and JPEG-encodes it and uploads it to the tracker, which transmits it as SSDV packets. Transmitting needs a validated call sign.
+- **View / save / share the images the tracker received:** a button **downloads** over BLE the last image the tracker received (needs the firmware with the SSDV RX download, branch `ssdv-rx-download`), shows it and lets you **Save** to the gallery and **Share** (WhatsApp, Telegram…).
+- **SSDV reception with the phone's RTL-SDR** (**FSK** mode): *SSDV images (SDR, FSK)* section in the SDR tab; a 2-FSK demodulator frames the packets and a **native decoder** reconstructs the JPEG, with Save and Share. An RTL-SDR cannot demodulate SSDV over LoRa; baud and tones are tuned to the sender.
+- **Side menu and settings reorganised:** a new **App settings** screen with **User** (call sign, licence validation, tracker call sign), **TNC** (APRS path), theme, units, emergency alerts, the **Signal ID** database download, **Spotting**, the tracker's **sensors**, **official alerts** and **RepeaterBook** (with *Tune* to the SDR and *Follow* to the rotor for the chosen repeater). **Compass / GPS** moves under *Radio* in OPERATE; **Beacons heard** opens from the SDR tool; VOR stays an SDR section.

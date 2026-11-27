@@ -56,6 +56,9 @@ Estado: **FW** = el firmware lo expone por BLE; **App** = la app Android tiene e
 | Pantallas a color (Heltec Wireless Tracker, T-Deck): tema oscuro / claro / automático y bienvenida | `cfgset` (`display.theme`, `display.splash`), `act sys_theme` | sí | sí |
 | Batería: estado (también sin PMU), tiempo que queda, %/h, ahorro automático | evento `sensors` (`bst`, `bLeftH`, `bPctH`, `bSave`), `cfgset` (`battery.saveBelow`) | sí | sí |
 | GNSS: satélites por banda (L1 / L5 / L2) | evento `sky` (7.º campo) | sí | sí |
+| SSDV (imagen): herramienta en OPERATE. Enviar al tracker una foto (cámara), una imagen de la galería o una tarjeta QSL estilo eQSL; tamaño (múltiplos de 16) y calidad; emitir | `mode` 13, `ssdv`, `ssdvimg`, `ssdvtx`, evento `ssdv`; `caps.ssdv` | sí | sí |
+| SSDV: ver / guardar / compartir las imágenes recibidas por el tracker (descarga por BLE) | `ssdvrx` (`info` / `get`), evento `ssdvrx` | sí (rama `ssdv-rx-download`) | sí |
+| SSDV: recepción por el receptor RTL-SDR de la app (FSK), decodificada con el decodificador nativo `libssdvdec.so` | solo app (demod FSK + nativo) | — | sí |
 | Sesiones interactivas con el pulsador (entrenador, sintonías WSPR / CW-baliza) | pendiente de orden propia | no | no |
 
 La orden `att` la manda la app con el móvil sujeto al soporte del rotor (boca arriba, parte de arriba del móvil hacia delante; ajuste de cero en la app). Comprobar los signos con el montaje real.

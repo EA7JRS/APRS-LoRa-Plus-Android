@@ -1,6 +1,6 @@
 # APRS LoRa+ para Android — manual de usuario
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Versión **5.5.0** (todo el ecosistema APRS LoRa+ vuelve a ir unificado en este número). Antes coincidía con el tracker, la caja del rotor, la
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Versión **5.5.1** (número propio de la app Android desde la 5.4.8; el resto del ecosistema va en la 5.5.0). Antes coincidía con el tracker, la caja del rotor, la
 Display y el plotter).
 
 La app es la compañera del tracker **APRS LoRa+**: enseña todo lo que el tracker oye y mide, y maneja todas sus funciones.
@@ -180,3 +180,10 @@ Todo el ecosistema APRS LoRa+ vuelve a ir unificado en la 5.5.0 (necesita el fir
 - **Telemetría HAB (globos):** decodifica la telemetría UKHAS (`$$INDICATIVO,contador,hora,lat,lon,alt,…*CRC`) del decodificador RTTY; herramienta **Balloons** con la lista, *GO TO* y *ROTOR*.
 - **CW skimmer:** decodificador de varios canales de CW a la vez en la pestaña Digimodes (varias señales simultáneas, cada una con su frecuencia de audio, indicativo, SNR y velocidad).
 - **Imagen SSDV y POCSAG** (con el firmware 5.5.0): sección **SSDV** en la pestaña Tracker (modo SSDV): estado y progreso, **subir un JPEG del móvil** por BLE, emitir / parar; el origen de la imagen y los parámetros de radio siguen en Config (grupo `ssdv`). Sección **POCSAG**: aviso a un RIC (numérico o alfanumérico). Lo que emite exige indicativo validado.
+
+## 16. Novedades de la 5.5.1
+
+- **Herramienta SSDV (imagen)** en OPERATE: **enviar** al tracker una **foto** (cámara del móvil), una **imagen de la galería** o una **tarjeta QSL estilo eQSL** (indicativo, corresponsal, fecha y hora UTC, RST, banda, modo, comentario). Se elige el **tamaño** (múltiplos de 16: QVGA, VGA, QSL apaisada / ancha, cuadrado, postal) y la **calidad** (0–7); la app recorta, escala y comprime a JPEG y lo sube al tracker, que lo emite como paquetes SSDV. Emitir exige indicativo validado.
+- **Ver / guardar / compartir las imágenes recibidas por el tracker:** botón que **descarga por BLE** la última imagen que recibió el tracker (necesita el firmware con la descarga SSDV RX, rama `ssdv-rx-download`), la muestra y permite **Guardar** en la galería y **Compartir** (WhatsApp, Telegram…).
+- **Recepción de SSDV por el receptor RTL-SDR de la app** (modo **FSK**): sección *SSDV images (SDR, FSK)* en la pestaña SDR; un demodulador 2-FSK arma los paquetes y un **decodificador nativo** reconstruye el JPEG, con Guardar y Compartir. Un RTL-SDR no demodula SSDV sobre LoRa; baud y tonos se ajustan al emisor.
+- **Menú lateral y ajustes reorganizados:** nueva pantalla **App settings** con **User** (indicativo, validación de licencia, indicativo del tracker), **TNC** (path APRS), tema, unidades, alertas de emergencia, descarga de la base de datos de **Signal ID**, **Spotting**, los **sensores** del tracker, **avisos oficiales** y **RepeaterBook** (con *Tune* al SDR y *Follow* al rotor del repetidor elegido). **Compass / GPS** pasa bajo *Radio* en OPERATE; **Beacons heard** se abre desde la herramienta SDR; VOR sigue como sección del SDR.

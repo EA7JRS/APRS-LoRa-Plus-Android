@@ -1,6 +1,6 @@
 # APRS LoRa+ for Android — quick guide
 
-Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.5.0**. Full manual: [USER_MANUAL_EN.md](USER_MANUAL_EN.md).
+Copyright (C) 2026 Manuel - EA7JRS. GPL-3.0-or-later. Version **5.5.1**. Full manual: [USER_MANUAL_EN.md](USER_MANUAL_EN.md).
 
 1. **Install** the APK (or the Google Play version once it is published).
 2. **Welcome**: callsign + DMR ID / CCS7 → *Validate and enter*. Without it, *Listen only*.
