@@ -94,7 +94,7 @@ fun HfTab(onTune: (Long) -> Unit) {
         val kp = HfProp.effectiveKp(geo?.first ?: 0.0, sw.bz, sw.windKms).coerceAtMost(9.0)
 
         if (view == 0) SummaryView(sw, pos, elev, est, muf, luf, kp, measured, iono, geo?.second ?: "Kp")
-        else BandConditionsView(sfi, muf, luf, kp, measured, iono, cat, { cat = it }, onTune)
+        else BandConditionsView(sfi, muf, luf, kp, measured, cat, { cat = it }, onTune)
 
         IonoSettings(settings)
     }
@@ -124,7 +124,7 @@ private fun SummaryView(sw: es.ea7jrs.aprslorap.core.SpaceWx, pos: Pair<Double, 
     if (iono != null) {
         Section("Measured ionosphere")
         val ageMin = ((System.currentTimeMillis() - iono.whenMs) / 60000L).coerceAtLeast(0)
-        Text("${iono.name} (${iono.code})" + (iono.distanceKm?.let { ", ${Math.round(it)} km" } ?: "") + " · $ageMin min ago", fontSize = 12.sp, color = Alp.Muted)
+        Text("Nearest ionosonde" + (iono.distanceKm?.let { ", ${Math.round(it)} km away" } ?: "") + " · $ageMin min ago", fontSize = 12.sp, color = Alp.Muted)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("foF2", "${f1(iono.fof2)} MHz")
             iono.muf3000?.let { Tile("MUF 3000", "${f1(it)} MHz") }
@@ -163,9 +163,9 @@ private fun SummaryView(sw: es.ea7jrs.aprslorap.core.SpaceWx, pos: Pair<Double, 
 
 @Composable
 private fun BandConditionsView(sfi: Double, muf: Double, luf: Double, kp: Double, measured: Boolean,
-                               iono: HfProp.Ionosonde?, cat: String, setCat: (String) -> Unit, onTune: (Long) -> Unit) {
+                               cat: String, setCat: (String) -> Unit, onTune: (Long) -> Unit) {
     Text("Dynamic estimate from the solar flux (SFU ${String.format(Locale.US, "%.0f", sfi)}) and the geomagnetic level (${f1(kp)}). " +
-        "MUF ${f1(muf)} MHz" + (if (measured) " measured (${iono?.name})." else " estimated."), fontSize = 12.sp, color = Alp.Muted)
+        "MUF ${f1(muf)} MHz" + (if (measured) " measured." else " estimated."), fontSize = 12.sp, color = Alp.Muted)
     val cats = listOf("all" to "All (13)", "low" to "Low", "medium" to "Medium", "high" to "High", "vhf" to "VHF")
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for ((id, label) in cats) RadioKey(label, Modifier.height(36.dp), bg = if (cat == id) Alp.Cyan else Alp.Key) { setCat(id) }

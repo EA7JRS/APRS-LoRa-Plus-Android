@@ -825,7 +825,8 @@ object OfficialAlerts {
 
     /**
      * The "spacewx" command for the tracker. With [iono] (the nearest trustworthy ionosonde) it also carries the measured
-     * foF2 ("fo"), MUF 3000 ("mu") and station name ("io"), which the tracker prefers over its estimated MUF for TELEMETRY > HF.
+     * foF2 ("fo") and MUF 3000 ("mu"), which the tracker prefers over its estimated MUF for TELEMETRY > HF. The station name is
+     * not sent (not shown anywhere).
      */
     fun spaceCommand(w: SpaceWx, iono: HfProp.Ionosonde? = null): Map<String, Any?> = linkedMapOf<String, Any?>("g" to w.g, "r" to w.r, "s" to w.s, "gm" to w.gMax,
         "kp" to w.kp.map { (it * 100).roundToLong() / 100.0 }, "kt" to w.kpTime).apply {
@@ -839,7 +840,6 @@ object OfficialAlerts {
         if (iono != null) {
             put("fo", (iono.fof2 * 10).roundToLong() / 10.0)
             iono.muf3000?.let { put("mu", (it * 10).roundToLong() / 10.0) }
-            put("io", iono.name)
         }
     }
 
