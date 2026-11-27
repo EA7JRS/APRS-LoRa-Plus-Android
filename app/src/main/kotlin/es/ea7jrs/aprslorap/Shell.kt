@@ -399,6 +399,7 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         }
         MenuGroup("OPERATE") {
             MenuItem("Radio", active = nav.kind == "RADIO") { open("RADIO") }
+            MenuItem("Compass · GPS", active = nav.kind == "DISP", indent = true) { open("DISP") }
             MenuItem("Map", active = nav.kind == "MAP") { open("MAP") }
             MenuItem("IBP beacons", active = nav.kind == "IBP", indent = true) { open("IBP") }
             MenuItem("RBN map", active = nav.kind == "RBN", indent = true) { open("RBN") }
@@ -422,13 +423,13 @@ private fun SideMenu(nav: Navigator, settings: Settings, close: () -> Unit) {
         MenuGroup("RADIO TOOLS") {
             val grid = listOf(
                 "Satellites" to Tool.SAT, "SDR" to Tool.SDR, "Digital modes" to Tool.MODES, "CW key" to Tool.TRACKER,
-                "Signal ID" to Tool.SIGID, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Beacons (SDR)" to Tool.BEACONS, "Weather fax · VOACAP" to Tool.WEFAX, "Compass · GPS" to null,
+                "Signal ID" to Tool.SIGID, "Heard" to Tool.HEARD, "My vessel (AIS)" to Tool.VESSEL, "Sextant (celestial)" to Tool.ASTRO, "Beacons (SDR)" to Tool.BEACONS, "Weather fax · VOACAP" to Tool.WEFAX,
             )
             for (row in grid.chunked(2)) {
                 Row {
                     for ((label, t) in row) {
                         Text(label, fontSize = 16.sp, color = Alp.Text, modifier = Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
-                            .clickable { if (t == null) open("DISP") else tool(t) }.padding(horizontal = 10.dp, vertical = 9.dp))
+                            .clickable { tool(t) }.padding(horizontal = 10.dp, vertical = 9.dp))
                     }
                 }
             }
