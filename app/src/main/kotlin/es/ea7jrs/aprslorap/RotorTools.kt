@@ -179,6 +179,7 @@ fun RepeaterBookSearch(onFill: (name: String, mhz: String) -> Unit) {
     val msg by AppState.rbMessage.collectAsState()
     val results by AppState.rbResults.collectAsState()
     val info by AppState.trackerInfo.collectAsState()
+    val sdr by AppState.sdr.collectAsState()
 
     Section("Repeaters from RepeaterBook")
     run {
@@ -200,12 +201,15 @@ fun RepeaterBookSearch(onFill: (name: String, mhz: String) -> Unit) {
                     .filter { it.isNotEmpty() }.joinToString(" · "), fontSize = 11.sp)
                 Text(if (rp.hasPosition) String.format(Locale.US, "%.5f, %.5f", rp.lat, rp.lon) else "no position in RepeaterBook: type it below", fontSize = 11.sp)
             }
-            if (rp.hasPosition)
-                OutlinedButton(onClick = {
-                    AppState.controller?.control("tgt", "n" to rp.targetName, "lat" to rp.lat, "lon" to rp.lon, "alt" to 0, "f" to rp.freqHz, "sel" to true)
-                }, enabled = info?.hasRotor == true) { Text("Follow") }
-            else
-                OutlinedButton(onClick = { onFill(rp.targetName, rp.freqMhz?.let { String.format(Locale.US, "%.4f", it) } ?: "") }) { Text("Use") }
+            Column(horizontalAlignment = Alignment.End) {
+                if (rp.freqMhz != null) OutlinedButton(onClick = { SdrControl.tune(rp.freqHz) }, enabled = sdr.connected) { Text("Tune") }
+                if (rp.hasPosition)
+                    OutlinedButton(onClick = {
+                        AppState.controller?.control("tgt", "n" to rp.targetName, "lat" to rp.lat, "lon" to rp.lon, "alt" to 0, "f" to rp.freqHz, "sel" to true)
+                    }, enabled = info?.hasRotor == true) { Text("Follow") }
+                else
+                    OutlinedButton(onClick = { onFill(rp.targetName, rp.freqMhz?.let { String.format(Locale.US, "%.4f", it) } ?: "") }) { Text("Use") }
+            }
         }
     }
     if (results.isNotEmpty()) Text(RepeaterBook.ATTRIBUTION, fontSize = 11.sp)
