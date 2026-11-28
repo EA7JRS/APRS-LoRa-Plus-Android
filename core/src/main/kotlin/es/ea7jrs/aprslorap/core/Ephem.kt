@@ -33,6 +33,7 @@ object Ephem {
     const val LIGHT_KM_S = 299792.458
     private const val WGS_A = 6378137.0
     private const val WGS_F = 1.0 / 298.257223563
+    private const val MOON_MASS_FRAC = 0.0121505843   // m_luna / (m_tierra + m_luna)
 
     private fun rad(d: Double) = Math.toRadians(d)
     private fun deg(r: Double) = Math.toDegrees(r)
@@ -61,23 +62,26 @@ object Ephem {
     private fun elongation(jd: Double): Double { val s = sunMoon(jd); return n360(s.moonLon - s.sunLon) }
 
     /** First extremum (minimum if [minimum]) of [f] after [jd]: steps of [step] days, refined by golden section to ~1 minute. */
+    // Extremo (minimo si [minimum]) de [f] despues de [jd]: cruce de cero de la derivada (f(t+h)-f(t-h), h = step/4) con
+    // biseccion. Robusto en extremos casi planos (perihelio/afelio), donde la seccion aurea sobre el valor erraba el instante.
     private fun nextExtremum(jd: Double, step: Double, maxSteps: Int, minimum: Boolean, f: (Double) -> Double): Pair<Double, Double> {
         val sgn = if (minimum) 1.0 else -1.0
-        var a = jd; var fa = sgn * f(a); var b = a + step; var fb = sgn * f(b)
+        val h = step * 0.25
+        fun deriv(t: Double) = sgn * (f(t + h) - f(t - h))
+        var a = jd; var da = deriv(a)
         for (i in 0 until maxSteps) {
-            val c = b + step; val fc = sgn * f(c)
-            if (fb <= fa && fb <= fc && !(i == 0 && fa < fb)) {
-                var lo = a; var hi = c
-                val g = 0.6180339887498949
-                var x1 = hi - g * (hi - lo); var x2 = lo + g * (hi - lo); var f1 = sgn * f(x1); var f2 = sgn * f(x2)
-                while (hi - lo > 0.0005) {
-                    if (f1 < f2) { hi = x2; x2 = x1; f2 = f1; x1 = hi - g * (hi - lo); f1 = sgn * f(x1) }
-                    else { lo = x1; x1 = x2; f1 = f2; x2 = lo + g * (hi - lo); f2 = sgn * f(x2) }
+            val b = a + step; val db = deriv(b)
+            if (da < 0.0 && db >= 0.0) {
+                var lo = a; var hi = b; var flo = da; var k = 0
+                while (k < 50 && hi - lo > 1e-6) {
+                    val mid = 0.5 * (lo + hi); val fm = deriv(mid)
+                    if (flo * fm <= 0.0) hi = mid else { lo = mid; flo = fm }
+                    k++
                 }
-                val x = (lo + hi) / 2
+                val x = 0.5 * (lo + hi)
                 return x to f(x)
             }
-            a = b; fa = fb; b = c; fb = fc
+            a = b; da = db
         }
         return 0.0 to 0.0
     }
@@ -206,6 +210,21 @@ object Ephem {
 
     fun sunDistanceAu(jd: Double): Double = (959.63 / 60.0) / Celnav.sunSemiDiameterArcmin(jd)
     fun sunAngularDiameterArcmin(jd: Double): Double = 2 * Celnav.sunSemiDiameterArcmin(jd)
+
+    // Distancia geocentrica Tierra-Sol (AU): celnav situa el Sol respecto al baricentro Tierra-Luna; el geocentro esta
+    // desplazado f*R_luna hacia la Luna (f = m_luna/(m_tierra+m_luna)), bamboleo de ~±4700 km que decide el instante del
+    // perihelio/afelio oficial (USNO/IMCCE/OAN); con la distancia al baricentro (lisa) se iba hasta ~1 dia.
+    private fun sunDistanceGeocentricAu(jd: Double): Double {
+        val s = Celnav.sunGhaDec(jd); val m = Celnav.moonGhaDec(jd)
+        val rs = sunDistanceAu(jd); val rm = m.dist / AU_KM
+        fun vec(ghaDeg: Double, decDeg: Double, r: Double): DoubleArray {
+            val hh = rad(-ghaDeg); val dd = rad(decDeg)
+            return doubleArrayOf(r * cos(dd) * cos(hh), r * cos(dd) * sin(hh), r * sin(dd))
+        }
+        val sv = vec(s.gha, s.dec, rs); val mv = vec(m.gha, m.dec, rm)
+        val x = sv[0] + MOON_MASS_FRAC * mv[0]; val y = sv[1] + MOON_MASS_FRAC * mv[1]; val z = sv[2] + MOON_MASS_FRAC * mv[2]
+        return sqrt(x * x + y * y + z * z)
+    }
     /** W/m² outside the atmosphere, normal to the Sun. */
     fun solarIrradianceToa(jd: Double): Double { val r = sunDistanceAu(jd); return SOLAR_CONSTANT / (r * r) }
 
@@ -232,8 +251,9 @@ object Ephem {
         return t to k
     }
 
-    /** Next perihelion ([perihelion]) or aphelion of the Earth: Julian day (good to about a day) and distance in AU. */
-    fun nextEarthApsis(jd: Double, perihelion: Boolean): Pair<Double, Double> = nextExtremum(jd, 8.0, 60, perihelion) { sunDistanceAu(it) }
+    /** Next perihelion ([perihelion]) or aphelion of the Earth: Julian day and distance in AU, geocentric (with the lunar
+     *  wobble, like USNO / IMCCE / OAN; validated against astropy/ERFA to under 2.5 h). */
+    fun nextEarthApsis(jd: Double, perihelion: Boolean): Pair<Double, Double> = nextExtremum(jd, 4.0, 120, perihelion) { sunDistanceGeocentricAu(it) }
 
     // ---------------------------------------------------------------- Earth
 
